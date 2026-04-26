@@ -1,5 +1,9 @@
 # CycleJames iOS
 
+<p align="center">
+  <img src="docs/workouts.png" alt="CycleJames workouts list" width="320">
+</p>
+
 Native iOS port of the [CycleJames](https://github.com/FromArkZoo/CycleJames) web app. SwiftUI cycling-trainer app that connects to FTMS-compatible smart trainers (Wattbike Atom Next Gen, Wahoo KICKR, Tacx, Elite, etc.) and standard Bluetooth heart-rate monitors.
 
 The web version uses Web Bluetooth which iOS Safari doesn't support. This native port uses CoreBluetooth instead, so it actually pairs and controls the trainer on iPhone.
