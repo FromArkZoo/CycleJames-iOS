@@ -12,6 +12,13 @@ struct WorkoutGraphView: View {
     var showElapsedMarker: Bool = true
     var showAxisLabels: Bool = true
     var compact: Bool = false
+    /// Optional callback for drag-to-edit. Receives (intervalIndex, wattsDelta) where the
+    /// delta is incremental (5W step) since the last emit.
+    var onIntervalEdit: ((Int, Int) -> Void)? = nil
+
+    @State private var dragIntervalIndex: Int? = nil
+    @State private var lastEmittedWatts: Int = 0
+    @State private var hapticTick: Int = 0
 
     private struct Slice: Identifiable {
         let id = UUID()
@@ -153,6 +160,13 @@ struct WorkoutGraphView: View {
             GeometryReader { geo in
                 if let plotFrame = proxy.plotFrame {
                     let frame = geo[plotFrame]
+                    if onIntervalEdit != nil {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .frame(width: frame.width, height: frame.height)
+                            .position(x: frame.midX, y: frame.midY)
+                            .gesture(makeEditGesture(proxy: proxy, plotSize: frame.size))
+                    }
                     ForEach(labels) { label in
                         if let xPos = proxy.position(forX: label.midSec),
                            let yPos = proxy.position(forY: label.percent) {
@@ -179,5 +193,52 @@ struct WorkoutGraphView: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: hapticTick)
+    }
+
+    private func intervalIndex(forSecond t: Int) -> Int? {
+        var cum = 0
+        for (i, iv) in workout.intervals.enumerated() {
+            if t < cum + iv.duration { return i }
+            cum += iv.duration
+        }
+        return workout.intervals.indices.last
+    }
+
+    private func makeEditGesture(proxy: ChartProxy, plotSize: CGSize) -> some Gesture {
+        let press = LongPressGesture(minimumDuration: 0.18)
+        let drag = DragGesture(minimumDistance: 0, coordinateSpace: .local)
+        return press.sequenced(before: drag)
+            .onChanged { value in
+                switch value {
+                case .first:
+                    break
+                case .second(true, let dragValue?):
+                    guard plotSize.height > 0 else { return }
+                    if dragIntervalIndex == nil {
+                        if let t = proxy.value(atX: dragValue.startLocation.x, as: Int.self) {
+                            dragIntervalIndex = intervalIndex(forSecond: t)
+                            lastEmittedWatts = 0
+                        }
+                    }
+                    guard let idx = dragIntervalIndex else { return }
+                    let pixelsPerPercent = plotSize.height / maxPercent
+                    let percentDelta = -Double(dragValue.translation.height) / pixelsPerPercent
+                    let rawWatts = percentDelta / 100.0 * Double(ftp)
+                    let totalDeltaW = Int((rawWatts / 5).rounded()) * 5
+                    let stepDelta = totalDeltaW - lastEmittedWatts
+                    if stepDelta != 0 {
+                        lastEmittedWatts = totalDeltaW
+                        hapticTick &+= 1
+                        onIntervalEdit?(idx, stepDelta)
+                    }
+                default:
+                    break
+                }
+            }
+            .onEnded { _ in
+                dragIntervalIndex = nil
+                lastEmittedWatts = 0
+            }
     }
 }

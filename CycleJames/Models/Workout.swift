@@ -101,3 +101,35 @@ struct IntervalContext: Hashable {
     let remaining: Int    // seconds until next interval
     let intervalStart: Int // absolute seconds at which this interval starts
 }
+
+// MARK: - Pre-ride power adjustments
+
+extension Interval {
+    /// Returns a copy of this interval with the given watts delta applied (relative to FTP).
+    /// Clamps the resulting power to [5%, 250%] of FTP.
+    func adjustedByWatts(_ watts: Int, ftp: Int) -> Interval {
+        guard ftp > 0, watts != 0 else { return self }
+        let pctDelta = Double(watts) / Double(ftp) * 100.0
+        let clamp: (Double) -> Double = { min(250, max(5, $0)) }
+        switch self {
+        case .steady(let n, let d, let p):
+            return .steady(name: n, duration: d, powerPercent: clamp(p + pctDelta))
+        case .ramp(let n, let d, let s, let e):
+            return .ramp(name: n, duration: d, startPercent: clamp(s + pctDelta), endPercent: clamp(e + pctDelta))
+        }
+    }
+}
+
+extension Workout {
+    func adjustingInterval(at index: Int, byWatts watts: Int, ftp: Int) -> Workout {
+        guard intervals.indices.contains(index) else { return self }
+        var newIntervals = intervals
+        newIntervals[index] = newIntervals[index].adjustedByWatts(watts, ftp: ftp)
+        return Workout(id: id, name: name, description: description, category: category, intervals: newIntervals, isCustom: isCustom)
+    }
+
+    func adjustingAllIntervals(byWatts watts: Int, ftp: Int) -> Workout {
+        let newIntervals = intervals.map { $0.adjustedByWatts(watts, ftp: ftp) }
+        return Workout(id: id, name: name, description: description, category: category, intervals: newIntervals, isCustom: isCustom)
+    }
+}

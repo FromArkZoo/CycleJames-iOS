@@ -5,8 +5,15 @@ struct WorkoutDetailView: View {
     @EnvironmentObject private var ride: RideController
     @EnvironmentObject private var trainer: FTMSManager
     @State private var goToRide = false
+    @State private var edited: Workout
+
+    init(workout: Workout) {
+        self.workout = workout
+        self._edited = State(initialValue: workout)
+    }
 
     private var ftp: Int { AppSettings.ftp }
+    private var hasEdits: Bool { edited.intervals != workout.intervals }
 
     var body: some View {
         ScrollView {
@@ -27,12 +34,27 @@ struct WorkoutDetailView: View {
                         .padding(.top, 2)
                 }
 
-                WorkoutGraphView(workout: workout, ftp: ftp, elapsed: 0, showWatts: true)
-                    .frame(height: 220)
-                    .background(Color.black.opacity(0.2))
-                    .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+                WorkoutGraphView(
+                    workout: edited,
+                    ftp: ftp,
+                    elapsed: 0,
+                    showWatts: true,
+                    onIntervalEdit: { idx, deltaW in
+                        edited = edited.adjustingInterval(at: idx, byWatts: deltaW, ftp: ftp)
+                    }
+                )
+                .frame(height: 220)
+                .background(Color.black.opacity(0.2))
+                .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
 
-                IntervalListView(workout: workout, ftp: ftp)
+                Text("Hold a bar and drag to fine-tune that interval.")
+                    .font(CJFont.caption)
+                    .foregroundStyle(CJColors.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                adjustBar
+
+                IntervalListView(workout: edited, ftp: ftp)
             }
             .padding(.horizontal, CJSpacing.l)
             .padding(.bottom, 120)
@@ -51,9 +73,64 @@ struct WorkoutDetailView: View {
     }
 
     @ViewBuilder
+    private var adjustBar: some View {
+        HStack(spacing: CJSpacing.s) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Overall power")
+                    .font(CJFont.small)
+                    .foregroundStyle(CJColors.textSecondary)
+                Text(hasEdits ? "Edited" : "5W steps")
+                    .font(.system(size: 10))
+                    .foregroundStyle(hasEdits ? CJColors.accent : CJColors.textMuted)
+            }
+            Spacer()
+            if hasEdits {
+                Button {
+                    edited = workout
+                } label: {
+                    Text("Reset")
+                        .font(CJFont.small)
+                        .padding(.horizontal, CJSpacing.s)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(CJColors.accent)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(CJColors.accent.opacity(0.5), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            adjustButton(systemName: "minus") {
+                edited = edited.adjustingAllIntervals(byWatts: -5, ftp: ftp)
+            }
+            adjustButton(systemName: "plus") {
+                edited = edited.adjustingAllIntervals(byWatts: 5, ftp: ftp)
+            }
+        }
+        .padding(.horizontal, CJSpacing.s)
+        .padding(.vertical, 8)
+        .background(CJColors.bgSecondary.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+    }
+
+    @ViewBuilder
+    private func adjustButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .bold))
+                .frame(width: 36, height: 36)
+                .foregroundStyle(.white)
+                .background(CJColors.card)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .light), trigger: edited.intervals)
+    }
+
+    @ViewBuilder
     private var startButton: some View {
         Button {
-            ride.select(workout)
+            ride.select(edited)
             goToRide = true
         } label: {
             Text("START WORKOUT")
