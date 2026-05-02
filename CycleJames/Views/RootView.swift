@@ -5,10 +5,27 @@ struct RootView: View {
     @StateObject private var trainer = FTMSManager()
     @StateObject private var hr = HRManager()
     @StateObject private var ride = RideController()
-    @State private var selection: Tab = .workouts
+    @State private var selection: Tab
     @AppStorage(SettingsKeys.hasOnboarded) private var hasOnboarded: Bool = false
 
     enum Tab: Hashable { case workouts, calendar, history, builder, settings }
+
+    init() {
+        // Honour `-screenshotTab <tab>` launch arg so screenshot capture
+        // scripts can land directly on a chosen tab. No-op in production.
+        var initial: Tab = .workouts
+        let args = ProcessInfo.processInfo.arguments
+        if let idx = args.firstIndex(of: "-screenshotTab"), idx + 1 < args.count {
+            switch args[idx + 1] {
+            case "calendar": initial = .calendar
+            case "history": initial = .history
+            case "builder": initial = .builder
+            case "settings": initial = .settings
+            default: break
+            }
+        }
+        _selection = State(initialValue: initial)
+    }
 
     var body: some View {
         TabView(selection: $selection) {

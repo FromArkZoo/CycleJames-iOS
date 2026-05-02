@@ -8,6 +8,7 @@ struct WorkoutsView: View {
     @Query private var customWorkouts: [CustomWorkoutModel]
     @State private var filterState = WorkoutFilterState()
     @State private var selectedWorkout: Workout?
+    @State private var navigationPath: [Workout] = []
 
     private var allWorkouts: [Workout] {
         let custom = customWorkouts.map { $0.toWorkout() }
@@ -20,7 +21,7 @@ struct WorkoutsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: CJSpacing.m) {
                     ConnectionRow()
@@ -52,6 +53,20 @@ struct WorkoutsView: View {
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear { applyScreenshotPush() }
+        }
+    }
+
+    /// Honour `-screenshotWorkout <prefix>` launch arg by pushing to the
+    /// matching workout's detail screen on first appear. Used only by the
+    /// screenshot capture script. No-op in production.
+    private func applyScreenshotPush() {
+        guard navigationPath.isEmpty else { return }
+        let args = ProcessInfo.processInfo.arguments
+        guard let idx = args.firstIndex(of: "-screenshotWorkout"), idx + 1 < args.count else { return }
+        let prefix = args[idx + 1]
+        if let match = allWorkouts.first(where: { $0.id.contains(prefix) || $0.name.lowercased().contains(prefix.lowercased()) }) {
+            navigationPath = [match]
         }
     }
 }
