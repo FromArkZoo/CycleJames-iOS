@@ -59,11 +59,13 @@ struct MetricsGrid: View {
 
     /// Full-width "what to do right now" card. Surfaces the active interval
     /// name, target wattage, and a big countdown — visible without scrolling
-    /// even on smaller phones.
+    /// even on smaller phones. Hosts the Skip button so it's right next to
+    /// the interval it acts on (and out of the cramped edit bar above).
     @ViewBuilder
     private var heroIntervalCard: some View {
         let ctx = ride.currentIntervalContext
         let zone = ride.currentZone
+        let canSkip = ctx != nil
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text((ctx?.interval.name ?? "Ready").uppercased())
@@ -88,6 +90,24 @@ struct MetricsGrid: View {
                     .padding(.vertical, 3)
                     .background(zone.color.opacity(0.18))
                     .clipShape(Capsule())
+                Button {
+                    ride.skipForward()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "forward.end.fill")
+                        Text("Skip")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .foregroundStyle(.white)
+                    .background(zone.color.opacity(0.85))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSkip)
+                .opacity(canSkip ? 1.0 : 0.4)
+                .accessibilityLabel("Skip current interval")
             }
         }
         .padding(CJSpacing.m)

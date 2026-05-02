@@ -248,40 +248,18 @@ struct RideView: View {
     private var intervalEditBar: some View {
         let ctx = ride.currentIntervalContext
         HStack(spacing: CJSpacing.s) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(ctx?.interval.name ?? "Current interval")
-                    .font(CJFont.small)
+            HStack(spacing: 6) {
+                adjustButton(systemName: "minus", label: "Decrease current interval power by 5 watts", enabled: ctx != nil) {
+                    ride.adjustCurrentInterval(byWatts: -5)
+                }
+                Text("5W")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(CJColors.textSecondary)
-                    .lineLimit(1)
-                Text("\(ride.currentTarget)W target")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(CJColors.accent)
-                    .monospacedDigit()
+                adjustButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: ctx != nil) {
+                    ride.adjustCurrentInterval(byWatts: 5)
+                }
             }
             Spacer(minLength: CJSpacing.s)
-            adjustButton(systemName: "minus", label: "Decrease current interval power by 5 watts", enabled: ctx != nil) {
-                ride.adjustCurrentInterval(byWatts: -5)
-            }
-            adjustButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: ctx != nil) {
-                ride.adjustCurrentInterval(byWatts: 5)
-            }
-            Button {
-                ride.skipForward()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "forward.end.fill")
-                    Text("Skip")
-                }
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, CJSpacing.s)
-                .frame(height: 32)
-                .foregroundStyle(.white)
-                .background(CJColors.card)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(CJColors.border, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Skip current interval")
             Button {
                 showUpcomingSheet = true
             } label: {
@@ -289,8 +267,8 @@ struct RideView: View {
                     Image(systemName: "list.bullet.rectangle")
                     Text("Queue")
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, CJSpacing.s)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, CJSpacing.m)
                 .frame(height: 32)
                 .foregroundStyle(.white)
                 .background(CJColors.card)
@@ -305,8 +283,8 @@ struct RideView: View {
                     Image(systemName: "plus.rectangle.on.rectangle")
                     Text("Add")
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .padding(.horizontal, CJSpacing.s)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, CJSpacing.m)
                 .frame(height: 32)
                 .foregroundStyle(.white)
                 .background(CJColors.card)
