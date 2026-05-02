@@ -1,11 +1,14 @@
 import SwiftUI
+import SwiftData
 
 struct WorkoutDetailView: View {
     let workout: Workout
     @EnvironmentObject private var ride: RideController
     @EnvironmentObject private var trainer: FTMSManager
+    @Environment(\.modelContext) private var modelContext
     @State private var goToRide = false
     @State private var edited: Workout
+    @State private var showSaveAsCustomSheet = false
 
     init(workout: Workout) {
         self.workout = workout
@@ -54,6 +57,26 @@ struct WorkoutDetailView: View {
 
                 adjustBar
 
+                if hasEdits {
+                    Button {
+                        showSaveAsCustomSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("Save as custom workout")
+                        }
+                        .font(CJFont.body)
+                        .foregroundStyle(CJColors.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, CJSpacing.s)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: CJRadius.medium)
+                                .stroke(CJColors.accent.opacity(0.5), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 IntervalListView(workout: edited, ftp: ftp)
             }
             .padding(.horizontal, CJSpacing.l)
@@ -70,6 +93,23 @@ struct WorkoutDetailView: View {
             RideView()
                 .navigationBarBackButtonHidden(true)
         }
+        .sheet(isPresented: $showSaveAsCustomSheet) {
+            SaveAsCustomSheet(source: workout, edited: edited) { name, description in
+                saveAsCustom(name: name, description: description)
+            }
+        }
+    }
+
+    private func saveAsCustom(name: String, description: String) {
+        let model = CustomWorkoutModel(
+            id: "custom_\(UUID().uuidString)",
+            name: name,
+            description: description,
+            category: edited.category,
+            intervals: edited.intervals
+        )
+        modelContext.insert(model)
+        try? modelContext.save()
     }
 
     @ViewBuilder
@@ -208,5 +248,80 @@ struct IntervalListView: View {
         .padding(.horizontal, CJSpacing.s)
         .background(CJColors.bgSecondary.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+/// Sheet shown after the user has tweaked a built-in workout and wants to
+/// keep their adjustments. Saves a CustomWorkoutModel record so the
+/// modified profile shows up in the Workouts tab from then on.
+struct SaveAsCustomSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let source: Workout
+    let edited: Workout
+    var onSave: (String, String) -> Void
+
+    @State private var name: String
+    @State private var note: String
+
+    init(source: Workout, edited: Workout, onSave: @escaping (String, String) -> Void) {
+        self.source = source
+        self.edited = edited
+        self.onSave = onSave
+        _name = State(initialValue: "\(source.name) (custom)")
+        _note = State(initialValue: source.description)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Workout name", text: $name)
+                        .textFieldStyle(.plain)
+                }
+                Section("Description") {
+                    TextField("Description", text: $note, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(2...4)
+                }
+                Section {
+                    HStack {
+                        Text("Intervals")
+                        Spacer()
+                        Text("\(edited.intervals.count)").foregroundStyle(CJColors.textSecondary)
+                    }
+                    HStack {
+                        Text("Duration")
+                        Spacer()
+                        Text(TimeFormat.duration(edited.totalDuration))
+                            .foregroundStyle(CJColors.textSecondary)
+                    }
+                    HStack {
+                        Text("Category")
+                        Spacer()
+                        Text(edited.category.rawValue).foregroundStyle(CJColors.textSecondary)
+                    }
+                } footer: {
+                    Text("Saves your edited intervals as a new custom workout. The original built-in workout is unchanged.")
+                }
+            }
+            .navigationTitle("Save As Custom")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let trimmed = name.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        onSave(trimmed, note)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

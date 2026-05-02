@@ -35,6 +35,7 @@
 		85601EF1A085A2BF3C2DA2CF /* MetricCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0D71EF650D915BB866A150 /* MetricCard.swift */; };
 		8AFADB5F48C02E80ECFE9D7D /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB29625AF30B7031270D3C15 /* Settings.swift */; };
 		8D04E0261A5897F85BC2D2E2 /* WorkoutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */; };
+		96D3F8205C93D4DED8505F34 /* ConnectDevicesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */; };
 		98A93A30D089CD7218E90A9D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C7385020B3CE86C9767E793 /* Assets.xcassets */; };
 		9963BB5D8A68BB0EC0E1E26D /* Zone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A21BCD05706976595E49E1E /* Zone.swift */; };
 		A49A1514DC06597A7EA19D27 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */; };
@@ -78,6 +79,7 @@
 		968D2E2E0F76370A84721343 /* FTMSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FTMSManager.swift; sourceTree = "<group>"; };
 		9C33D6C05219ED4ACF14DE19 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		9C7385020B3CE86C9767E793 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectDevicesSheet.swift; sourceTree = "<group>"; };
 		B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilterBar.swift; sourceTree = "<group>"; };
 		BB29625AF30B7031270D3C15 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -250,6 +252,7 @@
 		D0B0452C36105B37DBB8EFB1 /* Workouts */ = {
 			isa = PBXGroup;
 			children = (
+				B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */,
 				CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */,
 				4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */,
 				1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */,
@@ -367,6 +370,7 @@
 				BFDCF1CE90DC5D6BA98DF457 /* CalendarView.swift in Sources */,
 				84EF4D950CA9CA51C1026995 /* Colors.swift in Sources */,
 				7CCAF642287ECFB0A66C254C /* CompleteSummaryOverlay.swift in Sources */,
+				96D3F8205C93D4DED8505F34 /* ConnectDevicesSheet.swift in Sources */,
 				715274FFF8C133E5E4BE6870 /* ConnectSheets.swift in Sources */,
 				E01DEFBEFDB7DF50F469A790 /* ControlsBar.swift in Sources */,
 				18BBE12004AAE908322E7463 /* CountdownOverlay.swift in Sources */,

@@ -11,8 +11,7 @@ struct RideView: View {
     @State private var showCompleteOverlay = false
     @State private var showAddIntervalSheet = false
     @State private var showUpcomingSheet = false
-    @State private var showTrainerScan = false
-    @State private var showHRScan = false
+    @State private var showConnectSheet = false
     @State private var savedSession: RideSessionModel?
 
     private var ftp: Int { AppSettings.ftp }
@@ -32,8 +31,6 @@ struct RideView: View {
             CJColors.bgPrimary.ignoresSafeArea()
 
             VStack(spacing: CJSpacing.s) {
-                header
-
                 if showDisconnectBanner {
                     disconnectBanner
                         .padding(.horizontal, CJSpacing.l)
@@ -92,7 +89,12 @@ struct RideView: View {
                 }
             }
         }
+        .navigationTitle(ride.selectedWorkout?.name ?? "Ride")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .safeAreaInset(edge: .bottom) {
             ControlsBar(onStart: handleStart, onStop: handleStopRequested)
         }
@@ -106,10 +108,15 @@ struct RideView: View {
                         handleStopRequested()
                     }
                 } label: {
-                    Image(systemName: "chevron.left")
-                    Text("Back")
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
                 }
                 .tint(CJColors.accent)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                connectionStatusIndicator
             }
         }
         .onChange(of: ride.state) { _, new in
@@ -132,11 +139,8 @@ struct RideView: View {
                 }
             }
         }
-        .sheet(isPresented: $showTrainerScan) {
-            TrainerScanSheet(manager: trainer)
-        }
-        .sheet(isPresented: $showHRScan) {
-            HRScanSheet(manager: hr)
+        .sheet(isPresented: $showConnectSheet) {
+            ConnectDevicesSheet(trainer: trainer, hr: hr)
         }
         .sheet(isPresented: $showUpcomingSheet) {
             UpcomingIntervalsSheet()
@@ -146,47 +150,55 @@ struct RideView: View {
 
     @ViewBuilder
     private var connectRow: some View {
-        HStack(spacing: CJSpacing.s) {
-            connectChip(
-                connected: trainer.connectionState == .connected,
-                connectedLabel: "Trainer",
-                disconnectedLabel: "Connect Trainer",
-                icon: "bolt.horizontal.fill"
-            ) {
-                showTrainerScan = true
+        Button {
+            showConnectSheet = true
+        } label: {
+            HStack(spacing: CJSpacing.s) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Connect Devices")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+                deviceStatusDot(connected: trainer.connectionState == .connected, label: "Trainer", icon: "bolt.horizontal.fill")
+                deviceStatusDot(connected: hr.connectionState == .connected, label: "HR", icon: "heart.fill")
             }
-            connectChip(
-                connected: hr.connectionState == .connected,
-                connectedLabel: "Heart Rate",
-                disconnectedLabel: "Connect HR",
-                icon: "heart.fill"
-            ) {
-                showHRScan = true
-            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, CJSpacing.m)
+            .padding(.vertical, CJSpacing.s)
+            .background(CJColors.accent)
+            .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func deviceStatusDot(connected: Bool, label: String, icon: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+            Image(systemName: connected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 11))
+                .opacity(connected ? 1.0 : 0.5)
+        }
+        .foregroundStyle(.white)
+        .accessibilityLabel("\(label) \(connected ? "connected" : "not connected")")
+    }
+
+    @ViewBuilder
+    private var connectionStatusIndicator: some View {
+        let trainerOK = trainer.connectionState == .connected
+        let hrOK = hr.connectionState == .connected
+        HStack(spacing: 6) {
+            statusPill(connected: trainerOK, icon: "bolt.horizontal.fill")
+            statusPill(connected: hrOK, icon: "heart.fill")
         }
     }
 
     @ViewBuilder
-    private func connectChip(connected: Bool, connectedLabel: String, disconnectedLabel: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(connected ? CJColors.success : CJColors.textMuted)
-                    .frame(width: 8, height: 8)
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(connected ? connectedLabel : disconnectedLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .padding(.horizontal, CJSpacing.s)
-            .foregroundStyle(connected ? CJColors.textPrimary : .white)
-            .background(connected ? CJColors.bgSecondary : CJColors.accent)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
+    private func statusPill(connected: Bool, icon: String) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(connected ? CJColors.success : CJColors.textMuted)
     }
 
     @ViewBuilder
@@ -305,29 +317,6 @@ struct RideView: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(label)
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(ride.selectedWorkout?.name ?? "")
-                    .font(CJFont.title)
-                    .foregroundStyle(CJColors.textPrimary)
-                Spacer()
-                Circle()
-                    .fill(trainer.connectionState == .connected ? CJColors.success : CJColors.textMuted)
-                    .frame(width: 10, height: 10)
-                Text(trainer.connectionState == .connected ? "Trainer" : "No trainer")
-                    .font(CJFont.caption)
-                    .foregroundStyle(CJColors.textSecondary)
-            }
-            Text(ride.selectedWorkout?.category.rawValue ?? "")
-                .font(CJFont.caption)
-                .foregroundStyle(CJColors.textMuted)
-        }
-        .padding(.horizontal, CJSpacing.l)
-        .padding(.top, CJSpacing.s)
     }
 
     private func handleStart() {

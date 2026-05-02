@@ -225,10 +225,62 @@ struct WorkoutGraphView: View {
                         .position(x: p.x, y: p.y)
                         .allowsHitTesting(false)
                     }
+
+                    // Live drag-edit readout — big, prominent watts number so
+                    // the user can see what they're dialing in without
+                    // squinting at the small per-bar label.
+                    if let idx = dragIntervalIndex,
+                       workout.intervals.indices.contains(idx) {
+                        dragReadout(for: workout.intervals[idx])
+                            .position(x: frame.midX, y: frame.minY + 28)
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
                 }
             }
         }
         .sensoryFeedback(.selection, trigger: hapticTick)
+    }
+
+    @ViewBuilder
+    private func dragReadout(for interval: Interval) -> some View {
+        let zone = Zones.zone(forPercent: interval.midPercent)
+        VStack(spacing: 2) {
+            Text(interval.name.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.75))
+                .lineLimit(1)
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text(dragWattsString(interval))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                Text("W")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.7))
+            }
+            Text("\(Int(interval.midPercent.rounded()))% FTP · \(zone.name)")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(zone.color)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(zone.color.opacity(0.7), lineWidth: 1.5)
+        )
+    }
+
+    private func dragWattsString(_ iv: Interval) -> String {
+        switch iv {
+        case .steady(_, _, let p):
+            return "\(Int((p / 100.0 * Double(ftp)).rounded()))"
+        case .ramp(_, _, let s, let e):
+            let sw = Int((s / 100.0 * Double(ftp)).rounded())
+            let ew = Int((e / 100.0 * Double(ftp)).rounded())
+            return "\(sw)→\(ew)"
+        }
     }
 
     private func intervalIndex(forSecond t: Int) -> Int? {
