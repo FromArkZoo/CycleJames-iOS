@@ -253,11 +253,17 @@ struct EditIntervalSheet: View {
 
     private var totalSeconds: Int { max(15, minutes * 60 + seconds) }
 
+    private var totalLabel: String {
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return s > 0 ? "\(m)m \(s)s" : "\(m) min"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Interval") {
-                    Stepper(value: $minutes, in: 0...60) {
+                Section("Duration") {
+                    Stepper(value: $minutes, in: 0...180) {
                         HStack {
                             Text("Minutes"); Spacer()
                             Text("\(minutes)").foregroundStyle(CJColors.textSecondary).monospacedDigit()
@@ -269,9 +275,33 @@ struct EditIntervalSheet: View {
                             Text("\(seconds)").foregroundStyle(CJColors.textSecondary).monospacedDigit()
                         }
                     }
+                    HStack(spacing: 8) {
+                        Text("Quick add")
+                            .foregroundStyle(CJColors.textSecondary)
+                        Spacer()
+                        ForEach([5, 10, 30], id: \.self) { delta in
+                            Button("+\(delta)m") {
+                                minutes = min(180, minutes + delta)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(CJColors.accent)
+                        }
+                    }
+                    HStack {
+                        Text("Total")
+                            .foregroundStyle(CJColors.textSecondary)
+                        Spacer()
+                        Text(totalLabel)
+                            .foregroundStyle(CJColors.textPrimary)
+                            .monospacedDigit()
+                    }
+                }
+
+                Section("Power") {
                     Stepper(value: $powerPercent, in: 5...600, step: 5) {
                         HStack {
-                            Text("Power"); Spacer()
+                            Text("Target"); Spacer()
                             Text("\(powerPercent)% · \(watts)W")
                                 .foregroundStyle(CJColors.textSecondary).monospacedDigit()
                         }
