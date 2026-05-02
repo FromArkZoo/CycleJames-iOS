@@ -46,6 +46,7 @@ targets:
         NSBluetoothAlwaysUsageDescription: "CycleJames uses Bluetooth to connect to your smart trainer and heart rate monitor."
         UIRequiresPersistentWiFi: false
         UIApplicationSupportsIndirectInputEvents: true
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jamesbrowne.cyclejames
