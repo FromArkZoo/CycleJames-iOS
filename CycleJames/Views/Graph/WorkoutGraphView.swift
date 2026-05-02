@@ -147,6 +147,29 @@ struct WorkoutGraphView: View {
 
     private var totalDuration: Int { workout.totalDuration }
 
+    /// Stride between X-axis labels, picked so they don't squash on
+    /// long workouts. ~6 labels across the chart width regardless of length.
+    private var axisStride: Double {
+        switch totalDuration {
+        case ..<1800: return 300       // <30min → every 5 min
+        case ..<3600: return 600       // <1h    → every 10 min
+        case ..<7200: return 1200      // <2h    → every 20 min
+        default:      return 1800      // ≥2h    → every 30 min
+        }
+    }
+
+    /// Compact axis-only formatter. Stride is always whole minutes, so
+    /// dropping the seconds cuts "1:00:00" → "1:00" on long workouts and
+    /// stops labels from running into each other.
+    private func axisLabel(forSeconds sec: Int) -> String {
+        let h = sec / 3600
+        let m = (sec % 3600) / 60
+        if h > 0 {
+            return String(format: "%d:%02d", h, m)
+        }
+        return "\(m)m"
+    }
+
     var body: some View {
         Chart {
             // Power profile (zone-coloured rectangles).
@@ -181,10 +204,10 @@ struct WorkoutGraphView: View {
         .chartYScale(domain: 0...maxPercent)
         .chartXAxis {
             if showAxisLabels {
-                AxisMarks(values: .stride(by: totalDuration > 3600 ? 600 : 300)) { value in
+                AxisMarks(values: .stride(by: axisStride)) { value in
                     if let sec = value.as(Int.self) {
                         AxisValueLabel {
-                            Text(TimeFormat.mmss(sec))
+                            Text(axisLabel(forSeconds: sec))
                                 .font(.system(size: 9))
                                 .foregroundStyle(Color.white.opacity(0.4))
                         }
