@@ -351,12 +351,18 @@ struct AddIntervalSheet: View {
     var onAdd: (Interval, Int) -> Void
 
     @State private var minutes: Int = 5
+    @State private var seconds: Int = 0
     @State private var powerPercent: Int = 65
     @State private var insertIndex: Int = -1  // sentinel -1 → "after current"
 
     private var watts: Int { Int((Double(powerPercent) / 100.0 * Double(ftp)).rounded()) }
     private var zone: Zone { Zones.zone(forPercent: Double(powerPercent)) }
-    private var durationLabel: String { minutes == 1 ? "1 min" : "\(minutes) min" }
+    private var totalSeconds: Int { max(15, minutes * 60 + seconds) }
+    private var totalLabel: String {
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return s > 0 ? "\(m)m \(s)s" : "\(m) min"
+    }
 
     /// All valid insertion points the user can pick from. Position 0 means
     /// "before interval 0", position N means "at the end". We skip any
@@ -385,19 +391,46 @@ struct AddIntervalSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("New interval") {
-                    Stepper(value: $minutes, in: 1...60) {
+                Section("Duration") {
+                    Stepper(value: $minutes, in: 0...180) {
                         HStack {
-                            Text("Duration")
-                            Spacer()
-                            Text(durationLabel)
-                                .foregroundStyle(CJColors.textSecondary)
-                                .monospacedDigit()
+                            Text("Minutes"); Spacer()
+                            Text("\(minutes)").foregroundStyle(CJColors.textSecondary).monospacedDigit()
                         }
                     }
+                    Stepper(value: $seconds, in: 0...59, step: 5) {
+                        HStack {
+                            Text("Seconds"); Spacer()
+                            Text("\(seconds)").foregroundStyle(CJColors.textSecondary).monospacedDigit()
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        Text("Quick add")
+                            .foregroundStyle(CJColors.textSecondary)
+                        Spacer()
+                        ForEach([5, 10, 30], id: \.self) { delta in
+                            Button("+\(delta)m") {
+                                minutes = min(180, minutes + delta)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .tint(CJColors.accent)
+                        }
+                    }
+                    HStack {
+                        Text("Total")
+                            .foregroundStyle(CJColors.textSecondary)
+                        Spacer()
+                        Text(totalLabel)
+                            .foregroundStyle(CJColors.textPrimary)
+                            .monospacedDigit()
+                    }
+                }
+
+                Section("Power") {
                     Stepper(value: $powerPercent, in: 5...600, step: 5) {
                         HStack {
-                            Text("Power")
+                            Text("Target")
                             Spacer()
                             Text("\(powerPercent)% · \(watts)W")
                                 .foregroundStyle(CJColors.textSecondary)
@@ -432,7 +465,7 @@ struct AddIntervalSheet: View {
                     Button("Add") {
                         let interval = Interval.steady(
                             name: "Custom",
-                            duration: minutes * 60,
+                            duration: totalSeconds,
                             powerPercent: Double(powerPercent)
                         )
                         onAdd(interval, resolvedIndex)
