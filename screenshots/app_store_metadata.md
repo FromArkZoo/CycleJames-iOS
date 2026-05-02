@@ -37,16 +37,19 @@ Copy/paste-ready content for App Store Connect → My Apps → New App, then the
 > automatically — no head unit required.
 >
 > WHAT YOU GET
-> • Built-in workout library covering VO2max, threshold, sweet spot, endurance,
->   and recovery sessions, from 30 minutes to 2 hours.
+> • 97 built-in workouts covering VO2max, threshold, sweet spot, endurance,
+>   recovery, sprint and tempo sessions — from 15-minute easy spins to
+>   6-hour century-prep epics.
 > • Live target power streaming over Bluetooth (FTMS protocol) — your trainer
 >   sets resistance for you.
 > • Heart-rate display from any standard Bluetooth heart-rate monitor.
-> • Adjust intensity mid-ride: fine-tune the active interval in 5W steps, or
->   insert a custom interval on the fly when you want to push harder.
+> • Adjust intensity mid-ride: fine-tune the active interval in 5W steps,
+>   skip ahead, jump to any upcoming interval, or insert a custom interval
+>   on the fly when you want to push harder.
 > • Workout builder — design your own steady or ramp intervals and save them.
-> • Local ride history with average power, normalized power, intensity factor,
->   and TSS for every session.
+> • Export rides to Strava and Garmin Connect via the iOS share sheet (TCX).
+> • Local ride history with average power, peak power, normalized power,
+>   intensity factor, and TSS for every session.
 > • Calendar view of your training week and month.
 >
 > PRIVACY
