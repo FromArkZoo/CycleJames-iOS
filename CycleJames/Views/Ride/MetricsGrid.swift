@@ -25,6 +25,11 @@ struct MetricsGrid: View {
                     unit: "rpm"
                 )
                 MetricCard(
+                    label: "Avg",
+                    value: valueOrDash(ride.avgPower),
+                    unit: "W"
+                )
+                MetricCard(
                     label: "Heart Rate",
                     value: valueOrDash(ride.currentHR),
                     unit: "bpm"
@@ -35,21 +40,17 @@ struct MetricsGrid: View {
                     unit: "W"
                 )
                 MetricCard(
+                    label: "NP",
+                    value: valueOrDash(ride.np),
+                    unit: "W"
+                )
+                MetricCard(
                     label: "Elapsed",
                     value: ride.elapsed > 0 ? TimeFormat.mmss(ride.elapsed) : "--:--"
                 )
                 MetricCard(
                     label: "Remaining",
                     value: ride.remaining > 0 ? TimeFormat.mmss(ride.remaining) : "--:--"
-                )
-                MetricCard(
-                    label: "NP",
-                    value: valueOrDash(ride.np),
-                    unit: "W"
-                )
-                MetricCard(
-                    label: "TSS",
-                    value: ride.tss > 0 ? "\(ride.tss)" : "--"
                 )
             }
         }

@@ -54,7 +54,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilter.swift; sourceTree = "<group>"; };
 		0D3DDCB25365FED10E350227 /* RideSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSessionModel.swift; sourceTree = "<group>"; };
 		13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMetrics.swift; sourceTree = "<group>"; };
@@ -82,7 +82,7 @@
 		B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectDevicesSheet.swift; sourceTree = "<group>"; };
 		B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilterBar.swift; sourceTree = "<group>"; };
 		BB29625AF30B7031270D3C15 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
-		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectSheets.swift; sourceTree = "<group>"; };
 		D4F4859E3D38DF207CB2764F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D93FAB6C59AE25DD9AF852BA /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
@@ -326,8 +326,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = DFAE93AA7B34992B655B2890 /* Build configuration list for PBXProject "CycleJames" */;
 			developmentRegion = en;
@@ -478,6 +476,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -565,6 +564,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

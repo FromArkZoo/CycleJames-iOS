@@ -25,6 +25,7 @@ final class RideController: ObservableObject {
     @Published var peakPower: Int = 0
     @Published var peakHR: Int = 0
     @Published var peakCadence: Int = 0
+    @Published var avgPower: Int = 0
     @Published var np: Int = 0
     @Published var intensityFactor: Double = 0
     @Published var tss: Int = 0
@@ -327,6 +328,11 @@ final class RideController: ObservableObject {
             }
         }
 
+        // Live average power (cheap to recompute every tick).
+        if !statPower.isEmpty {
+            avgPower = statPower.reduce(0, +) / statPower.count
+        }
+
         tssTickCounter += 1
         if tssTickCounter >= 5 && !statPower.isEmpty {
             tssTickCounter = 0
@@ -387,6 +393,7 @@ final class RideController: ObservableObject {
         currentIntervalContext = nil
         rolling3sPower = 0
         peakPower = 0; peakHR = 0; peakCadence = 0
+        avgPower = 0
         np = 0; intensityFactor = 0; tss = 0
         powerBuffer.removeAll()
         statPower.removeAll(); statCadence.removeAll(); statHR.removeAll()

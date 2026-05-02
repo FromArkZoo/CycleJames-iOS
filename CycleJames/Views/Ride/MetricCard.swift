@@ -23,8 +23,9 @@ struct MetricCard: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-        .padding(CJSpacing.m)
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+        .padding(.horizontal, CJSpacing.s)
+        .padding(.vertical, 8)
         .background(tint?.opacity(0.18) ?? CJColors.card.opacity(0.85))
         .overlay(
             RoundedRectangle(cornerRadius: CJRadius.medium)

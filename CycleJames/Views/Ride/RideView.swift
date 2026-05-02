@@ -95,6 +95,7 @@ struct RideView: View {
         .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) {
             ControlsBar(onStart: handleStart, onStop: handleStopRequested)
         }
