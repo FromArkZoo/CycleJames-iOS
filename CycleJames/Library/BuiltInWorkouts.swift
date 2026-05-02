@@ -745,6 +745,492 @@ enum BuiltInWorkouts {
                 S("Tempo 2", 17, 82),
                 R("Cool Down", 15, 70, 40)
             ]
+        ),
+
+        // ---- More Recovery ----
+        Workout(
+            id: "easy-20",
+            name: "Easy 20",
+            description: "20-minute easy recovery spin. Wake the legs up without straining anything.",
+            category: .recovery,
+            intervals: [
+                R("Warm Up", 3, 40, 50),
+                S("Easy", 14, 50),
+                R("Cool Down", 3, 50, 35)
+            ]
+        ),
+        Workout(
+            id: "recovery-75",
+            name: "Recovery 75",
+            description: "75-minute easy ride. Long aerobic flush at very low intensity.",
+            category: .recovery,
+            intervals: [
+                R("Warm Up", 10, 40, 55),
+                S("Easy", 55, 55),
+                R("Cool Down", 10, 55, 40)
+            ]
+        ),
+        Workout(
+            id: "recovery-90",
+            name: "Recovery 90",
+            description: "90-minute Zone 1-2 ride. Pure aerobic time without any stress.",
+            category: .recovery,
+            intervals: [
+                R("Warm Up", 10, 40, 55),
+                S("Easy 1", 35, 55),
+                S("Easy 2", 35, 58),
+                R("Cool Down", 10, 55, 40)
+            ]
+        ),
+        Workout(
+            id: "cadence-recovery-45",
+            name: "Cadence Recovery",
+            description: "45-minute high-cadence recovery. Light watts but aim for 100+rpm to build pedalling smoothness.",
+            category: .recovery,
+            intervals: [
+                R("Warm Up", 5, 40, 55),
+                S("Spin Up 1", 5, 55),
+                S("Spin Up 2", 5, 58),
+                S("Spin Up 3", 5, 55),
+                S("Spin Up 4", 5, 58),
+                S("Spin Up 5", 5, 55),
+                S("Spin Up 6", 5, 58),
+                S("Easy", 5, 55),
+                R("Cool Down", 5, 55, 40)
+            ]
+        ),
+        Workout(
+            id: "single-leg-30",
+            name: "Single-Leg Drills",
+            description: "30-minute pedalling-form session. Light watts, alternating single-leg drills to expose dead spots.",
+            category: .recovery,
+            intervals: [
+                R("Warm Up", 5, 40, 55),
+                Ssec("Right Leg 1", 30, 50), Ssec("Both", 60, 55),
+                Ssec("Left Leg 1", 30, 50),  Ssec("Both", 60, 55),
+                Ssec("Right Leg 2", 45, 50), Ssec("Both", 60, 55),
+                Ssec("Left Leg 2", 45, 50),  Ssec("Both", 60, 55),
+                Ssec("Right Leg 3", 60, 50), Ssec("Both", 60, 55),
+                Ssec("Left Leg 3", 60, 50),  Ssec("Both", 60, 55),
+                S("Easy", 10, 55),
+                R("Cool Down", 4, 55, 40)
+            ]
+        ),
+
+        // ---- More Endurance ----
+        Workout(
+            id: "endurance-105",
+            name: "Endurance 105",
+            description: "1h45 Zone 2 ride. Steady aerobic with one mid-ride tempo block.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 65),
+                S("Endurance 1", 35, 65),
+                S("Tempo Bump", 8, 78),
+                S("Endurance 2", 42, 65),
+                R("Cool Down", 10, 65, 45)
+            ]
+        ),
+        Workout(
+            id: "endurance-135",
+            name: "Endurance 135",
+            description: "2h15 endurance ride. Steady Z2 with rolling tempo accents.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 65),
+                S("Endurance 1", 25, 65),
+                S("Tempo", 6, 78),
+                S("Endurance 2", 25, 65),
+                S("Tempo", 6, 80),
+                S("Endurance 3", 25, 65),
+                S("Tempo", 6, 80),
+                S("Endurance 4", 22, 65),
+                R("Cool Down", 10, 65, 45)
+            ]
+        ),
+        Workout(
+            id: "tempo-45",
+            name: "Tempo 45",
+            description: "45-minute crisp tempo. 25min at 80% FTP — strong without being threshold.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 8, 45, 70),
+                S("Tempo", 25, 80),
+                R("Cool Down", 12, 70, 40)
+            ]
+        ),
+        Workout(
+            id: "tempo-90",
+            name: "Tempo 90",
+            description: "90-minute tempo emphasis. Three blocks at 78-82% FTP with short resets.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("Tempo 1", 18, 78), S("Reset", 4, 60),
+                S("Tempo 2", 18, 80), S("Reset", 4, 60),
+                S("Tempo 3", 18, 82),
+                S("Endurance", 8, 65),
+                R("Cool Down", 10, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "tempo-120",
+            name: "Tempo 120",
+            description: "2-hour tempo grind. Long sustained 75-80% blocks — race-pace conditioning.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("Tempo 1", 25, 78), S("Reset", 5, 60),
+                S("Tempo 2", 25, 80), S("Reset", 5, 60),
+                S("Tempo 3", 25, 80),
+                S("Endurance", 15, 65),
+                R("Cool Down", 10, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "coffee-ride-60",
+            name: "Coffee Ride",
+            description: "60-minute sub-endurance pace. Easier than Z2 — chat-pace social ride feel.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 8, 40, 55),
+                S("Easy", 15, 60),
+                S("Steady", 10, 65),
+                S("Easy", 10, 60),
+                S("Steady", 10, 65),
+                R("Cool Down", 7, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "big-gear-75",
+            name: "Big Gear Endurance",
+            description: "75-minute low-cadence strength endurance. Hold 60-70rpm at endurance watts to build leg force.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 65),
+                S("Big Gear 1", 8, 70), S("Spin Reset", 3, 60),
+                S("Big Gear 2", 8, 72), S("Spin Reset", 3, 60),
+                S("Big Gear 3", 8, 72), S("Spin Reset", 3, 60),
+                S("Big Gear 4", 8, 75), S("Spin Reset", 3, 60),
+                S("Big Gear 5", 8, 75),
+                S("Endurance", 5, 65),
+                R("Cool Down", 8, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "hill-endurance-90",
+            name: "Hill Endurance 90",
+            description: "90-minute climbing endurance. Six 5min climbs at tempo — outdoor hilly-route feel.",
+            category: .endurance,
+            intervals: [
+                R("Warm Up", 10, 45, 65),
+                S("Flat 1", 6, 65),
+                S("Climb 1", 5, 80), S("Descent 1", 2, 55),
+                S("Flat 2", 6, 65),
+                S("Climb 2", 5, 82), S("Descent 2", 2, 55),
+                S("Flat 3", 6, 65),
+                S("Climb 3", 5, 82), S("Descent 3", 2, 55),
+                S("Flat 4", 6, 65),
+                S("Climb 4", 5, 84), S("Descent 4", 2, 55),
+                S("Flat 5", 6, 65),
+                S("Climb 5", 5, 84), S("Descent 5", 2, 55),
+                S("Climb 6", 5, 86),
+                R("Cool Down", 10, 65, 40)
+            ]
+        ),
+
+        // ---- More Sweet Spot ----
+        Workout(
+            id: "ss-short-30",
+            name: "Sweet Spot 30",
+            description: "30-minute compact sweet spot. 2x8min at 90% FTP. Quality stimulus when busy.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 5, 45, 70),
+                S("SS 1", 8, 88), S("Recovery", 3, 55),
+                S("SS 2", 8, 92),
+                R("Cool Down", 6, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "ss-4x10",
+            name: "4x10 Sweet Spot",
+            description: "70-minute classic 4x10min at 88-92% FTP. Premier sweet spot template.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("SS 1", 10, 88), S("Recovery", 4, 55),
+                S("SS 2", 10, 90), S("Recovery", 4, 55),
+                S("SS 3", 10, 90), S("Recovery", 4, 55),
+                S("SS 4", 10, 92),
+                R("Cool Down", 8, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "ss-3x15",
+            name: "3x15 Sweet Spot",
+            description: "75-minute 3x15min at 88-92% FTP. The bread-and-butter aerobic ceiling builder.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("SS 1", 15, 88), S("Recovery", 5, 55),
+                S("SS 2", 15, 90), S("Recovery", 5, 55),
+                S("SS 3", 15, 92),
+                R("Cool Down", 10, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "ss-2x30",
+            name: "2x30 Sweet Spot",
+            description: "90-minute 2x30min at 88-90% FTP. Long-block sweet spot for endurance ceiling.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("SS Block 1", 30, 88), S("Recovery", 8, 55),
+                S("SS Block 2", 30, 90),
+                R("Cool Down", 12, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "ss-75",
+            name: "Sweet Spot 75",
+            description: "75-minute middle-distance sweet spot. 3x12min with endurance bridges.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("SS 1", 12, 88), S("Endurance", 5, 65),
+                S("SS 2", 12, 90), S("Endurance", 5, 65),
+                S("SS 3", 12, 92),
+                R("Cool Down", 9, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "ss-hills-75",
+            name: "SS Hills",
+            description: "75-minute climbing sweet spot. 5x6min hills at 88-92% FTP — punchier than flat SS.",
+            category: .sweetSpot,
+            intervals: [
+                R("Warm Up", 10, 45, 70),
+                S("Climb 1", 6, 88), S("Descent", 3, 55),
+                S("Climb 2", 6, 90), S("Descent", 3, 55),
+                S("Climb 3", 6, 90), S("Descent", 3, 55),
+                S("Climb 4", 6, 92), S("Descent", 3, 55),
+                S("Climb 5", 6, 92),
+                S("Endurance", 4, 65),
+                R("Cool Down", 9, 65, 40)
+            ]
+        ),
+
+        // ---- More Threshold ----
+        Workout(
+            id: "threshold-30",
+            name: "Threshold 30",
+            description: "30-minute compact threshold. 1x15min at FTP. Minimal time, maximum dose.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 6, 45, 75),
+                S("Opener", 2, 90),
+                S("Threshold", 15, 100),
+                R("Cool Down", 7, 70, 40)
+            ]
+        ),
+        Workout(
+            id: "threshold-3x10",
+            name: "3x10 Threshold",
+            description: "60-minute 3x10min at 95-102% FTP. Reliable threshold builder.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Threshold 1", 10, 95), S("Recovery", 4, 55),
+                S("Threshold 2", 10, 98), S("Recovery", 4, 55),
+                S("Threshold 3", 10, 102),
+                R("Cool Down", 12, 70, 40)
+            ]
+        ),
+        Workout(
+            id: "threshold-1x40",
+            name: "Sustained 40",
+            description: "75-minute single 40min sustained threshold. Hard mental ride — race-realistic.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 12, 45, 80),
+                S("Opener", 3, 95),
+                S("Threshold Block", 40, 96),
+                S("Easy", 5, 60),
+                R("Cool Down", 15, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "threshold-5x6",
+            name: "5x6 Threshold",
+            description: "60-minute 5x6min at 102-105% FTP. Slightly above threshold for hard repeats.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Threshold 1", 6, 102), S("Recovery", 3, 55),
+                S("Threshold 2", 6, 102), S("Recovery", 3, 55),
+                S("Threshold 3", 6, 104), S("Recovery", 3, 55),
+                S("Threshold 4", 6, 104), S("Recovery", 3, 55),
+                S("Threshold 5", 6, 105),
+                R("Cool Down", 9, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "threshold-hills-75",
+            name: "Threshold Hills",
+            description: "75-minute climbing threshold. 4x8min hills at 100% FTP — sustained climbing power.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Climb 1", 8, 98), S("Descent", 4, 55),
+                S("Climb 2", 8, 100), S("Descent", 4, 55),
+                S("Climb 3", 8, 100), S("Descent", 4, 55),
+                S("Climb 4", 8, 102),
+                S("Endurance", 5, 65),
+                R("Cool Down", 9, 65, 40)
+            ]
+        ),
+        Workout(
+            id: "threshold-ou-90",
+            name: "Threshold OU 90",
+            description: "90-minute over-under threshold. Three sets alternating 92% / 105% to build lactate clearance.",
+            category: .threshold,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Under", 3, 92), S("Over", 2, 105),
+                S("Under", 3, 92), S("Over", 2, 105),
+                S("Under", 3, 92),
+                S("Recovery", 5, 55),
+                S("Under", 3, 93), S("Over", 2, 107),
+                S("Under", 3, 93), S("Over", 2, 107),
+                S("Under", 3, 93),
+                S("Recovery", 5, 55),
+                S("Under", 3, 94), S("Over", 2, 108),
+                S("Under", 3, 94), S("Over", 2, 108),
+                S("Under", 3, 94),
+                S("Endurance", 8, 65),
+                R("Cool Down", 14, 65, 40)
+            ]
+        ),
+
+        // ---- More VO2max ----
+        Workout(
+            id: "vo2-4x4",
+            name: "Norwegian 4x4",
+            description: "55-minute 4x4min at 105% FTP with 3min recovery. Classic Norwegian protocol — pure VO2max.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Opener", 3, 95),
+                S("VO2 1", 4, 105), S("Recovery", 3, 50),
+                S("VO2 2", 4, 108), S("Recovery", 3, 50),
+                S("VO2 3", 4, 108), S("Recovery", 3, 50),
+                S("VO2 4", 4, 110),
+                R("Cool Down", 9, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "vo2-6x3",
+            name: "6x3 VO2",
+            description: "60-minute 6x3min at 115% FTP. More reps, slightly shorter — high cumulative time at VO2.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Opener", 2, 95),
+                S("VO2 1", 3, 113), S("Recovery", 3, 50),
+                S("VO2 2", 3, 115), S("Recovery", 3, 50),
+                S("VO2 3", 3, 115), S("Recovery", 3, 50),
+                S("VO2 4", 3, 115), S("Recovery", 3, 50),
+                S("VO2 5", 3, 117), S("Recovery", 3, 50),
+                S("VO2 6", 3, 117),
+                R("Cool Down", 8, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "vo2-crushers-45",
+            name: "VO2 Crushers",
+            description: "45-minute hard short session. 8x90sec at 118% FTP. Pain in a small package.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 10, 45, 75),
+                S("Opener", 2, 95),
+                Ssec("VO2 1", 90, 118), Ssec("Recovery", 90, 50),
+                Ssec("VO2 2", 90, 118), Ssec("Recovery", 90, 50),
+                Ssec("VO2 3", 90, 118), Ssec("Recovery", 90, 50),
+                Ssec("VO2 4", 90, 120), Ssec("Recovery", 90, 50),
+                Ssec("VO2 5", 90, 120), Ssec("Recovery", 90, 50),
+                Ssec("VO2 6", 90, 120), Ssec("Recovery", 90, 50),
+                Ssec("VO2 7", 90, 122), Ssec("Recovery", 90, 50),
+                Ssec("VO2 8", 90, 122),
+                R("Cool Down", 7, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "microbursts-30",
+            name: "Microbursts",
+            description: "30-minute 15sec on / 15sec off at 130% FTP. Develops repeated short-effort capacity.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 8, 45, 75),
+                Ssec("On 1", 15, 130), Ssec("Off 1", 15, 50),
+                Ssec("On 2", 15, 130), Ssec("Off 2", 15, 50),
+                Ssec("On 3", 15, 130), Ssec("Off 3", 15, 50),
+                Ssec("On 4", 15, 130), Ssec("Off 4", 15, 50),
+                Ssec("On 5", 15, 130), Ssec("Off 5", 15, 50),
+                Ssec("On 6", 15, 130), Ssec("Off 6", 15, 50),
+                Ssec("On 7", 15, 130), Ssec("Off 7", 15, 50),
+                Ssec("On 8", 15, 130), Ssec("Off 8", 15, 50),
+                Ssec("On 9", 15, 130), Ssec("Off 9", 15, 50),
+                Ssec("On 10", 15, 130), Ssec("Off 10", 15, 50),
+                Ssec("On 11", 15, 130), Ssec("Off 11", 15, 50),
+                Ssec("On 12", 15, 130), Ssec("Off 12", 15, 50),
+                Ssec("On 13", 15, 130), Ssec("Off 13", 15, 50),
+                Ssec("On 14", 15, 130), Ssec("Off 14", 15, 50),
+                Ssec("On 15", 15, 132), Ssec("Off 15", 15, 50),
+                Ssec("On 16", 15, 132), Ssec("Off 16", 15, 50),
+                Ssec("On 17", 15, 132), Ssec("Off 17", 15, 50),
+                Ssec("On 18", 15, 132), Ssec("Off 18", 15, 50),
+                Ssec("On 19", 15, 132), Ssec("Off 19", 15, 50),
+                Ssec("On 20", 15, 132),
+                R("Cool Down", 5, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "vo2-hills-75",
+            name: "VO2 Hills",
+            description: "75-minute climbing VO2max. 5x4min hills at 110% FTP. Builds climbing punch.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 12, 45, 75),
+                S("Settle", 3, 80),
+                S("Hill 1", 4, 108), S("Descent", 4, 50),
+                S("Hill 2", 4, 110), S("Descent", 4, 50),
+                S("Hill 3", 4, 110), S("Descent", 4, 50),
+                S("Hill 4", 4, 112), S("Descent", 4, 50),
+                S("Hill 5", 4, 112),
+                S("Endurance", 8, 65),
+                R("Cool Down", 10, 60, 40)
+            ]
+        ),
+        Workout(
+            id: "race-pace-90",
+            name: "Race Pace Sim",
+            description: "90-minute race-pace simulation. Sustained tempo with attacks, surges, and a sprint finish.",
+            category: .vo2max,
+            intervals: [
+                R("Warm Up", 12, 45, 75),
+                S("Race Pace", 12, 82),
+                S("Surge", 2, 110), S("Settle", 3, 80),
+                S("Race Pace", 10, 84),
+                S("Attack 1", 1, 130), S("Settle", 3, 80),
+                S("Race Pace", 8, 86),
+                S("Attack 2", 1, 130), S("Settle", 3, 80),
+                S("Threshold Push", 6, 100), S("Recovery", 4, 55),
+                S("Race Pace", 6, 85),
+                Ssec("Sprint 1", 20, 220), Ssec("Recovery", 100, 55),
+                Ssec("Sprint 2", 30, 240),
+                R("Cool Down", 13, 65, 40)
+            ]
         )
     ]
 }
