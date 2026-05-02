@@ -21,6 +21,7 @@
 		43E0D2FD6D8B07DDEA2DF93F /* WorkoutFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */; };
 		45ACCA3813077476594DF4F0 /* WorkoutGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */; };
 		4D6CF32DF805BF4122974B6C /* RideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD59C8BE8974EE520A981D7C /* RideView.swift */; };
+		5DD4F9F766A6051E1EA8C77F /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84017D53FDC7E40D16B71DB9 /* ShareSheet.swift */; };
 		5F218B5F1BFEA5B6C09261DF /* BuiltInWorkouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3697C66436D5EF13FD70CD54 /* BuiltInWorkouts.swift */; };
 		5F7E8E08C61E25006ED1F544 /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33D6C05219ED4ACF14DE19 /* Workout.swift */; };
 		60177DA61F93FA8C2701A121 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */; };
@@ -45,6 +46,7 @@
 		BFDCF1CE90DC5D6BA98DF457 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D658811265D09659A8C1D3B /* CalendarView.swift */; };
 		C339D19BC077595A7F71C48C /* HRManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD14DA6F0DFAE1F0B9B757B7 /* HRManager.swift */; };
 		C87C9C9AC44A719CDF267D45 /* RideSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D3DDCB25365FED10E350227 /* RideSessionModel.swift */; };
+		CF43B188E1BF64B27F3508D7 /* TCXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A285F6C669B009AC983875B /* TCXExporter.swift */; };
 		D0FA5813754BAE3C2D088A73 /* RideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9139BBB64D0A0B7A74310F4 /* RideController.swift */; };
 		D797EFF4286F7467270337E4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A39ADEABF307D2BA4AAD11 /* RootView.swift */; };
 		DDAA0773833A142E8B24EF76 /* CustomWorkoutModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D5E89461389BBE63D5B7131 /* CustomWorkoutModel.swift */; };
@@ -54,7 +56,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilter.swift; sourceTree = "<group>"; };
 		0D3DDCB25365FED10E350227 /* RideSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSessionModel.swift; sourceTree = "<group>"; };
 		13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMetrics.swift; sourceTree = "<group>"; };
@@ -68,6 +70,7 @@
 		41BBAB7D05BE10027471F903 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		46E85FD69FDC5DCA3016DF56 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		4985887F9943E74EB3E49C10 /* AudioCues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCues.swift; sourceTree = "<group>"; };
+		4A285F6C669B009AC983875B /* TCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCXExporter.swift; sourceTree = "<group>"; };
 		4CBD4E56475D4CD7DB451D48 /* CompleteSummaryOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompleteSummaryOverlay.swift; sourceTree = "<group>"; };
 		4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCard.swift; sourceTree = "<group>"; };
 		5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideRecorder.swift; sourceTree = "<group>"; };
@@ -76,13 +79,14 @@
 		6EB146FEDFD0188672F0BE65 /* HistoryDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDetailView.swift; sourceTree = "<group>"; };
 		768C9304952E6E9A246A2914 /* WorkoutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutsView.swift; sourceTree = "<group>"; };
 		7A21BCD05706976595E49E1E /* Zone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zone.swift; sourceTree = "<group>"; };
+		84017D53FDC7E40D16B71DB9 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		968D2E2E0F76370A84721343 /* FTMSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FTMSManager.swift; sourceTree = "<group>"; };
 		9C33D6C05219ED4ACF14DE19 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		9C7385020B3CE86C9767E793 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectDevicesSheet.swift; sourceTree = "<group>"; };
 		B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilterBar.swift; sourceTree = "<group>"; };
 		BB29625AF30B7031270D3C15 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
-		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectSheets.swift; sourceTree = "<group>"; };
 		D4F4859E3D38DF207CB2764F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D93FAB6C59AE25DD9AF852BA /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
@@ -132,6 +136,7 @@
 				13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */,
 				F9139BBB64D0A0B7A74310F4 /* RideController.swift */,
 				5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */,
+				4A285F6C669B009AC983875B /* TCXExporter.swift */,
 				2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */,
 			);
 			path = Domain;
@@ -185,6 +190,7 @@
 			children = (
 				6EB146FEDFD0188672F0BE65 /* HistoryDetailView.swift */,
 				46E85FD69FDC5DCA3016DF56 /* HistoryView.swift */,
+				84017D53FDC7E40D16B71DB9 /* ShareSheet.swift */,
 			);
 			path = History;
 			sourceTree = "<group>";
@@ -326,6 +332,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = DFAE93AA7B34992B655B2890 /* Build configuration list for PBXProject "CycleJames" */;
 			developmentRegion = en;
@@ -390,8 +398,10 @@
 				D797EFF4286F7467270337E4 /* RootView.swift in Sources */,
 				8AFADB5F48C02E80ECFE9D7D /* Settings.swift in Sources */,
 				00A5FC20A86296AAD35E0423 /* SettingsView.swift in Sources */,
+				5DD4F9F766A6051E1EA8C77F /* ShareSheet.swift in Sources */,
 				047F9539A8656D70FB3F8E68 /* Spacing.swift in Sources */,
 				393C015623FA2D1E9AA4BC18 /* StopConfirmOverlay.swift in Sources */,
+				CF43B188E1BF64B27F3508D7 /* TCXExporter.swift in Sources */,
 				1920B11FB57ED136895E923D /* TrainerData.swift in Sources */,
 				B99A429F7F044A47390773C6 /* Typography.swift in Sources */,
 				7AD7655876E5DBF42164989D /* UpcomingIntervalsSheet.swift in Sources */,
@@ -476,7 +486,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -564,7 +573,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

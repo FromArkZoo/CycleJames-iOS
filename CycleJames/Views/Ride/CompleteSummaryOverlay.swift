@@ -3,6 +3,7 @@ import SwiftUI
 struct CompleteSummaryOverlay: View {
     let session: RideSessionModel
     var onDone: () -> Void
+    @State private var shareURL: URL?
 
     var body: some View {
         ZStack {
@@ -25,6 +26,23 @@ struct CompleteSummaryOverlay: View {
                     summary("TSS", "\(session.tss)")
                 }
 
+                Button {
+                    shareTCX()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Export to Strava / Garmin")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .foregroundStyle(CJColors.accent)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: CJRadius.medium)
+                            .stroke(CJColors.accent.opacity(0.5), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+
                 Button(action: onDone) {
                     Text("DONE")
                         .font(.system(size: 17, weight: .bold))
@@ -40,6 +58,23 @@ struct CompleteSummaryOverlay: View {
             .clipShape(RoundedRectangle(cornerRadius: CJRadius.overlay))
             .padding(CJSpacing.l)
         }
+        .sheet(item: Binding(
+            get: { shareURL.map { URLWrapper(url: $0) } },
+            set: { shareURL = $0?.url }
+        )) { wrapper in
+            ShareSheet(activityItems: [wrapper.url])
+        }
+    }
+
+    private func shareTCX() {
+        if let url = try? TCXExporter.writeFile(for: session) {
+            shareURL = url
+        }
+    }
+
+    private struct URLWrapper: Identifiable {
+        let url: URL
+        var id: URL { url }
     }
 
     private func summary(_ label: String, _ value: String) -> some View {

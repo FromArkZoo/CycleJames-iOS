@@ -266,6 +266,23 @@ struct RideView: View {
                 ride.adjustCurrentInterval(byWatts: 5)
             }
             Button {
+                ride.skipForward()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "forward.end.fill")
+                    Text("Skip")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, CJSpacing.s)
+                .frame(height: 32)
+                .foregroundStyle(.white)
+                .background(CJColors.card)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(CJColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Skip current interval")
+            Button {
                 showUpcomingSheet = true
             } label: {
                 HStack(spacing: 4) {

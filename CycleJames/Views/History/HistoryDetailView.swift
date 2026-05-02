@@ -6,6 +6,12 @@ struct HistoryDetailView: View {
     let session: RideSessionModel
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @State private var shareURL: URL?
+
+    private struct URLWrapper: Identifiable {
+        let url: URL
+        var id: URL { url }
+    }
 
     private struct ChartPoint: Identifiable {
         let id = UUID()
@@ -37,6 +43,7 @@ struct HistoryDetailView: View {
                     chart
                 }
                 statsGrid
+                exportButton
                 deleteButton
             }
             .padding(CJSpacing.l)
@@ -44,6 +51,49 @@ struct HistoryDetailView: View {
         .background(CJColors.bgPrimary.ignoresSafeArea())
         .navigationTitle(session.workoutName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    shareTCX()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Export ride to Strava or Garmin")
+            }
+        }
+        .sheet(item: Binding(
+            get: { shareURL.map { URLWrapper(url: $0) } },
+            set: { shareURL = $0?.url }
+        )) { wrapper in
+            ShareSheet(activityItems: [wrapper.url])
+        }
+    }
+
+    @ViewBuilder
+    private var exportButton: some View {
+        Button {
+            shareTCX()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.arrow.up")
+                Text("Export to Strava / Garmin")
+            }
+            .font(CJFont.body)
+            .foregroundStyle(CJColors.accent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, CJSpacing.s)
+            .overlay(
+                RoundedRectangle(cornerRadius: CJRadius.medium)
+                    .stroke(CJColors.accent.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func shareTCX() {
+        if let url = try? TCXExporter.writeFile(for: session) {
+            shareURL = url
+        }
     }
 
     @ViewBuilder
