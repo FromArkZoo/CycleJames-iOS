@@ -23,9 +23,9 @@ Copy/paste-ready content for App Store Connect → My Apps → New App, then the
 | Subtitle (≤30 chars) | Indoor cycling on your trainer |
 | Category | Health & Fitness |
 | Secondary category | Sports |
-| Privacy Policy URL | (paste your hosted /privacy.html URL) |
-| Support URL | (paste your hosted /support.html URL) |
-| Marketing URL | (optional — paste /index.html or leave blank) |
+| Privacy Policy URL | https://fromarkzoo.github.io/CycleJames-iOS/privacy.html |
+| Support URL | https://fromarkzoo.github.io/CycleJames-iOS/support.html |
+| Marketing URL | https://fromarkzoo.github.io/CycleJames-iOS/ |
 
 ### Description (≤4000 chars)
 
