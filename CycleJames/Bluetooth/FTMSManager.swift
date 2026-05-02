@@ -31,14 +31,33 @@ final class FTMSManager: NSObject, ObservableObject {
     private var bikeDataChar: CBCharacteristic?
     private var controlPointChar: CBCharacteristic?
 
+    /// Identifier of the last successfully-paired trainer. Survives a
+    /// disconnect so we can attempt a reconnect via
+    /// `retrievePeripherals(withIdentifiers:)`.
+    private var lastPeripheralID: UUID?
+    /// When true, treat unexpected disconnects as something to recover from
+    /// (used while a ride is active). Toggled by `RideController`.
+    var autoReconnectEnabled: Bool = false
+    private var reconnectTask: Task<Void, Never>?
+
     override init() {
         super.init()
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
     func startScan() {
-        guard central.state == .poweredOn else {
-            connectionState = .failed("Bluetooth is not powered on")
+        switch central.state {
+        case .poweredOff:
+            connectionState = .bluetoothOff; return
+        case .unauthorized:
+            connectionState = .bluetoothDenied; return
+        case .unsupported:
+            connectionState = .bluetoothUnsupported; return
+        case .unknown, .resetting:
+            connectionState = .bluetoothUnknown; return
+        case .poweredOn:
+            break
+        @unknown default:
             return
         }
         discovered.removeAll()
@@ -54,6 +73,7 @@ final class FTMSManager: NSObject, ObservableObject {
     func connect(_ peripheral: CBPeripheral) {
         central.stopScan()
         self.peripheral = peripheral
+        self.lastPeripheralID = peripheral.identifier
         peripheral.delegate = self
         connectionState = .connecting
         deviceName = peripheral.name
@@ -61,6 +81,8 @@ final class FTMSManager: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        autoReconnectEnabled = false
+        cancelReconnect()
         if let p = peripheral {
             central.cancelPeripheralConnection(p)
         }
@@ -70,6 +92,43 @@ final class FTMSManager: NSObject, ObservableObject {
         hasControl = false
         connectionState = .disconnected
         deviceName = nil
+    }
+
+    /// Try to reconnect to the most recently paired trainer. Used by the
+    /// "Reconnect" button in the live-ride disconnect banner and by the
+    /// automatic post-disconnect retry while a ride is active.
+    func reconnectLast() {
+        guard central.state == .poweredOn else { return }
+        guard let id = lastPeripheralID else { return }
+        guard connectionState != .connected, connectionState != .connecting else { return }
+        let known = central.retrievePeripherals(withIdentifiers: [id])
+        guard let p = known.first else {
+            // No cached peripheral — fall back to a fresh scan.
+            startScan()
+            return
+        }
+        connect(p)
+    }
+
+    private func cancelReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+    }
+
+    /// Schedules a retry sequence after an unexpected disconnect. Tries at
+    /// 3, 8, and 18 seconds, then gives up and waits for manual action.
+    private func scheduleAutoReconnect() {
+        cancelReconnect()
+        reconnectTask = Task { @MainActor [weak self] in
+            for delay in [UInt64(3_000_000_000), UInt64(5_000_000_000), UInt64(10_000_000_000)] {
+                try? await Task.sleep(nanoseconds: delay)
+                if Task.isCancelled { return }
+                guard let self else { return }
+                guard self.autoReconnectEnabled else { return }
+                guard self.connectionState != .connected, self.connectionState != .connecting else { return }
+                self.reconnectLast()
+            }
+        }
     }
 
     // MARK: Control point writes
@@ -166,9 +225,23 @@ extension FTMSManager: CBCentralManagerDelegate {
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor in
             switch central.state {
-            case .poweredOff, .unauthorized, .unsupported:
-                self.connectionState = .failed("Bluetooth unavailable")
-            default:
+            case .poweredOn:
+                // Recover from a previously-blocked state. Don't clobber an
+                // active scan/connection.
+                if self.connectionState.isBluetoothBlocked || self.connectionState == .bluetoothUnknown {
+                    self.connectionState = .disconnected
+                }
+            case .poweredOff:
+                self.connectionState = .bluetoothOff
+            case .unauthorized:
+                self.connectionState = .bluetoothDenied
+            case .unsupported:
+                self.connectionState = .bluetoothUnsupported
+            case .unknown, .resetting:
+                if self.connectionState == .disconnected {
+                    self.connectionState = .bluetoothUnknown
+                }
+            @unknown default:
                 break
             }
         }
@@ -209,6 +282,10 @@ extension FTMSManager: CBCentralManagerDelegate {
             self.peripheral = nil
             self.bikeDataChar = nil
             self.controlPointChar = nil
+            // If we're mid-ride, try a few times to recover before giving up.
+            if self.autoReconnectEnabled {
+                self.scheduleAutoReconnect()
+            }
         }
     }
 }

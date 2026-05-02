@@ -97,9 +97,15 @@ final class RideController: ObservableObject {
         state = .riding
         player.start()
         trainer?.startTraining()
+        trainer?.autoReconnectEnabled = true
         recorder.start()
         statPower.removeAll(); statCadence.removeAll(); statHR.removeAll()
         tssTickCounter = 0
+    }
+
+    /// Manual reconnect from the disconnect banner.
+    func reconnectTrainer() {
+        trainer?.reconnectLast()
     }
 
     func pauseOrResume() {
@@ -163,6 +169,7 @@ final class RideController: ObservableObject {
         recorder.stop()
         let model = persist(context: context, partial: true)
         player.stop()
+        trainer?.autoReconnectEnabled = false
         trainer?.stopTraining()
         state = .completed
         return model
@@ -170,6 +177,7 @@ final class RideController: ObservableObject {
 
     func discardAndStop() {
         player.stop()
+        trainer?.autoReconnectEnabled = false
         trainer?.stopTraining()
         recorder.stop()
         recorder.reset()
@@ -179,6 +187,7 @@ final class RideController: ObservableObject {
 
     /// Called on natural workout completion.
     private func handleComplete() {
+        trainer?.autoReconnectEnabled = false
         trainer?.stopTraining()
         recorder.stop()
         state = .completed

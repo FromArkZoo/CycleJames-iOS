@@ -22,8 +22,18 @@ final class HRManager: NSObject, ObservableObject {
     }
 
     func startScan() {
-        guard central.state == .poweredOn else {
-            connectionState = .failed("Bluetooth is not powered on")
+        switch central.state {
+        case .poweredOff:
+            connectionState = .bluetoothOff; return
+        case .unauthorized:
+            connectionState = .bluetoothDenied; return
+        case .unsupported:
+            connectionState = .bluetoothUnsupported; return
+        case .unknown, .resetting:
+            connectionState = .bluetoothUnknown; return
+        case .poweredOn:
+            break
+        @unknown default:
             return
         }
         discovered.removeAll()
@@ -72,8 +82,23 @@ final class HRManager: NSObject, ObservableObject {
 extension HRManager: CBCentralManagerDelegate {
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         Task { @MainActor in
-            if central.state != .poweredOn {
-                self.connectionState = .failed("Bluetooth unavailable")
+            switch central.state {
+            case .poweredOn:
+                if self.connectionState.isBluetoothBlocked || self.connectionState == .bluetoothUnknown {
+                    self.connectionState = .disconnected
+                }
+            case .poweredOff:
+                self.connectionState = .bluetoothOff
+            case .unauthorized:
+                self.connectionState = .bluetoothDenied
+            case .unsupported:
+                self.connectionState = .bluetoothUnsupported
+            case .unknown, .resetting:
+                if self.connectionState == .disconnected {
+                    self.connectionState = .bluetoothUnknown
+                }
+            @unknown default:
+                break
             }
         }
     }

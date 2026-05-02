@@ -13,6 +13,9 @@ struct RideView: View {
 
     private var ftp: Int { AppSettings.ftp }
     private var canEditLive: Bool { ride.state == .riding || ride.state == .paused }
+    private var showDisconnectBanner: Bool {
+        canEditLive && trainer.connectionState != .connected
+    }
 
     var body: some View {
         ZStack {
@@ -20,6 +23,12 @@ struct RideView: View {
 
             VStack(spacing: CJSpacing.s) {
                 header
+
+                if showDisconnectBanner {
+                    disconnectBanner
+                        .padding(.horizontal, CJSpacing.l)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
 
                 if let workout = ride.selectedWorkout {
                     WorkoutGraphView(
@@ -43,6 +52,7 @@ struct RideView: View {
 
                 ScrollView { MetricsGrid().padding(.bottom, 100) }
             }
+            .animation(.easeInOut(duration: 0.2), value: showDisconnectBanner)
 
             if ride.state == .countdown {
                 CountdownOverlay(number: ride.countdownNumber)
@@ -100,6 +110,48 @@ struct RideView: View {
                 ride.insertIntervalAfterCurrent(interval)
             }
         }
+    }
+
+    @ViewBuilder
+    private var disconnectBanner: some View {
+        let isReconnecting = trainer.connectionState == .connecting || trainer.connectionState == .scanning
+        HStack(spacing: CJSpacing.s) {
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(CJColors.warning)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(isReconnecting ? "Reconnecting trainer…" : "Trainer disconnected")
+                    .font(CJFont.bodyBold)
+                    .foregroundStyle(CJColors.textPrimary)
+                Text("Ride keeps recording. Power targets resume on reconnect.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(CJColors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: CJSpacing.s)
+            if isReconnecting {
+                ProgressView().controlSize(.small).tint(CJColors.accent)
+            } else {
+                Button {
+                    ride.reconnectTrainer()
+                } label: {
+                    Text("Reconnect")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, CJSpacing.s)
+                        .frame(height: 30)
+                        .foregroundStyle(.white)
+                        .background(CJColors.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, CJSpacing.s)
+        .padding(.vertical, 8)
+        .background(CJColors.warning.opacity(0.12))
+        .overlay(RoundedRectangle(cornerRadius: CJRadius.medium).stroke(CJColors.warning.opacity(0.4), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
     }
 
     @ViewBuilder

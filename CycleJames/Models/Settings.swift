@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SettingsKeys {
     static let ftp = "cyclejames_ftp"
+    static let hasOnboarded = "cyclejames_hasOnboarded"
 }
 
 enum AppSettings {

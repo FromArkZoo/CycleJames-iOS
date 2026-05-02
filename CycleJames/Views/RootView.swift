@@ -6,6 +6,7 @@ struct RootView: View {
     @StateObject private var hr = HRManager()
     @StateObject private var ride = RideController()
     @State private var selection: Tab = .workouts
+    @AppStorage(SettingsKeys.hasOnboarded) private var hasOnboarded: Bool = false
 
     enum Tab: Hashable { case workouts, calendar, history, builder, settings }
 
@@ -38,5 +39,8 @@ struct RootView: View {
         .toolbarBackground(.visible, for: .tabBar)
         .toolbarBackground(CJColors.bgSecondary, for: .tabBar)
         .onAppear { ride.bind(trainer: trainer, hr: hr) }
+        .fullScreenCover(isPresented: .constant(!hasOnboarded)) {
+            OnboardingView()
+        }
     }
 }
