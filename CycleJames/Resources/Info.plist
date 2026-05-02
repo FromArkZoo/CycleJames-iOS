@@ -22,8 +22,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>CycleJames uses Bluetooth to connect to your smart trainer and heart rate monitor.</string>
-	<key>NSMotionUsageDescription</key>
-	<string>CycleJames uses motion to keep the screen awake during rides.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

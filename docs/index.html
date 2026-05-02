@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CycleJames — Indoor cycling workouts</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --card: #131826;
+    --border: #1f2840;
+    --text: #e8ecf3;
+    --muted: #8a93a8;
+    --accent: #4aa3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 48px 24px;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 {
+    font-size: 40px;
+    line-height: 1.15;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  .tag { color: var(--accent); font-weight: 600; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .lead { color: var(--muted); font-size: 18px; margin: 0 0 32px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 16px 0; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+  .links { display: flex; gap: 16px; flex-wrap: wrap; margin: 24px 0; }
+  .links a {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 10px 18px;
+    border-radius: 8px;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+<main>
+  <span class="tag">CycleJames</span>
+  <h1>Indoor cycling workouts that talk to your trainer.</h1>
+  <p class="lead">A focused, single-purpose iOS app for structured power-based training on FTMS-compatible smart trainers.</p>
+
+  <div class="card">
+    <h2>What it does</h2>
+    <ul>
+      <li>Built-in workout library covering VO2max, threshold, sweet spot, endurance, and recovery sessions.</li>
+      <li>Live target-power control over Bluetooth (FTMS) — your trainer sets resistance automatically.</li>
+      <li>Heart-rate display from any standard BLE HRM.</li>
+      <li>Adjust intensity mid-workout, add intervals on the fly, or tweak whole-workout power before you start.</li>
+      <li>Local ride history with TSS, IF, and normalized power. No account, no cloud, no tracking.</li>
+    </ul>
+  </div>
+
+  <div class="links">
+    <a href="privacy.html">Privacy Policy</a>
+    <a href="support.html">Support</a>
+  </div>
+
+  <footer>
+    © 2026 James Browne. CycleJames is an independent project.
+  </footer>
+</main>
+</body>
+</html>

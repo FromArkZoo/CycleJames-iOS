@@ -24,6 +24,7 @@ targets:
           - "Resources/Info.plist"
     resources:
       - CycleJames/Resources/Assets.xcassets
+      - CycleJames/Resources/PrivacyInfo.xcprivacy
     info:
       path: CycleJames/Resources/Info.plist
       properties:
@@ -43,7 +44,6 @@ targets:
           - bluetooth-central
           - audio
         NSBluetoothAlwaysUsageDescription: "CycleJames uses Bluetooth to connect to your smart trainer and heart rate monitor."
-        NSMotionUsageDescription: "CycleJames uses motion to keep the screen awake during rides."
         UIRequiresPersistentWiFi: false
         UIApplicationSupportsIndirectInputEvents: true
     settings:

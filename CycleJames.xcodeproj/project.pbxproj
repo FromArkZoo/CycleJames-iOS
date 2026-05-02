@@ -23,6 +23,7 @@
 		4D6CF32DF805BF4122974B6C /* RideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD59C8BE8974EE520A981D7C /* RideView.swift */; };
 		5F218B5F1BFEA5B6C09261DF /* BuiltInWorkouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3697C66436D5EF13FD70CD54 /* BuiltInWorkouts.swift */; };
 		5F7E8E08C61E25006ED1F544 /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C33D6C05219ED4ACF14DE19 /* Workout.swift */; };
+		60177DA61F93FA8C2701A121 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */; };
 		715274FFF8C133E5E4BE6870 /* ConnectSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */; };
 		73FC328A08693E0F0504462B /* MetricsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73C60647CB27630AD8EA87F /* MetricsGrid.swift */; };
 		743FF29A0382690D17130F38 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E85FD69FDC5DCA3016DF56 /* HistoryView.swift */; };
@@ -50,6 +51,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilter.swift; sourceTree = "<group>"; };
 		0D3DDCB25365FED10E350227 /* RideSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSessionModel.swift; sourceTree = "<group>"; };
 		13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMetrics.swift; sourceTree = "<group>"; };
@@ -75,7 +77,7 @@
 		9C7385020B3CE86C9767E793 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilterBar.swift; sourceTree = "<group>"; };
 		BB29625AF30B7031270D3C15 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
-		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BD8AC393078D4153E26FD147 /* CycleJames.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CycleJames.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectSheets.swift; sourceTree = "<group>"; };
 		D4F4859E3D38DF207CB2764F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D93FAB6C59AE25DD9AF852BA /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 			isa = PBXGroup;
 			children = (
 				9C7385020B3CE86C9767E793 /* Assets.xcassets */,
+				07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -306,6 +309,8 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
 			};
 			buildConfigurationList = DFAE93AA7B34992B655B2890 /* Build configuration list for PBXProject "CycleJames" */;
 			developmentRegion = en;
@@ -332,6 +337,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				98A93A30D089CD7218E90A9D /* Assets.xcassets in Resources */,
+				60177DA61F93FA8C2701A121 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -452,7 +458,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -540,7 +545,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 278RL79DB5;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = CycleJames/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

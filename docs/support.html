@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CycleJames — Support</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --card: #131826;
+    --border: #1f2840;
+    --text: #e8ecf3;
+    --muted: #8a93a8;
+    --accent: #4aa3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 48px 24px;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  a { color: var(--accent); }
+  h1 { font-size: 32px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  .nav { color: var(--muted); margin-bottom: 16px; }
+  .nav a { text-decoration: none; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin: 12px 0; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .card p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="nav"><a href="index.html">← CycleJames</a></p>
+  <h1>Support</h1>
+  <p>Need help with CycleJames? Email <a href="mailto:james.scott.browne@gmail.com">james.scott.browne@gmail.com</a> and include your iOS version, trainer model, and a short description of the issue.</p>
+
+  <h2>Common questions</h2>
+
+  <div class="card">
+    <h3>My trainer won't connect.</h3>
+    <p>CycleJames supports trainers that speak the FTMS Bluetooth profile (most modern smart trainers — Wahoo Kickr, Tacx Neo, Wattbike Atom, Saris H3, Elite Direto). Make sure no other app is currently paired with the trainer (Zwift, the trainer's vendor app, etc.) — Bluetooth allows only one connection at a time. Power-cycle the trainer if needed.</p>
+  </div>
+
+  <div class="card">
+    <h3>Where do I set my FTP?</h3>
+    <p>Settings tab → "Current FTP". Workouts use this number as the basis for target watts.</p>
+  </div>
+
+  <div class="card">
+    <h3>The target power doesn't match what I expected.</h3>
+    <p>Workouts are written as percentages of FTP. If your FTP setting is wrong, every target will be off proportionally. Use the Overall Power +/- buttons on the workout detail screen to scale before you start, or +/- during the ride to adjust the active interval in 5W steps.</p>
+  </div>
+
+  <div class="card">
+    <h3>Does my ride save if my phone locks during the workout?</h3>
+    <p>Yes. The ride clock runs from wall-clock time and Bluetooth keeps streaming in the background, so locking the phone mid-workout doesn't lose data. Stop the ride from inside the app to write the session to history.</p>
+  </div>
+
+  <div class="card">
+    <h3>How do I delete my data?</h3>
+    <p>Uninstall the app. CycleJames keeps no copies anywhere else.</p>
+  </div>
+
+  <h2>Privacy</h2>
+  <p>See the <a href="privacy.html">Privacy Policy</a>.</p>
+</main>
+</body>
+</html>
