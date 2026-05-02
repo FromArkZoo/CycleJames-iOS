@@ -15,7 +15,10 @@ enum WorkoutFiltering {
         DurationBucket(label: "1.5hr", min: 85 * 60,  max: 95 * 60),
         DurationBucket(label: "2hr",   min: 115 * 60, max: 125 * 60),
         DurationBucket(label: "2.5hr", min: 145 * 60, max: 155 * 60),
-        DurationBucket(label: "3hr",   min: 175 * 60, max: 185 * 60)
+        DurationBucket(label: "3hr",   min: 175 * 60, max: 185 * 60),
+        DurationBucket(label: "4hr",   min: 235 * 60, max: 245 * 60),
+        DurationBucket(label: "5hr",   min: 295 * 60, max: 305 * 60),
+        DurationBucket(label: "6hr+",  min: 355 * 60, max: .max)
     ]
 
     enum SortBy: String, CaseIterable, Identifiable {
