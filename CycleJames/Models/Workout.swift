@@ -106,11 +106,12 @@ struct IntervalContext: Hashable {
 
 extension Interval {
     /// Returns a copy of this interval with the given watts delta applied (relative to FTP).
-    /// Clamps the resulting power to [5%, 250%] of FTP.
+    /// Clamps the resulting power to [5%, 600%] of FTP — 600% covers sprint
+    /// efforts up to ~1200W at FTP 200, ~1800W at FTP 300.
     func adjustedByWatts(_ watts: Int, ftp: Int) -> Interval {
         guard ftp > 0, watts != 0 else { return self }
         let pctDelta = Double(watts) / Double(ftp) * 100.0
-        let clamp: (Double) -> Double = { min(250, max(5, $0)) }
+        let clamp: (Double) -> Double = { min(600, max(5, $0)) }
         switch self {
         case .steady(let n, let d, let p):
             return .steady(name: n, duration: d, powerPercent: clamp(p + pctDelta))

@@ -8,9 +8,11 @@ struct RideView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showStopOverlay = false
     @State private var showCompleteOverlay = false
+    @State private var showAddIntervalSheet = false
     @State private var savedSession: RideSessionModel?
 
     private var ftp: Int { AppSettings.ftp }
+    private var canEditLive: Bool { ride.state == .riding || ride.state == .paused }
 
     var body: some View {
         ZStack {
@@ -32,6 +34,11 @@ struct RideView: View {
                     )
                     .frame(height: 130)
                     .padding(.horizontal, CJSpacing.l)
+                }
+
+                if canEditLive {
+                    intervalEditBar
+                        .padding(.horizontal, CJSpacing.l)
                 }
 
                 ScrollView { MetricsGrid().padding(.bottom, 100) }
@@ -88,6 +95,70 @@ struct RideView: View {
                 showCompleteOverlay = true
             }
         }
+        .sheet(isPresented: $showAddIntervalSheet) {
+            AddIntervalSheet(ftp: ftp) { interval in
+                ride.insertIntervalAfterCurrent(interval)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var intervalEditBar: some View {
+        let ctx = ride.currentIntervalContext
+        HStack(spacing: CJSpacing.s) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(ctx?.interval.name ?? "Current interval")
+                    .font(CJFont.small)
+                    .foregroundStyle(CJColors.textSecondary)
+                    .lineLimit(1)
+                Text("\(ride.currentTarget)W target")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(CJColors.accent)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: CJSpacing.s)
+            adjustButton(systemName: "minus", enabled: ctx != nil) {
+                ride.adjustCurrentInterval(byWatts: -5)
+            }
+            adjustButton(systemName: "plus", enabled: ctx != nil) {
+                ride.adjustCurrentInterval(byWatts: 5)
+            }
+            Button {
+                showAddIntervalSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                    Text("Add")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, CJSpacing.s)
+                .frame(height: 32)
+                .foregroundStyle(.white)
+                .background(CJColors.card)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(CJColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, CJSpacing.s)
+        .padding(.vertical, 6)
+        .background(CJColors.bgSecondary.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+    }
+
+    @ViewBuilder
+    private func adjustButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .bold))
+                .frame(width: 32, height: 32)
+                .foregroundStyle(.white)
+                .background(CJColors.card)
+                .clipShape(Circle())
+                .opacity(enabled ? 1.0 : 0.4)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     @ViewBuilder
@@ -132,5 +203,71 @@ struct RideView: View {
         showStopOverlay = false
         ride.discardAndStop()
         dismiss()
+    }
+}
+
+struct AddIntervalSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let ftp: Int
+    var onAdd: (Interval) -> Void
+
+    @State private var minutes: Int = 5
+    @State private var powerPercent: Int = 65
+
+    private var watts: Int { Int((Double(powerPercent) / 100.0 * Double(ftp)).rounded()) }
+    private var zone: Zone { Zones.zone(forPercent: Double(powerPercent)) }
+    private var durationLabel: String { minutes == 1 ? "1 min" : "\(minutes) min" }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Stepper(value: $minutes, in: 1...60) {
+                        HStack {
+                            Text("Duration")
+                            Spacer()
+                            Text(durationLabel)
+                                .foregroundStyle(CJColors.textSecondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    Stepper(value: $powerPercent, in: 5...600, step: 5) {
+                        HStack {
+                            Text("Power")
+                            Spacer()
+                            Text("\(powerPercent)% · \(watts)W")
+                                .foregroundStyle(CJColors.textSecondary)
+                                .monospacedDigit()
+                        }
+                    }
+                } footer: {
+                    HStack(spacing: 6) {
+                        Circle().fill(zone.color).frame(width: 8, height: 8)
+                        Text("Zone: \(zone.name)")
+                            .foregroundStyle(zone.color)
+                    }
+                }
+            }
+            .navigationTitle("Add Interval")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let interval = Interval.steady(
+                            name: "Custom",
+                            duration: minutes * 60,
+                            powerPercent: Double(powerPercent)
+                        )
+                        onAdd(interval)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

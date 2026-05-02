@@ -117,6 +117,43 @@ final class RideController: ObservableObject {
     func skipForward() { player.skipForward() }
     func skipBackward() { player.skipBackward() }
 
+    // MARK: Live edits
+
+    /// Adjust the power of the currently active interval by a fixed watts delta.
+    /// Takes effect on the next 1Hz tick.
+    func adjustCurrentInterval(byWatts delta: Int) {
+        guard let workout = selectedWorkout, let ctx = currentIntervalContext else { return }
+        let updated = workout.adjustingInterval(at: ctx.index, byWatts: delta, ftp: ftp)
+        selectedWorkout = updated
+        player.updateWorkout(updated)
+    }
+
+    /// Insert a new interval into the active workout, immediately after the
+    /// currently playing one. If there is no current interval (e.g. ride is in
+    /// .ready), append to the end.
+    func insertIntervalAfterCurrent(_ interval: Interval) {
+        guard let workout = selectedWorkout else { return }
+        let insertAt: Int
+        if let ctx = currentIntervalContext {
+            insertAt = min(ctx.index + 1, workout.intervals.count)
+        } else {
+            insertAt = workout.intervals.count
+        }
+        var newIntervals = workout.intervals
+        newIntervals.insert(interval, at: insertAt)
+        let updated = Workout(
+            id: workout.id,
+            name: workout.name,
+            description: workout.description,
+            category: workout.category,
+            intervals: newIntervals,
+            isCustom: workout.isCustom
+        )
+        selectedWorkout = updated
+        player.updateWorkout(updated)
+        remaining = max(0, updated.totalDuration - elapsed)
+    }
+
     func requestStop() {
         if state == .riding { player.pause(); state = .paused }
     }
@@ -177,6 +214,11 @@ final class RideController: ObservableObject {
         currentZone = zone
 
         if state == .riding {
+            // BLE callbacks fire while backgrounded (we hold `bluetooth-central`
+            // background mode); use them as a heartbeat so elapsed/target stay
+            // accurate even when iOS suspends our 1Hz Timer.
+            player.refresh()
+
             statPower.append(data.power)
             if data.cadence > 0 { statCadence.append(data.cadence) }
             if data.heartRate > 0 { statHR.append(data.heartRate) }

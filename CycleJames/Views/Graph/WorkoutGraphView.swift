@@ -36,7 +36,14 @@ struct WorkoutGraphView: View {
         let percent: Double
         let name: String
         let watts: String?
-        let isWide: Bool
+    }
+
+    private struct PlacedLabel: Identifiable {
+        let id = UUID()
+        let name: String
+        let watts: String?
+        let x: CGFloat
+        let y: CGFloat
     }
 
     private var slices: [Slice] {
@@ -77,14 +84,11 @@ struct WorkoutGraphView: View {
 
     private var labels: [IntervalLabel] {
         guard !compact else { return [] }
-        let total = workout.totalDuration
         var t = 0
         var out: [IntervalLabel] = []
         for iv in workout.intervals {
             let mid = Double(t) + Double(iv.duration) / 2
             let pct = iv.midPercent
-            let durationFraction = Double(iv.duration) / Double(max(total, 1))
-            let isWide = durationFraction > 0.04
             var watts: String?
             if showWatts {
                 switch iv {
@@ -96,10 +100,44 @@ struct WorkoutGraphView: View {
                     watts = "\(sw)→\(ew)W"
                 }
             }
-            out.append(IntervalLabel(midSec: mid, percent: pct, name: iv.name, watts: watts, isWide: isWide))
+            out.append(IntervalLabel(midSec: mid, percent: pct, name: iv.name, watts: watts))
             t += iv.duration
         }
         return out
+    }
+
+    private func placedLabels(proxy: ChartProxy, frame: CGRect) -> [PlacedLabel] {
+        let gap: CGFloat = 4
+        var lastRight: CGFloat = -.infinity
+        var placed: [PlacedLabel] = []
+        for label in labels {
+            guard let xPos = proxy.position(forX: label.midSec),
+                  let yPos = proxy.position(forY: label.percent) else { continue }
+            let halfWidth = estimatedHalfWidth(name: label.name, watts: label.watts)
+            let minCenter = frame.minX + halfWidth
+            let maxCenter = frame.maxX - halfWidth
+            // Frame too narrow for this label — skip rather than squash.
+            if minCenter > maxCenter { continue }
+            let rawCenter = xPos + frame.minX
+            let center = min(max(rawCenter, minCenter), maxCenter)
+            let left = center - halfWidth
+            let right = center + halfWidth
+            if left < lastRight + gap { continue }
+            let y = max(yPos + frame.minY - 14, frame.minY + 12)
+            placed.append(PlacedLabel(name: label.name, watts: label.watts, x: center, y: y))
+            lastRight = right
+        }
+        return placed
+    }
+
+    /// Approximate half-width of the rendered label pill, in points. Width is
+    /// the wider of the name (10pt medium) and watts (10pt bold) lines, plus
+    /// 5pt of horizontal padding on each side from the dark backing pill.
+    /// Used to detect overlap with neighbours and clamp to the plot frame.
+    private func estimatedHalfWidth(name: String, watts: String?) -> CGFloat {
+        let nameWidth = CGFloat(name.count) * 6.2
+        let wattsWidth = watts.map { CGFloat($0.count) * 6.4 } ?? 0
+        return max(nameWidth, wattsWidth) / 2 + 7
     }
 
     private var maxPercent: Double {
@@ -167,28 +205,25 @@ struct WorkoutGraphView: View {
                             .position(x: frame.midX, y: frame.midY)
                             .gesture(makeEditGesture(proxy: proxy, plotSize: frame.size))
                     }
-                    ForEach(labels) { label in
-                        if let xPos = proxy.position(forX: label.midSec),
-                           let yPos = proxy.position(forY: label.percent) {
-                            VStack(spacing: 2) {
-                                if label.isWide {
-                                    Text(label.name)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundStyle(Color.white.opacity(0.85))
-                                        .lineLimit(1)
-                                }
-                                if let w = label.watts, label.isWide {
-                                    Text(w)
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(Color.white.opacity(0.95))
-                                }
+                    ForEach(placedLabels(proxy: proxy, frame: frame)) { p in
+                        VStack(spacing: 1) {
+                            Text(p.name)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .fixedSize()
+                            if let w = p.watts {
+                                Text(w)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .fixedSize()
                             }
-                            .position(
-                                x: xPos + frame.minX,
-                                y: max(yPos + frame.minY - 14, frame.minY + 12)
-                            )
-                            .allowsHitTesting(false)
                         }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                        .position(x: p.x, y: p.y)
+                        .allowsHitTesting(false)
                     }
                 }
             }

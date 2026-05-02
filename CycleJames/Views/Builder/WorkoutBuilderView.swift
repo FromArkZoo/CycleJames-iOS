@@ -403,13 +403,13 @@ struct IntervalEditorRow: View {
         let dur = max(15, Int(draftMinutes * 60))
         switch interval {
         case .steady:
-            interval = .steady(name: draftName, duration: dur, powerPercent: max(20, min(200, draftPercent)))
+            interval = .steady(name: draftName, duration: dur, powerPercent: max(20, min(600, draftPercent)))
         case .ramp:
             interval = .ramp(
                 name: draftName,
                 duration: dur,
-                startPercent: max(20, min(200, draftStart)),
-                endPercent: max(20, min(200, draftEnd))
+                startPercent: max(20, min(600, draftStart)),
+                endPercent: max(20, min(600, draftEnd))
             )
         }
     }
