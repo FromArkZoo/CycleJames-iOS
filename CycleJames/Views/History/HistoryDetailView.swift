@@ -128,11 +128,14 @@ struct HistoryDetailView: View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: CJSpacing.s) {
             stat("Duration", TimeFormat.duration(session.durationSec))
             stat("Avg Power", "\(session.avgPower)W")
+            stat("Peak Power", session.peakPower > 0 ? "\(session.peakPower)W" : "--")
             stat("NP", "\(session.np)W")
             stat("IF", String(format: "%.2f", session.intensityFactor))
             stat("TSS", "\(session.tss)")
             stat("Avg Cadence", session.avgCadence > 0 ? "\(session.avgCadence)rpm" : "--")
+            stat("Peak Cadence", session.peakCadence > 0 ? "\(session.peakCadence)rpm" : "--")
             stat("Avg HR", session.avgHR > 0 ? "\(session.avgHR)bpm" : "--")
+            stat("Peak HR", session.peakHR > 0 ? "\(session.peakHR)bpm" : "--")
             stat("FTP", "\(session.ftp)W")
         }
     }

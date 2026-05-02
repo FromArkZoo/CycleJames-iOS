@@ -78,14 +78,14 @@ struct HistoryRow: View {
             HStack(spacing: CJSpacing.l) {
                 stat(label: "Duration", value: TimeFormat.duration(session.durationSec))
                 stat(label: "Avg", value: "\(session.avgPower)W")
+                stat(label: "Peak", value: session.peakPower > 0 ? "\(session.peakPower)W" : "--")
                 stat(label: "NP", value: "\(session.np)W")
-                stat(label: "TSS", value: "\(session.tss)")
             }
             HStack(spacing: CJSpacing.l) {
+                stat(label: "TSS", value: "\(session.tss)")
                 stat(label: "IF", value: String(format: "%.2f", session.intensityFactor))
                 stat(label: "HR", value: session.avgHR > 0 ? "\(session.avgHR)bpm" : "--")
                 stat(label: "Cadence", value: session.avgCadence > 0 ? "\(session.avgCadence)rpm" : "--")
-                Spacer()
             }
         }
         .padding(CJSpacing.l)

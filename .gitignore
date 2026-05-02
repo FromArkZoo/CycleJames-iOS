@@ -37,3 +37,4 @@ Package.resolved
 # Carthage / CocoaPods (not used here, but excluded just in case)
 Carthage/Build/
 Pods/
+scripts/.env

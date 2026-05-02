@@ -13,6 +13,9 @@ final class RideSessionModel {
     var avgPower: Int = 0
     var avgCadence: Int = 0
     var avgHR: Int = 0
+    var peakPower: Int = 0
+    var peakHR: Int = 0
+    var peakCadence: Int = 0
     var np: Int = 0
     var intensityFactor: Double = 0
     var tss: Int = 0
@@ -33,6 +36,9 @@ final class RideSessionModel {
         avgPower: Int,
         avgCadence: Int,
         avgHR: Int,
+        peakPower: Int = 0,
+        peakHR: Int = 0,
+        peakCadence: Int = 0,
         np: Int,
         intensityFactor: Double,
         tss: Int,
@@ -50,6 +56,9 @@ final class RideSessionModel {
         self.avgPower = avgPower
         self.avgCadence = avgCadence
         self.avgHR = avgHR
+        self.peakPower = peakPower
+        self.peakHR = peakHR
+        self.peakCadence = peakCadence
         self.np = np
         self.intensityFactor = intensityFactor
         self.tss = tss

@@ -151,6 +151,16 @@ final class WorkoutPlayer: ObservableObject {
         tick()
     }
 
+    /// Jump to the start of an arbitrary interval index. Used by the
+    /// upcoming-intervals "Skip to" action.
+    func seekToInterval(at index: Int) {
+        guard let workout else { return }
+        guard workout.intervals.indices.contains(index) else { return }
+        var start = 0
+        for i in 0..<index { start += workout.intervals[i].duration }
+        setElapsed(start)
+    }
+
     /// Compute current elapsed seconds from wall-clock. Source of truth while
     /// running.
     private func computeElapsedSeconds() -> Int {

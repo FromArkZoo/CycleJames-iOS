@@ -22,6 +22,9 @@ final class RideController: ObservableObject {
     @Published var currentZone: Zone = Zones.all[0]
     @Published var currentIntervalContext: IntervalContext?
     @Published var rolling3sPower: Int = 0
+    @Published var peakPower: Int = 0
+    @Published var peakHR: Int = 0
+    @Published var peakCadence: Int = 0
     @Published var np: Int = 0
     @Published var intensityFactor: Double = 0
     @Published var tss: Int = 0
@@ -134,19 +137,16 @@ final class RideController: ObservableObject {
         player.updateWorkout(updated)
     }
 
-    /// Insert a new interval into the active workout, immediately after the
-    /// currently playing one. If there is no current interval (e.g. ride is in
-    /// .ready), append to the end.
-    func insertIntervalAfterCurrent(_ interval: Interval) {
+    /// Insert a new interval into the active workout at the given index.
+    /// Reject indices that fall in the past (before or at the currently
+    /// playing interval) — modifying past intervals would invalidate the
+    /// elapsed → interval mapping.
+    func insertInterval(_ interval: Interval, atIndex index: Int) {
         guard let workout = selectedWorkout else { return }
-        let insertAt: Int
-        if let ctx = currentIntervalContext {
-            insertAt = min(ctx.index + 1, workout.intervals.count)
-        } else {
-            insertAt = workout.intervals.count
-        }
+        let minIndex = (currentIntervalContext?.index ?? -1) + 1
+        let clamped = max(minIndex, min(index, workout.intervals.count))
         var newIntervals = workout.intervals
-        newIntervals.insert(interval, at: insertAt)
+        newIntervals.insert(interval, at: clamped)
         let updated = Workout(
             id: workout.id,
             name: workout.name,
@@ -158,6 +158,65 @@ final class RideController: ObservableObject {
         selectedWorkout = updated
         player.updateWorkout(updated)
         remaining = max(0, updated.totalDuration - elapsed)
+    }
+
+    /// Convenience for the "schedule for right after this one" path used by
+    /// the Add Interval sheet's default option.
+    func insertIntervalAfterCurrent(_ interval: Interval) {
+        let after = (currentIntervalContext?.index ?? -1) + 1
+        insertInterval(interval, atIndex: after)
+    }
+
+    /// Replace a future interval with a new one (typically same shape, edited
+    /// duration/power). Refuses to touch the current or past intervals so the
+    /// elapsed → interval mapping remains valid.
+    func replaceInterval(at index: Int, with new: Interval) {
+        guard let workout = selectedWorkout else { return }
+        let minIndex = (currentIntervalContext?.index ?? -1) + 1
+        guard index >= minIndex, workout.intervals.indices.contains(index) else { return }
+        var newIntervals = workout.intervals
+        newIntervals[index] = new
+        let updated = Workout(
+            id: workout.id,
+            name: workout.name,
+            description: workout.description,
+            category: workout.category,
+            intervals: newIntervals,
+            isCustom: workout.isCustom
+        )
+        selectedWorkout = updated
+        player.updateWorkout(updated)
+        remaining = max(0, updated.totalDuration - elapsed)
+    }
+
+    /// Delete a future interval. Same past-protection rule as replace/insert.
+    func deleteInterval(at index: Int) {
+        guard let workout = selectedWorkout else { return }
+        let minIndex = (currentIntervalContext?.index ?? -1) + 1
+        guard index >= minIndex, workout.intervals.indices.contains(index) else { return }
+        var newIntervals = workout.intervals
+        newIntervals.remove(at: index)
+        let updated = Workout(
+            id: workout.id,
+            name: workout.name,
+            description: workout.description,
+            category: workout.category,
+            intervals: newIntervals,
+            isCustom: workout.isCustom
+        )
+        selectedWorkout = updated
+        player.updateWorkout(updated)
+        remaining = max(0, updated.totalDuration - elapsed)
+    }
+
+    /// Jump the elapsed clock to the start of the given interval. Used by the
+    /// upcoming-intervals "Skip to" action.
+    func jumpToInterval(at index: Int) {
+        guard let workout = selectedWorkout else { return }
+        guard workout.intervals.indices.contains(index) else { return }
+        player.seekToInterval(at: index)
+        elapsed = player.elapsedSeconds
+        remaining = max(0, workout.totalDuration - elapsed)
     }
 
     func requestStop() {
@@ -229,8 +288,15 @@ final class RideController: ObservableObject {
             player.refresh()
 
             statPower.append(data.power)
-            if data.cadence > 0 { statCadence.append(data.cadence) }
-            if data.heartRate > 0 { statHR.append(data.heartRate) }
+            if data.power > peakPower { peakPower = data.power }
+            if data.cadence > 0 {
+                statCadence.append(data.cadence)
+                if data.cadence > peakCadence { peakCadence = data.cadence }
+            }
+            if data.heartRate > 0 {
+                statHR.append(data.heartRate)
+                if data.heartRate > peakHR { peakHR = data.heartRate }
+            }
             recorder.record(power: data.power, cadence: data.cadence, hr: data.heartRate > 0 ? data.heartRate : lastHR, target: currentTarget)
         }
     }
@@ -238,7 +304,10 @@ final class RideController: ObservableObject {
     private func handleHR(_ bpm: Int) {
         currentHR = bpm
         lastHR = bpm
-        if state == .riding { statHR.append(bpm) }
+        if state == .riding {
+            statHR.append(bpm)
+            if bpm > peakHR { peakHR = bpm }
+        }
     }
 
     // MARK: Player tick
@@ -294,6 +363,9 @@ final class RideController: ObservableObject {
             avgPower: avgPower,
             avgCadence: avgCadence,
             avgHR: avgHR,
+            peakPower: peakPower,
+            peakHR: peakHR,
+            peakCadence: peakCadence,
             np: np,
             intensityFactor: intF,
             tss: tss,
@@ -314,6 +386,7 @@ final class RideController: ObservableObject {
         currentZone = Zones.all[0]
         currentIntervalContext = nil
         rolling3sPower = 0
+        peakPower = 0; peakHR = 0; peakCadence = 0
         np = 0; intensityFactor = 0; tss = 0
         powerBuffer.removeAll()
         statPower.removeAll(); statCadence.removeAll(); statHR.removeAll()

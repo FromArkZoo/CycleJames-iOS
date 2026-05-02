@@ -4,17 +4,27 @@ import SwiftData
 struct RideView: View {
     @EnvironmentObject private var ride: RideController
     @EnvironmentObject private var trainer: FTMSManager
+    @EnvironmentObject private var hr: HRManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var showStopOverlay = false
     @State private var showCompleteOverlay = false
     @State private var showAddIntervalSheet = false
+    @State private var showUpcomingSheet = false
+    @State private var showTrainerScan = false
+    @State private var showHRScan = false
     @State private var savedSession: RideSessionModel?
 
     private var ftp: Int { AppSettings.ftp }
     private var canEditLive: Bool { ride.state == .riding || ride.state == .paused }
     private var showDisconnectBanner: Bool {
         canEditLive && trainer.connectionState != .connected
+    }
+    private var showConnectRow: Bool {
+        // Only show inline connect buttons before/at countdown — once riding,
+        // the disconnect banner takes over for the trainer; HR is optional.
+        guard ride.state == .ready || ride.state == .countdown else { return false }
+        return trainer.connectionState != .connected || hr.connectionState != .connected
     }
 
     var body: some View {
@@ -28,6 +38,11 @@ struct RideView: View {
                     disconnectBanner
                         .padding(.horizontal, CJSpacing.l)
                         .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                if showConnectRow {
+                    connectRow
+                        .padding(.horizontal, CJSpacing.l)
                 }
 
                 if let workout = ride.selectedWorkout {
@@ -50,7 +65,8 @@ struct RideView: View {
                         .padding(.horizontal, CJSpacing.l)
                 }
 
-                ScrollView { MetricsGrid().padding(.bottom, 100) }
+                MetricsGrid()
+                    .padding(.bottom, CJSpacing.s)
             }
             .animation(.easeInOut(duration: 0.2), value: showDisconnectBanner)
 
@@ -106,10 +122,71 @@ struct RideView: View {
             }
         }
         .sheet(isPresented: $showAddIntervalSheet) {
-            AddIntervalSheet(ftp: ftp) { interval in
-                ride.insertIntervalAfterCurrent(interval)
+            if let workout = ride.selectedWorkout {
+                AddIntervalSheet(
+                    ftp: ftp,
+                    workout: workout,
+                    currentIntervalIndex: ride.currentIntervalContext?.index ?? -1
+                ) { interval, insertIndex in
+                    ride.insertInterval(interval, atIndex: insertIndex)
+                }
             }
         }
+        .sheet(isPresented: $showTrainerScan) {
+            TrainerScanSheet(manager: trainer)
+        }
+        .sheet(isPresented: $showHRScan) {
+            HRScanSheet(manager: hr)
+        }
+        .sheet(isPresented: $showUpcomingSheet) {
+            UpcomingIntervalsSheet()
+                .environmentObject(ride)
+        }
+    }
+
+    @ViewBuilder
+    private var connectRow: some View {
+        HStack(spacing: CJSpacing.s) {
+            connectChip(
+                connected: trainer.connectionState == .connected,
+                connectedLabel: "Trainer",
+                disconnectedLabel: "Connect Trainer",
+                icon: "bolt.horizontal.fill"
+            ) {
+                showTrainerScan = true
+            }
+            connectChip(
+                connected: hr.connectionState == .connected,
+                connectedLabel: "Heart Rate",
+                disconnectedLabel: "Connect HR",
+                icon: "heart.fill"
+            ) {
+                showHRScan = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func connectChip(connected: Bool, connectedLabel: String, disconnectedLabel: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(connected ? CJColors.success : CJColors.textMuted)
+                    .frame(width: 8, height: 8)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(connected ? connectedLabel : disconnectedLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, CJSpacing.s)
+            .foregroundStyle(connected ? CJColors.textPrimary : .white)
+            .background(connected ? CJColors.bgSecondary : CJColors.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -175,6 +252,22 @@ struct RideView: View {
             adjustButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: ctx != nil) {
                 ride.adjustCurrentInterval(byWatts: 5)
             }
+            Button {
+                showUpcomingSheet = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet.rectangle")
+                    Text("Queue")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, CJSpacing.s)
+                .frame(height: 32)
+                .foregroundStyle(.white)
+                .background(CJColors.card)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(CJColors.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
             Button {
                 showAddIntervalSheet = true
             } label: {
@@ -262,19 +355,47 @@ struct RideView: View {
 struct AddIntervalSheet: View {
     @Environment(\.dismiss) private var dismiss
     let ftp: Int
-    var onAdd: (Interval) -> Void
+    let workout: Workout
+    /// Index of the interval currently playing (-1 if no ride yet).
+    let currentIntervalIndex: Int
+    var onAdd: (Interval, Int) -> Void
 
     @State private var minutes: Int = 5
     @State private var powerPercent: Int = 65
+    @State private var insertIndex: Int = -1  // sentinel -1 → "after current"
 
     private var watts: Int { Int((Double(powerPercent) / 100.0 * Double(ftp)).rounded()) }
     private var zone: Zone { Zones.zone(forPercent: Double(powerPercent)) }
     private var durationLabel: String { minutes == 1 ? "1 min" : "\(minutes) min" }
 
+    /// All valid insertion points the user can pick from. Position 0 means
+    /// "before interval 0", position N means "at the end". We skip any
+    /// position that would land in the past (≤ current interval).
+    private var positions: [(label: String, index: Int)] {
+        var out: [(String, Int)] = []
+        let firstFuture = max(currentIntervalIndex + 1, 0)
+        // Default convenience option.
+        if currentIntervalIndex >= 0,
+           workout.intervals.indices.contains(currentIntervalIndex) {
+            out.append(("After current (\(workout.intervals[currentIntervalIndex].name))", firstFuture))
+        }
+        // Before each remaining interval.
+        for i in firstFuture..<workout.intervals.count {
+            out.append(("Before \(workout.intervals[i].name)", i))
+        }
+        // End of workout.
+        out.append(("End of workout", workout.intervals.count))
+        return out
+    }
+
+    private var resolvedIndex: Int {
+        insertIndex == -1 ? (positions.first?.index ?? workout.intervals.count) : insertIndex
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                Section("New interval") {
                     Stepper(value: $minutes, in: 1...60) {
                         HStack {
                             Text("Duration")
@@ -293,12 +414,22 @@ struct AddIntervalSheet: View {
                                 .monospacedDigit()
                         }
                     }
-                } footer: {
                     HStack(spacing: 6) {
                         Circle().fill(zone.color).frame(width: 8, height: 8)
                         Text("Zone: \(zone.name)")
                             .foregroundStyle(zone.color)
+                            .font(CJFont.caption)
                     }
+                }
+
+                Section("When to insert") {
+                    Picker("Position", selection: $insertIndex) {
+                        ForEach(Array(positions.enumerated()), id: \.offset) { _, p in
+                            Text(p.label).tag(p.index)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                 }
             }
             .navigationTitle("Add Interval")
@@ -314,13 +445,18 @@ struct AddIntervalSheet: View {
                             duration: minutes * 60,
                             powerPercent: Double(powerPercent)
                         )
-                        onAdd(interval)
+                        onAdd(interval, resolvedIndex)
                         dismiss()
                     }
                     .fontWeight(.semibold)
                 }
             }
+            .onAppear {
+                if insertIndex == -1, let first = positions.first {
+                    insertIndex = first.index
+                }
+            }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
     }
 }

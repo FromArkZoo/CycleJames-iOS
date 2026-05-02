@@ -28,6 +28,7 @@
 		715274FFF8C133E5E4BE6870 /* ConnectSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */; };
 		73FC328A08693E0F0504462B /* MetricsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73C60647CB27630AD8EA87F /* MetricsGrid.swift */; };
 		743FF29A0382690D17130F38 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E85FD69FDC5DCA3016DF56 /* HistoryView.swift */; };
+		7AD7655876E5DBF42164989D /* UpcomingIntervalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */; };
 		7B2F5621AB4D46DAA0AC1087 /* WorkoutFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */; };
 		7CCAF642287ECFB0A66C254C /* CompleteSummaryOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CBD4E56475D4CD7DB451D48 /* CompleteSummaryOverlay.swift */; };
 		84EF4D950CA9CA51C1026995 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27045B67616F657CBEBCC974 /* Colors.swift */; };
@@ -85,6 +86,7 @@
 		D93FAB6C59AE25DD9AF852BA /* Spacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacing.swift; sourceTree = "<group>"; };
 		D97EFEE40817AD4181CF4FEB /* ControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsBar.swift; sourceTree = "<group>"; };
 		DD59C8BE8974EE520A981D7C /* RideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideView.swift; sourceTree = "<group>"; };
+		E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingIntervalsSheet.swift; sourceTree = "<group>"; };
 		E73C60647CB27630AD8EA87F /* MetricsGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsGrid.swift; sourceTree = "<group>"; };
 		EC7FB9D5FB194EA542682FCC /* TrainerData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerData.swift; sourceTree = "<group>"; };
 		EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutGraphView.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 				E73C60647CB27630AD8EA87F /* MetricsGrid.swift */,
 				DD59C8BE8974EE520A981D7C /* RideView.swift */,
 				6E622560DBC9D6C4741D51D3 /* StopConfirmOverlay.swift */,
+				E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */,
 			);
 			path = Ride;
 			sourceTree = "<group>";
@@ -389,6 +392,7 @@
 				393C015623FA2D1E9AA4BC18 /* StopConfirmOverlay.swift in Sources */,
 				1920B11FB57ED136895E923D /* TrainerData.swift in Sources */,
 				B99A429F7F044A47390773C6 /* Typography.swift in Sources */,
+				7AD7655876E5DBF42164989D /* UpcomingIntervalsSheet.swift in Sources */,
 				5F7E8E08C61E25006ED1F544 /* Workout.swift in Sources */,
 				ACBDD06292DCBB13830FDD3F /* WorkoutBuilderView.swift in Sources */,
 				8D04E0261A5897F85BC2D2E2 /* WorkoutCard.swift in Sources */,

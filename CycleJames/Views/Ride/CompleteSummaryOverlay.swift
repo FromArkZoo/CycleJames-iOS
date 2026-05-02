@@ -15,12 +15,14 @@ struct CompleteSummaryOverlay: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: CJSpacing.s) {
                     summary("Duration", TimeFormat.duration(session.durationSec))
                     summary("Avg Power", "\(session.avgPower)W")
+                    summary("Peak Power", session.peakPower > 0 ? "\(session.peakPower)W" : "--")
                     summary("NP", "\(session.np)W")
-                    summary("Avg Cadence", "\(session.avgCadence)rpm")
-                    summary("Avg HR", "\(session.avgHR)bpm")
+                    summary("Avg Cadence", session.avgCadence > 0 ? "\(session.avgCadence)rpm" : "--")
+                    summary("Peak Cadence", session.peakCadence > 0 ? "\(session.peakCadence)rpm" : "--")
+                    summary("Avg HR", session.avgHR > 0 ? "\(session.avgHR)bpm" : "--")
+                    summary("Peak HR", session.peakHR > 0 ? "\(session.peakHR)bpm" : "--")
                     summary("IF", String(format: "%.2f", session.intensityFactor))
                     summary("TSS", "\(session.tss)")
-                    summary("FTP", "\(session.ftp)W")
                 }
 
                 Button(action: onDone) {
