@@ -94,6 +94,7 @@ struct CalendarView: View {
             .frame(width: 36, height: 36)
             .background(CJColors.card)
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityLabel("Previous month")
 
             Spacer()
             Text(monthLabel).font(CJFont.title).foregroundStyle(CJColors.textPrimary)
@@ -107,6 +108,7 @@ struct CalendarView: View {
             .frame(width: 36, height: 36)
             .background(CJColors.card)
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            .accessibilityLabel("Next month")
         }
         .tint(CJColors.textPrimary)
     }

@@ -7,19 +7,19 @@ struct ControlsBar: View {
 
     var body: some View {
         HStack(spacing: CJSpacing.m) {
-            controlButton(systemName: "backward.fill", isEnabled: isRideActive) {
+            controlButton(systemName: "backward.fill", label: "Skip to previous interval", isEnabled: isRideActive) {
                 ride.skipBackward()
             }
 
             primaryButton
 
             if ride.state == .riding || ride.state == .paused {
-                controlButton(systemName: "stop.fill", color: CJColors.danger) {
+                controlButton(systemName: "stop.fill", label: "Stop ride", color: CJColors.danger) {
                     onStop()
                 }
             }
 
-            controlButton(systemName: "forward.fill", isEnabled: isRideActive) {
+            controlButton(systemName: "forward.fill", label: "Skip to next interval", isEnabled: isRideActive) {
                 ride.skipForward()
             }
         }
@@ -71,7 +71,7 @@ struct ControlsBar: View {
         .disabled(isCountdown)
     }
 
-    private func controlButton(systemName: String, isEnabled: Bool = true, color: Color? = nil, action: @escaping () -> Void) -> some View {
+    private func controlButton(systemName: String, label: String, isEnabled: Bool = true, color: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 18, weight: .bold))
@@ -84,5 +84,6 @@ struct ControlsBar: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
+        .accessibilityLabel(label)
     }
 }

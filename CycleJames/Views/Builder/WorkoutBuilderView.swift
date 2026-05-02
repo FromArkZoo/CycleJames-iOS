@@ -320,9 +320,12 @@ struct IntervalEditorRow: View {
                 Spacer()
                 Button(action: onMoveUp) { Image(systemName: "arrow.up") }
                     .disabled(!canMoveUp)
+                    .accessibilityLabel("Move interval up")
                 Button(action: onMoveDown) { Image(systemName: "arrow.down") }
                     .disabled(!canMoveDown)
+                    .accessibilityLabel("Move interval down")
                 Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+                    .accessibilityLabel("Delete interval")
             }
 
             HStack {

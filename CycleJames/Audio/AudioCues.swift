@@ -11,8 +11,12 @@ final class AudioCues {
     private func configureSession() {
         guard !sessionConfigured else { return }
         let session = AVAudioSession.sharedInstance()
-        // Ambient + mixWithOthers so beeps don't pause user's music.
-        try? session.setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        // .playback (not .ambient) — needed so countdown/interval beeps fire
+        // when the phone is locked mid-ride. .mixWithOthers keeps any music
+        // the user is playing audible alongside our cues. The `audio`
+        // background mode in Info.plist plus this category together let us
+        // produce sound while suspended.
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true, options: [])
         sessionConfigured = true
     }

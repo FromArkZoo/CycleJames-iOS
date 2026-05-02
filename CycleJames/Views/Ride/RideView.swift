@@ -169,10 +169,10 @@ struct RideView: View {
                     .monospacedDigit()
             }
             Spacer(minLength: CJSpacing.s)
-            adjustButton(systemName: "minus", enabled: ctx != nil) {
+            adjustButton(systemName: "minus", label: "Decrease current interval power by 5 watts", enabled: ctx != nil) {
                 ride.adjustCurrentInterval(byWatts: -5)
             }
-            adjustButton(systemName: "plus", enabled: ctx != nil) {
+            adjustButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: ctx != nil) {
                 ride.adjustCurrentInterval(byWatts: 5)
             }
             Button {
@@ -199,7 +199,7 @@ struct RideView: View {
     }
 
     @ViewBuilder
-    private func adjustButton(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func adjustButton(systemName: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 14, weight: .bold))
@@ -211,6 +211,7 @@ struct RideView: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder
