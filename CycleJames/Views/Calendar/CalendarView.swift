@@ -9,6 +9,21 @@ struct CalendarView: View {
     private let calendar = Calendar(identifier: .iso8601)
     private let dayHeaders = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
+    /// Cells in the LazyVGrid month layout. Wrapped in an Identifiable enum
+    /// so the leading-empty cells and day cells don't share integer IDs
+    /// when both sit in the same grid — SwiftUI dedupes by id and drops the
+    /// later items, which hid days 1-3 of any month starting after Monday.
+    private enum MonthCell: Identifiable {
+        case empty(Int)
+        case day(Int)
+        var id: String {
+            switch self {
+            case .empty(let i): return "empty-\(i)"
+            case .day(let d): return "day-\(d)"
+            }
+        }
+    }
+
     private var monthStart: Date {
         calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth))!
     }
@@ -108,6 +123,10 @@ struct CalendarView: View {
         let todayDay = g.isDate(Date(), equalTo: displayedMonth, toGranularity: .month)
             ? g.component(.day, from: Date()) : nil
 
+        var cells: [MonthCell] = []
+        for i in 0..<leadingEmptyCells { cells.append(.empty(i)) }
+        for d in 1...daysInMonth { cells.append(.day(d)) }
+
         return LazyVGrid(columns: columns, spacing: 4) {
             ForEach(dayHeaders, id: \.self) { h in
                 Text(h)
@@ -116,11 +135,13 @@ struct CalendarView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
             }
-            ForEach(0..<leadingEmptyCells, id: \.self) { _ in
-                Rectangle().fill(.clear).frame(height: 44)
-            }
-            ForEach(1...daysInMonth, id: \.self) { day in
-                dayCell(day: day, isToday: day == todayDay)
+            ForEach(cells) { cell in
+                switch cell {
+                case .empty:
+                    Rectangle().fill(.clear).frame(height: 44)
+                case .day(let d):
+                    dayCell(day: d, isToday: d == todayDay)
+                }
             }
         }
     }
