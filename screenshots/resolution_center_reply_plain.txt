@@ -1,0 +1,44 @@
+Hello App Review team,
+
+Thank you for the detailed feedback. Replies to each point below.
+
+GUIDELINE 2.5.4 — BACKGROUND AUDIO
+
+We have removed "audio" from the UIBackgroundModes array in Info.plist. The app no longer declares the audio background mode. Audio cues (countdown and interval beeps) now play only while the app is in the foreground. The new build (1.0 build 2) reflects this change.
+
+GUIDELINE 1.4.1 — MEDICAL DISCLAIMER
+
+We have added the following disclaimer to the end of the app's description in App Store Connect:
+
+DISCLAIMER
+CycleJames is a fitness app, not a medical device. It does not diagnose, treat, cure or prevent any condition. Consult a qualified physician before starting any new training programme, and seek a doctor's advice before making any decisions related to your health. Stop exercising and seek medical attention if you experience pain, dizziness or other symptoms during a workout.
+
+GUIDELINE 2.1 — HARDWARE BRAND AND AUTHORISATION
+
+CycleJames does NOT use any brand-specific Bluetooth protocols. It speaks two open, standardised Bluetooth GATT profiles published by the Bluetooth SIG:
+
+- FTMS (Fitness Machine Service, UUID 0x1826) — used for smart trainers.
+- Heart Rate Service (UUID 0x180D) — used for heart-rate monitors.
+
+Both profiles are vendor-neutral public standards. The app works with any hardware that implements these profiles correctly, regardless of manufacturer. We are not affiliated with, sponsored by, or distributing on behalf of any specific brand. No brand names, logos, or trademarks belonging to hardware manufacturers are used in the app's UI, marketing, or App Store listing in a way that implies endorsement — references such as "Wahoo, Tacx, Wattbike" appear only as factual examples of trainers that implement the open FTMS standard, in the same way a generic Bluetooth keyboard app might mention that it is compatible with keyboards from various vendors.
+
+Because the app is not distributed on behalf of any brand, no authorisation documentation applies.
+
+GUIDELINE 2.1 — DEMO VIDEO
+
+A demo video has been uploaded; the link is in the App Review Information section. The video is filmed on a physical iPhone (not a simulator) and shows:
+
+1. The app launched on the iPhone.
+2. The initial Bluetooth pairing flow with a Wattbike Atom smart trainer (FTMS) and a Polar H10 heart-rate strap.
+3. Selecting a built-in workout from the library.
+4. Starting the workout — live target power streaming to the trainer, resistance changing automatically as the workout steps through intervals, live heart-rate and power readouts on screen.
+5. Mid-ride controls — adjusting target watts, skipping an interval.
+6. Finishing the workout — saved ride summary with average power, normalised power, IF, TSS.
+7. Exporting the ride via the iOS share sheet.
+
+Both the iPhone screen and the trainer/HR hardware are visible throughout.
+
+Please let us know if anything further is needed.
+
+Thanks,
+James Browne

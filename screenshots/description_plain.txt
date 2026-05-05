@@ -1,0 +1,25 @@
+CycleJames is a focused, single-purpose indoor cycling app for structured power-based training on FTMS-compatible smart trainers.
+
+Connect your trainer over Bluetooth. Pick a workout. The app writes target watts to the trainer in real time so resistance follows the plan automatically — no head unit required.
+
+WHAT YOU GET
+• 97 built-in workouts covering VO2max, threshold, sweet spot, endurance, recovery, sprint and tempo sessions — from 15-minute easy spins to 6-hour century-prep epics.
+• Live target power streaming over Bluetooth (FTMS protocol) — your trainer sets resistance for you.
+• Heart-rate display from any standard Bluetooth heart-rate monitor.
+• Adjust intensity mid-ride: fine-tune the active interval in 5W steps, skip ahead, jump to any upcoming interval, or insert a custom interval on the fly when you want to push harder.
+• Workout builder — design your own steady or ramp intervals and save them.
+• Export rides to Strava and Garmin Connect via the iOS share sheet (TCX).
+• Local ride history with average power, peak power, normalized power, intensity factor, and TSS for every session.
+• Calendar view of your training week and month.
+
+PRIVACY
+CycleJames keeps everything on your device. No accounts. No cloud. No analytics. No tracking. Uninstall the app and your data goes with it.
+
+COMPATIBLE TRAINERS
+Any smart trainer that supports the standard FTMS Bluetooth profile, which includes most modern trainers from Wahoo, Tacx, Wattbike, Saris, Elite, JetBlack, and others.
+
+REQUIREMENTS
+iPhone running iOS 17 or later, plus an FTMS-compatible Bluetooth smart trainer. A Bluetooth heart-rate strap is optional.
+
+DISCLAIMER
+CycleJames is a fitness app, not a medical device. It does not diagnose, treat, cure or prevent any condition. Consult a qualified physician before starting any new training programme, and seek a doctor's advice before making any decisions related to your health. Stop exercising and seek medical attention if you experience pain, dizziness or other symptoms during a workout.
