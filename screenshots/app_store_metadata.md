@@ -64,6 +64,14 @@ Copy/paste-ready content for App Store Connect → My Apps → New App, then the
 > REQUIREMENTS
 > iPhone running iOS 17 or later, plus an FTMS-compatible Bluetooth smart
 > trainer. A Bluetooth heart-rate strap is optional.
+>
+> DISCLAIMER
+> CycleJames is a fitness app, not a medical device. It does not diagnose,
+> treat, cure or prevent any condition. Consult a qualified physician before
+> starting any new training programme, and seek a doctor's advice before
+> making any decisions related to your health. Stop exercising and seek
+> medical attention if you experience pain, dizziness or other symptoms
+> during a workout.
 
 ### Keywords (≤100 chars, comma-separated)
 
@@ -123,3 +131,5 @@ approves.)
 - [ ] App review info filled
 - [ ] Build uploaded from Xcode Organizer and selected on this version
 - [ ] "Save" + "Add for Review" + "Submit"
+
+

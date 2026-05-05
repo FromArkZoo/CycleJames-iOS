@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.9"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 targets:
   CycleJames:
@@ -42,7 +42,6 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - bluetooth-central
-          - audio
         NSBluetoothAlwaysUsageDescription: "CycleJames uses Bluetooth to connect to your smart trainer and heart rate monitor."
         UIRequiresPersistentWiFi: false
         UIApplicationSupportsIndirectInputEvents: true
