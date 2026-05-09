@@ -37,13 +37,14 @@ struct HistoryView: View {
             }
             .background(CJColors.bgPrimary.ignoresSafeArea())
             .navigationTitle("History")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: UUID.self) { id in
                 if let s = sessions.first(where: { $0.id == id }) {
                     HistoryDetailView(session: s)
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { BrandMark() }
+                ToolbarItem(placement: .principal) { BrandMark() }
             }
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

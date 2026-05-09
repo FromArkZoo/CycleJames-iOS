@@ -29,4 +29,11 @@ enum CJColors {
         startPoint: .top,
         endPoint: .bottom
     )
+
+    // Training-zone bar colors — sampled from the app icon (the four pills under "CJ").
+    // Map roughly to recovery / endurance / threshold / VO2max.
+    static let zoneBar1 = Color(red: 0.376, green: 0.682, blue: 0.451) // #60AE73 muted green
+    static let zoneBar2 = Color(red: 0.816, green: 0.682, blue: 0.216) // #D0AE37 mustard
+    static let zoneBar3 = Color(red: 0.831, green: 0.447, blue: 0.216) // #D47237 muted orange
+    static let zoneBar4 = Color(red: 0.816, green: 0.243, blue: 0.247) // #D03E3F muted red
 }

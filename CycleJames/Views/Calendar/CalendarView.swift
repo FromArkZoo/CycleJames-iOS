@@ -2,9 +2,24 @@ import SwiftUI
 import SwiftData
 
 struct CalendarView: View {
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var ride: RideController
     @Query(sort: \RideSessionModel.date, order: .reverse) private var sessions: [RideSessionModel]
+    @Query(sort: \ScheduledRideModel.date) private var scheduled: [ScheduledRideModel]
+    @Query private var customWorkouts: [CustomWorkoutModel]
     @State private var displayedMonth: Date = Date()
     @State private var selectedDay: Int?
+    @State private var showSchedulePickerForDate: Date?
+    @State private var rescheduleTarget: ScheduledRideModel?
+    @State private var navigationPath: [Workout] = []
+
+    private var allWorkouts: [Workout] {
+        customWorkouts.map { $0.toWorkout() } + BuiltInWorkouts.all
+    }
+
+    private func workout(for id: String) -> Workout? {
+        allWorkouts.first(where: { $0.id == id })
+    }
 
     private let calendar = Calendar(identifier: .iso8601)
     private let dayHeaders = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -57,34 +72,117 @@ struct CalendarView: View {
         return bucket
     }
 
+    private var monthlyScheduled: [Int: [ScheduledRideModel]] {
+        var bucket: [Int: [ScheduledRideModel]] = [:]
+        let g = Calendar(identifier: .gregorian)
+        let m = g.component(.month, from: displayedMonth)
+        let y = g.component(.year, from: displayedMonth)
+        for s in scheduled {
+            let mm = g.component(.month, from: s.date)
+            let yy = g.component(.year, from: s.date)
+            if mm == m && yy == y {
+                let day = g.component(.day, from: s.date)
+                bucket[day, default: []].append(s)
+            }
+        }
+        return bucket
+    }
+
+    /// Date for a given day-of-month within the displayed month (start of day).
+    private func date(forDay day: Int) -> Date {
+        let g = Calendar(identifier: .gregorian)
+        var c = g.dateComponents([.year, .month], from: displayedMonth)
+        c.day = day
+        return g.startOfDay(for: g.date(from: c) ?? displayedMonth)
+    }
+
+    /// Is the given day-of-month strictly before today?
+    private func isPastDay(_ day: Int) -> Bool {
+        let g = Calendar(identifier: .gregorian)
+        let today = g.startOfDay(for: Date())
+        return date(forDay: day) < today
+    }
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                monthNav
-                    .padding(.horizontal, CJSpacing.l)
-                    .padding(.vertical, CJSpacing.m)
-
-                grid
-                    .padding(.horizontal, CJSpacing.l)
-
-                Divider().background(CJColors.border).padding(.vertical, CJSpacing.m)
-
-                if let day = selectedDay {
-                    dayDetail(day: day, rides: monthlyRides[day] ?? [])
+        NavigationStack(path: $navigationPath) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    monthNav
                         .padding(.horizontal, CJSpacing.l)
-                }
+                        .padding(.vertical, CJSpacing.m)
 
-                Spacer()
+                    grid
+                        .padding(.horizontal, CJSpacing.l)
+
+                    Divider().background(CJColors.border).padding(.vertical, CJSpacing.m)
+
+                    if let day = selectedDay {
+                        dayDetail(day: day)
+                            .padding(.horizontal, CJSpacing.l)
+                    }
+
+                    Spacer(minLength: CJSpacing.xl)
+                }
             }
             .background(CJColors.bgPrimary.ignoresSafeArea())
             .navigationTitle("Calendar")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Workout.self) { w in
+                WorkoutDetailView(workout: w)
+            }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { BrandMark() }
+                ToolbarItem(placement: .principal) { BrandMark() }
             }
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(item: Binding(
+                get: { showSchedulePickerForDate.map { DateWrapper(date: $0) } },
+                set: { showSchedulePickerForDate = $0?.date }
+            )) { wrapper in
+                WorkoutPickerSheet(scheduledFor: wrapper.date) { picked in
+                    schedule(workout: picked, on: wrapper.date)
+                }
+            }
+            .sheet(item: $rescheduleTarget) { target in
+                ReschedulePickerSheet(scheduled: target) { newDate in
+                    reschedule(target, to: newDate)
+                }
+            }
         }
+    }
+
+    private struct DateWrapper: Identifiable {
+        let date: Date
+        var id: Date { date }
+    }
+
+    // MARK: Mutations
+
+    private func schedule(workout: Workout, on date: Date) {
+        let model = ScheduledRideModel(
+            workoutId: workout.id,
+            workoutName: workout.name,
+            category: workout.category.rawValue,
+            date: date
+        )
+        modelContext.insert(model)
+        try? modelContext.save()
+    }
+
+    private func reschedule(_ s: ScheduledRideModel, to newDate: Date) {
+        s.date = Calendar(identifier: .gregorian).startOfDay(for: newDate)
+        try? modelContext.save()
+    }
+
+    private func delete(_ s: ScheduledRideModel) {
+        modelContext.delete(s)
+        try? modelContext.save()
+    }
+
+    private func startNow(_ s: ScheduledRideModel) {
+        guard let w = workout(for: s.workoutId) else { return }
+        navigationPath.append(w)
     }
 
     private var monthNav: some View {
@@ -153,7 +251,7 @@ struct CalendarView: View {
 
     private func dayCell(day: Int, isToday: Bool) -> some View {
         let rides = monthlyRides[day] ?? []
-        let hasRides = !rides.isEmpty
+        let scheduledHere = monthlyScheduled[day] ?? []
         let isSelected = selectedDay == day
 
         return Button {
@@ -163,22 +261,19 @@ struct CalendarView: View {
                 Text("\(day)")
                     .font(CJFont.body)
                     .foregroundStyle(isToday ? CJColors.accent : CJColors.textPrimary)
-                if hasRides {
-                    Circle()
-                        .fill(CJColors.accent)
-                        .frame(width: 6, height: 6)
-                        .overlay(alignment: .topTrailing) {
-                            if rides.count > 1 {
-                                Text("\(rides.count)")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(CJColors.bgPrimary)
-                                    .padding(.horizontal, 3)
-                                    .background(CJColors.accent)
-                                    .clipShape(Capsule())
-                                    .offset(x: 8, y: -6)
-                            }
-                        }
+                HStack(spacing: 3) {
+                    if !rides.isEmpty {
+                        Circle()
+                            .fill(CJColors.accent)
+                            .frame(width: 6, height: 6)
+                    }
+                    if !scheduledHere.isEmpty {
+                        Circle()
+                            .strokeBorder(CJColors.brandGradient, lineWidth: 1.5)
+                            .frame(width: 8, height: 8)
+                    }
                 }
+                .frame(height: 8)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(isSelected ? CJColors.accent.opacity(0.18) : CJColors.card.opacity(0.4))
@@ -192,42 +287,124 @@ struct CalendarView: View {
     }
 
     @ViewBuilder
-    private func dayDetail(day: Int, rides: [RideSessionModel]) -> some View {
+    private func dayDetail(day: Int) -> some View {
+        let rides = monthlyRides[day] ?? []
+        let scheduledHere = monthlyScheduled[day] ?? []
+        let isPast = isPastDay(day)
+        let dayDate = date(forDay: day)
+
         VStack(alignment: .leading, spacing: CJSpacing.s) {
             Text(headerForDay(day))
                 .font(CJFont.title)
                 .foregroundStyle(CJColors.textPrimary)
-            if rides.isEmpty {
+
+            ForEach(scheduledHere) { s in
+                scheduledRow(s)
+            }
+
+            ForEach(rides) { r in
+                completedRow(r)
+            }
+
+            if !isPast {
+                Button {
+                    showSchedulePickerForDate = dayDate
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                        Text(scheduledHere.isEmpty && rides.isEmpty ? "Schedule a ride" : "Schedule another")
+                    }
+                    .font(CJFont.button)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, CJSpacing.m)
+                    .foregroundStyle(CJColors.bgPrimary)
+                    .background(CJColors.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+                }
+                .buttonStyle(.plain)
+            } else if rides.isEmpty {
                 Text("No rides on this day")
                     .font(CJFont.body)
                     .foregroundStyle(CJColors.textMuted)
-            } else {
-                ForEach(rides) { r in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(r.workoutName)
-                                .font(CJFont.body)
-                                .foregroundStyle(CJColors.textPrimary)
-                            Text(timeFor(r.date))
-                                .font(CJFont.caption)
-                                .foregroundStyle(CJColors.textMuted)
-                        }
-                        Spacer()
-                        Text(TimeFormat.duration(r.durationSec))
-                            .font(CJFont.caption)
-                            .foregroundStyle(CJColors.textSecondary)
-                            .monospacedDigit()
-                        Text("TSS \(r.tss)")
-                            .font(CJFont.caption)
-                            .foregroundStyle(CJColors.accent)
-                            .monospacedDigit()
-                    }
-                    .padding(CJSpacing.s)
-                    .background(CJColors.card)
-                    .clipShape(RoundedRectangle(cornerRadius: CJRadius.small))
-                }
             }
         }
+    }
+
+    private func scheduledRow(_ s: ScheduledRideModel) -> some View {
+        HStack(spacing: CJSpacing.m) {
+            Circle()
+                .strokeBorder(CJColors.brandGradient, lineWidth: 2)
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Image(systemName: "clock")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(CJColors.brandWarm2)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.workoutName)
+                    .font(CJFont.body)
+                    .foregroundStyle(CJColors.textPrimary)
+                Text("Scheduled · \(s.category)")
+                    .font(CJFont.caption)
+                    .foregroundStyle(CJColors.textSecondary)
+            }
+            Spacer()
+            Menu {
+                if workout(for: s.workoutId) != nil {
+                    Button {
+                        startNow(s)
+                    } label: { Label("Start Now", systemImage: "play.fill") }
+                }
+                Button {
+                    rescheduleTarget = s
+                } label: { Label("Reschedule", systemImage: "calendar") }
+                Button(role: .destructive) {
+                    delete(s)
+                } label: { Label("Delete", systemImage: "trash") }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(CJColors.textMuted)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+        }
+        .padding(CJSpacing.m)
+        .background(CJColors.card)
+        .overlay(
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(CJColors.brandGradient)
+                    .frame(width: 3)
+                Spacer()
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.small))
+    }
+
+    private func completedRow(_ r: RideSessionModel) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.workoutName)
+                    .font(CJFont.body)
+                    .foregroundStyle(CJColors.textPrimary)
+                Text(timeFor(r.date))
+                    .font(CJFont.caption)
+                    .foregroundStyle(CJColors.textMuted)
+            }
+            Spacer()
+            Text(TimeFormat.duration(r.durationSec))
+                .font(CJFont.caption)
+                .foregroundStyle(CJColors.textSecondary)
+                .monospacedDigit()
+            Text("TSS \(r.tss)")
+                .font(CJFont.caption)
+                .foregroundStyle(CJColors.accent)
+                .monospacedDigit()
+        }
+        .padding(CJSpacing.s)
+        .background(CJColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.small))
     }
 
     private func headerForDay(_ day: Int) -> String {

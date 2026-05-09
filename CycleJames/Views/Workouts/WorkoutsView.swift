@@ -53,10 +53,13 @@ struct WorkoutsView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text("CycleJames")
-                        .font(.system(size: 22, weight: .thin, design: .default))
-                        .italic()
-                        .foregroundStyle(CJColors.brandGradient)
+                    VStack(spacing: 4) {
+                        Text("CycleJames")
+                            .font(.system(size: 22, weight: .thin, design: .default))
+                            .italic()
+                            .foregroundStyle(CJColors.brandGradient)
+                        TrainingZoneBars(barWidth: 22, barHeight: 3, gap: 1.7)
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {

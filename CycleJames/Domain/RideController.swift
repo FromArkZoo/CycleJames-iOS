@@ -381,7 +381,24 @@ final class RideController: ObservableObject {
         )
         context.insert(model)
         try? context.save()
+        deleteMatchingScheduledRides(workoutId: w.id, on: model.date, context: context)
         return model
+    }
+
+    /// After completing a ride, remove any scheduled-ride record for the same
+    /// workout on the same calendar day — the intent has been fulfilled.
+    private func deleteMatchingScheduledRides(workoutId: String, on completedDate: Date, context: ModelContext) {
+        let g = Calendar(identifier: .gregorian)
+        let dayStart = g.startOfDay(for: completedDate)
+        guard let dayEnd = g.date(byAdding: .day, value: 1, to: dayStart) else { return }
+        let predicate = #Predicate<ScheduledRideModel> { s in
+            s.workoutId == workoutId && s.date >= dayStart && s.date < dayEnd
+        }
+        let descriptor = FetchDescriptor<ScheduledRideModel>(predicate: predicate)
+        if let matches = try? context.fetch(descriptor) {
+            for m in matches { context.delete(m) }
+            try? context.save()
+        }
     }
 
     // MARK: Reset

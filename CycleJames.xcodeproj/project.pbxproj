@@ -17,8 +17,10 @@
 		1B5FD41979F9E2AE95A5031E /* MiniWorkoutGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D5483DC78BDB81827047D1 /* MiniWorkoutGraphView.swift */; };
 		2B612340B7C42A04A292EB1B /* FTMSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968D2E2E0F76370A84721343 /* FTMSManager.swift */; };
 		2E731837FEF572A30EDF4FAE /* HistoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB146FEDFD0188672F0BE65 /* HistoryDetailView.swift */; };
+		3653066288920E6FB73FA02E /* WorkoutPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6EADEB664BB310D1893E85 /* WorkoutPickerSheet.swift */; };
 		393C015623FA2D1E9AA4BC18 /* StopConfirmOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E622560DBC9D6C4741D51D3 /* StopConfirmOverlay.swift */; };
 		3F065C5600A6BB0FC728E3A2 /* AudioCues.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4985887F9943E74EB3E49C10 /* AudioCues.swift */; };
+		3F15A83515D1D52830D93FCA /* ScheduledRideModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */; };
 		43E0D2FD6D8B07DDEA2DF93F /* WorkoutFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */; };
 		450CEE03CFA7A5DB0D881459 /* OrientationLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096E8D20A018E13E1B268E0A /* OrientationLock.swift */; };
 		45ACCA3813077476594DF4F0 /* WorkoutGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */; };
@@ -43,6 +45,7 @@
 		96D3F8205C93D4DED8505F34 /* ConnectDevicesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */; };
 		98A93A30D089CD7218E90A9D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C7385020B3CE86C9767E793 /* Assets.xcassets */; };
 		9963BB5D8A68BB0EC0E1E26D /* Zone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A21BCD05706976595E49E1E /* Zone.swift */; };
+		A3DA50D2BDFC98DB2802C84A /* ScheduleForLaterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8572753D202928A81E22F03 /* ScheduleForLaterSheet.swift */; };
 		A49A1514DC06597A7EA19D27 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */; };
 		A6E3841921A014B458E5F48D /* WorkoutPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */; };
 		A840ECE284C2940A72A2FD74 /* LandscapeRideLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */; };
@@ -61,10 +64,12 @@
 		F326518D7074167C78A64976 /* FavouritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E8EF33E06BDED6BC643ED9 /* FavouritesView.swift */; };
 		F3A003CD49A9C10FCF55A2DF /* HeroIntervalCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6387688F8F5658F6EBEDFD5A /* HeroIntervalCard.swift */; };
 		FDA6BE5FDA70CCFBA549B35D /* WorkoutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768C9304952E6E9A246A2914 /* WorkoutsView.swift */; };
+		FE55E1C2D4D33E0BAC9BD566 /* ReschedulePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */; };
 		FFCDA543FC7F02481025181B /* RideRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReschedulePickerSheet.swift; sourceTree = "<group>"; };
 		06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LandscapeRideLayout.swift; sourceTree = "<group>"; };
 		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		096E8D20A018E13E1B268E0A /* OrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationLock.swift; sourceTree = "<group>"; };
@@ -111,13 +116,16 @@
 		D97EFEE40817AD4181CF4FEB /* ControlsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlsBar.swift; sourceTree = "<group>"; };
 		DD59C8BE8974EE520A981D7C /* RideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideView.swift; sourceTree = "<group>"; };
 		E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingIntervalsSheet.swift; sourceTree = "<group>"; };
+		E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledRideModel.swift; sourceTree = "<group>"; };
 		E73C60647CB27630AD8EA87F /* MetricsGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsGrid.swift; sourceTree = "<group>"; };
+		EB6EADEB664BB310D1893E85 /* WorkoutPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPickerSheet.swift; sourceTree = "<group>"; };
 		EC7FB9D5FB194EA542682FCC /* TrainerData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerData.swift; sourceTree = "<group>"; };
 		EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutGraphView.swift; sourceTree = "<group>"; };
 		F2D5483DC78BDB81827047D1 /* MiniWorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWorkoutGraphView.swift; sourceTree = "<group>"; };
 		F53FCFAC11CC0FC2EA92458A /* CountdownOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountdownOverlay.swift; sourceTree = "<group>"; };
 		F5A39ADEABF307D2BA4AAD11 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		F82E9EF5F75072ED161477C6 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		F8572753D202928A81E22F03 /* ScheduleForLaterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleForLaterSheet.swift; sourceTree = "<group>"; };
 		F9139BBB64D0A0B7A74310F4 /* RideController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideController.swift; sourceTree = "<group>"; };
 		FD14DA6F0DFAE1F0B9B757B7 /* HRManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRManager.swift; sourceTree = "<group>"; };
 		FE0D71EF650D915BB866A150 /* MetricCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricCard.swift; sourceTree = "<group>"; };
@@ -128,6 +136,8 @@
 			isa = PBXGroup;
 			children = (
 				3D658811265D09659A8C1D3B /* CalendarView.swift */,
+				04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */,
+				EB6EADEB664BB310D1893E85 /* WorkoutPickerSheet.swift */,
 			);
 			path = Calendar;
 			sourceTree = "<group>";
@@ -175,6 +185,7 @@
 				3D5E89461389BBE63D5B7131 /* CustomWorkoutModel.swift */,
 				81501E582C63A162BDD750B9 /* FavouritesStore.swift */,
 				0D3DDCB25365FED10E350227 /* RideSessionModel.swift */,
+				E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */,
 				BB29625AF30B7031270D3C15 /* Settings.swift */,
 				9C33D6C05219ED4ACF14DE19 /* Workout.swift */,
 				7A21BCD05706976595E49E1E /* Zone.swift */,
@@ -287,6 +298,7 @@
 			children = (
 				B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */,
 				CCE48FE58DD4E72053AF9080 /* ConnectSheets.swift */,
+				F8572753D202928A81E22F03 /* ScheduleForLaterSheet.swift */,
 				4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */,
 				1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */,
 				B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */,
@@ -439,11 +451,14 @@
 				663E9FD7F76B4BD42A400031 /* OnboardingView.swift in Sources */,
 				450CEE03CFA7A5DB0D881459 /* OrientationLock.swift in Sources */,
 				0E410A7BD79EFC41BDA817CC /* PowerMetrics.swift in Sources */,
+				FE55E1C2D4D33E0BAC9BD566 /* ReschedulePickerSheet.swift in Sources */,
 				D0FA5813754BAE3C2D088A73 /* RideController.swift in Sources */,
 				FFCDA543FC7F02481025181B /* RideRecorder.swift in Sources */,
 				C87C9C9AC44A719CDF267D45 /* RideSessionModel.swift in Sources */,
 				4D6CF32DF805BF4122974B6C /* RideView.swift in Sources */,
 				D797EFF4286F7467270337E4 /* RootView.swift in Sources */,
+				A3DA50D2BDFC98DB2802C84A /* ScheduleForLaterSheet.swift in Sources */,
+				3F15A83515D1D52830D93FCA /* ScheduledRideModel.swift in Sources */,
 				8AFADB5F48C02E80ECFE9D7D /* Settings.swift in Sources */,
 				00A5FC20A86296AAD35E0423 /* SettingsView.swift in Sources */,
 				5DD4F9F766A6051E1EA8C77F /* ShareSheet.swift in Sources */,
@@ -460,6 +475,7 @@
 				43E0D2FD6D8B07DDEA2DF93F /* WorkoutFilter.swift in Sources */,
 				7B2F5621AB4D46DAA0AC1087 /* WorkoutFilterBar.swift in Sources */,
 				45ACCA3813077476594DF4F0 /* WorkoutGraphView.swift in Sources */,
+				3653066288920E6FB73FA02E /* WorkoutPickerSheet.swift in Sources */,
 				A6E3841921A014B458E5F48D /* WorkoutPlayer.swift in Sources */,
 				FDA6BE5FDA70CCFBA549B35D /* WorkoutsView.swift in Sources */,
 				9963BB5D8A68BB0EC0E1E26D /* Zone.swift in Sources */,

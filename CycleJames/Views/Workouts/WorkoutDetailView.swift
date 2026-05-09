@@ -9,6 +9,7 @@ struct WorkoutDetailView: View {
     @State private var goToRide = false
     @State private var edited: Workout
     @State private var showSaveAsCustomSheet = false
+    @State private var showScheduleSheet = false
 
     init(workout: Workout) {
         self.workout = workout
@@ -84,6 +85,17 @@ struct WorkoutDetailView: View {
         }
         .background(CJColors.bgPrimary.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showScheduleSheet = true
+                } label: {
+                    Image(systemName: "calendar.badge.plus")
+                        .foregroundStyle(CJColors.accent)
+                }
+                .accessibilityLabel("Schedule for later")
+            }
+        }
         .safeAreaInset(edge: .bottom) {
             startButton
                 .padding(CJSpacing.l)
@@ -98,6 +110,23 @@ struct WorkoutDetailView: View {
                 saveAsCustom(name: name, description: description)
             }
         }
+        .sheet(isPresented: $showScheduleSheet) {
+            ScheduleForLaterSheet(workout: workout) { pickedDate in
+                schedule(on: pickedDate)
+            }
+        }
+    }
+
+    private func schedule(on date: Date) {
+        let dayStart = Calendar(identifier: .gregorian).startOfDay(for: date)
+        let model = ScheduledRideModel(
+            workoutId: workout.id,
+            workoutName: workout.name,
+            category: workout.category.rawValue,
+            date: dayStart
+        )
+        modelContext.insert(model)
+        try? modelContext.save()
     }
 
     private func saveAsCustom(name: String, description: String) {

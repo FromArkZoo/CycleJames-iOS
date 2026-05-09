@@ -10,7 +10,7 @@ struct CycleJamesApp: App {
     init() {
         do {
             modelContainer = try ModelContainer(
-                for: RideSessionModel.self, CustomWorkoutModel.self
+                for: RideSessionModel.self, CustomWorkoutModel.self, ScheduledRideModel.self
             )
         } catch {
             fatalError("ModelContainer init failed: \(error)")
