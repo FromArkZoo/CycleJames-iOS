@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct RideView: View {
     @EnvironmentObject private var ride: RideController
@@ -103,9 +104,11 @@ struct RideView: View {
         }
         .onAppear {
             OrientationLock.shared.lock(.allButUpsideDown)
+            UIApplication.shared.isIdleTimerDisabled = true
         }
         .onDisappear {
             OrientationLock.shared.lock(.portrait)
+            UIApplication.shared.isIdleTimerDisabled = false
         }
         .onChange(of: ride.state) { _, new in
             if new == .completed && !showCompleteOverlay {
