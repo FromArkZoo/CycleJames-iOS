@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WorkoutCard: View {
+    @EnvironmentObject private var favourites: FavouritesStore
     let workout: Workout
     var isSelected: Bool = false
 
@@ -15,6 +16,7 @@ struct WorkoutCard: View {
                     .font(CJFont.caption)
                     .foregroundStyle(CJColors.textSecondary)
                     .monospacedDigit()
+                    .padding(.trailing, 28)
             }
 
             Text(workout.name)
@@ -41,10 +43,33 @@ struct WorkoutCard: View {
         }
         .padding(CJSpacing.l)
         .background(CJColors.card)
+        .overlay(alignment: .topTrailing) {
+            FavouriteButton(workoutID: workout.id)
+                .padding(CJSpacing.m)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: CJRadius.card)
                 .stroke(isSelected ? CJColors.accent : CJColors.border, lineWidth: isSelected ? 2 : 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: CJRadius.card))
+    }
+}
+
+struct FavouriteButton: View {
+    @EnvironmentObject private var favourites: FavouritesStore
+    let workoutID: String
+
+    var body: some View {
+        Button {
+            favourites.toggle(workoutID)
+        } label: {
+            Image(systemName: favourites.isFavourite(workoutID) ? "heart.fill" : "heart")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(favourites.isFavourite(workoutID) ? CJColors.danger : CJColors.textMuted)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(favourites.isFavourite(workoutID) ? "Remove from favourites" : "Add to favourites")
     }
 }

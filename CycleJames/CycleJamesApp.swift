@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct CycleJamesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var favourites = FavouritesStore()
     let modelContainer: ModelContainer
 
     init() {
@@ -21,6 +22,7 @@ struct CycleJamesApp: App {
             RootView()
                 .preferredColorScheme(.dark)
                 .tint(CJColors.accent)
+                .environmentObject(favourites)
         }
         .modelContainer(modelContainer)
     }

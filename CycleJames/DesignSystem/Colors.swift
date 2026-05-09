@@ -18,4 +18,15 @@ enum CJColors {
     static let danger       = Color(red: 0.957, green: 0.263, blue: 0.212) // #F44336
 
     static let positionMarker = Color(red: 1.000, green: 0.843, blue: 0.000) // #FFD700
+
+    // Brand wordmark gradient — matches the app icon (amber → orange → red).
+    static let brandWarm1 = Color(red: 1.000, green: 0.784, blue: 0.341) // #FFC857
+    static let brandWarm2 = Color(red: 1.000, green: 0.549, blue: 0.180) // #FF8C2E
+    static let brandWarm3 = Color(red: 0.914, green: 0.294, blue: 0.235) // #E94B3C
+
+    static let brandGradient = LinearGradient(
+        colors: [brandWarm1, brandWarm2, brandWarm3],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }

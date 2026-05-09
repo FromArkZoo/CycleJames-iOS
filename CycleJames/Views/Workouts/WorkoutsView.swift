@@ -47,8 +47,26 @@ struct WorkoutsView: View {
             }
             .background(CJColors.bgPrimary.ignoresSafeArea())
             .navigationTitle("CycleJames")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Workout.self) { w in
                 WorkoutDetailView(workout: w)
+            }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("CycleJames")
+                        .font(.system(size: 22, weight: .thin, design: .default))
+                        .italic()
+                        .foregroundStyle(CJColors.brandGradient)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .foregroundStyle(CJColors.textPrimary)
+                    }
+                    .accessibilityLabel("Settings")
+                }
             }
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

@@ -8,7 +8,7 @@ struct RootView: View {
     @State private var selection: Tab
     @AppStorage(SettingsKeys.hasOnboarded) private var hasOnboarded: Bool = false
 
-    enum Tab: Hashable { case workouts, calendar, history, builder, settings }
+    enum Tab: Hashable { case workouts, favourites, calendar, history, builder }
 
     init() {
         // Honour `-screenshotTab <tab>` launch arg so screenshot capture
@@ -17,10 +17,10 @@ struct RootView: View {
         let args = ProcessInfo.processInfo.arguments
         if let idx = args.firstIndex(of: "-screenshotTab"), idx + 1 < args.count {
             switch args[idx + 1] {
+            case "favourites": initial = .favourites
             case "calendar": initial = .calendar
             case "history": initial = .history
             case "builder": initial = .builder
-            case "settings": initial = .settings
             default: break
             }
         }
@@ -33,6 +33,10 @@ struct RootView: View {
                 .tabItem { Label("Workouts", systemImage: "bolt.heart") }
                 .tag(Tab.workouts)
 
+            FavouritesView()
+                .tabItem { Label("Favourites", systemImage: "heart.fill") }
+                .tag(Tab.favourites)
+
             CalendarView()
                 .tabItem { Label("Calendar", systemImage: "calendar") }
                 .tag(Tab.calendar)
@@ -44,10 +48,6 @@ struct RootView: View {
             WorkoutBuilderView()
                 .tabItem { Label("Builder", systemImage: "slider.horizontal.3") }
                 .tag(Tab.builder)
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(Tab.settings)
         }
         .environmentObject(trainer)
         .environmentObject(hr)

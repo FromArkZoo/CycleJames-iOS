@@ -40,6 +40,9 @@ struct WorkoutBuilderView: View {
             }
             .background(CJColors.bgPrimary.ignoresSafeArea())
             .navigationTitle("Builder")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { BrandMark() }
+            }
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)

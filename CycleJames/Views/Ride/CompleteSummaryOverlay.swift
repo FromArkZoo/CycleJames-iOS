@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CompleteSummaryOverlay: View {
+    @EnvironmentObject private var favourites: FavouritesStore
     let session: RideSessionModel
     var onDone: () -> Void
     @State private var shareURL: URL?
@@ -12,6 +13,26 @@ struct CompleteSummaryOverlay: View {
                 Text(session.partial ? "Ride Saved (Partial)" : "Workout Complete")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(CJColors.textPrimary)
+
+                if !session.workoutId.isEmpty {
+                    Button {
+                        favourites.toggle(session.workoutId)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: favourites.isFavourite(session.workoutId) ? "heart.fill" : "heart")
+                            Text(favourites.isFavourite(session.workoutId) ? "Favourited" : "Add to Favourites")
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, CJSpacing.m)
+                        .padding(.vertical, CJSpacing.s)
+                        .foregroundStyle(favourites.isFavourite(session.workoutId) ? CJColors.danger : CJColors.textSecondary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: CJRadius.medium)
+                                .stroke((favourites.isFavourite(session.workoutId) ? CJColors.danger : CJColors.textMuted).opacity(0.5), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: CJSpacing.s) {
                     summary("Duration", TimeFormat.duration(session.durationSec))
