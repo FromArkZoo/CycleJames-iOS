@@ -103,6 +103,18 @@ struct CalendarView: View {
         return date(forDay: day) < today
     }
 
+    /// Honour `-screenshotSelectDay <day>` launch arg so the screenshot
+    /// capture script can land on a selected day without needing a tap.
+    /// No-op in production.
+    private func applyScreenshotSelection() {
+        guard selectedDay == nil else { return }
+        let args = ProcessInfo.processInfo.arguments
+        guard let idx = args.firstIndex(of: "-screenshotSelectDay"), idx + 1 < args.count else { return }
+        if let day = Int(args[idx + 1]) {
+            selectedDay = day
+        }
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -149,6 +161,7 @@ struct CalendarView: View {
                     reschedule(target, to: newDate)
                 }
             }
+            .onAppear { applyScreenshotSelection() }
         }
     }
 

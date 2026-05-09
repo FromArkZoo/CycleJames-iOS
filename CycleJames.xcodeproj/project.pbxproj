@@ -21,6 +21,7 @@
 		393C015623FA2D1E9AA4BC18 /* StopConfirmOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E622560DBC9D6C4741D51D3 /* StopConfirmOverlay.swift */; };
 		3F065C5600A6BB0FC728E3A2 /* AudioCues.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4985887F9943E74EB3E49C10 /* AudioCues.swift */; };
 		3F15A83515D1D52830D93FCA /* ScheduledRideModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */; };
+		413DAB4FD5A06BBFFFB2293B /* ScreenshotSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2833CB8B069F0020C986152B /* ScreenshotSeeder.swift */; };
 		43E0D2FD6D8B07DDEA2DF93F /* WorkoutFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */; };
 		450CEE03CFA7A5DB0D881459 /* OrientationLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096E8D20A018E13E1B268E0A /* OrientationLock.swift */; };
 		45ACCA3813077476594DF4F0 /* WorkoutGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */; };
@@ -80,6 +81,7 @@
 		1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
 		20C4CD232999F7AC5CCD46D0 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		27045B67616F657CBEBCC974 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		2833CB8B069F0020C986152B /* ScreenshotSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSeeder.swift; sourceTree = "<group>"; };
 		2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlayer.swift; sourceTree = "<group>"; };
 		3413B27E31AD7912F1F00023 /* CycleJamesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CycleJamesApp.swift; sourceTree = "<group>"; };
 		3697C66436D5EF13FD70CD54 /* BuiltInWorkouts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInWorkouts.swift; sourceTree = "<group>"; };
@@ -244,6 +246,7 @@
 				20C4CD232999F7AC5CCD46D0 /* AppDelegate.swift */,
 				3697C66436D5EF13FD70CD54 /* BuiltInWorkouts.swift */,
 				096E8D20A018E13E1B268E0A /* OrientationLock.swift */,
+				2833CB8B069F0020C986152B /* ScreenshotSeeder.swift */,
 				0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */,
 			);
 			path = Library;
@@ -459,6 +462,7 @@
 				D797EFF4286F7467270337E4 /* RootView.swift in Sources */,
 				A3DA50D2BDFC98DB2802C84A /* ScheduleForLaterSheet.swift in Sources */,
 				3F15A83515D1D52830D93FCA /* ScheduledRideModel.swift in Sources */,
+				413DAB4FD5A06BBFFFB2293B /* ScreenshotSeeder.swift in Sources */,
 				8AFADB5F48C02E80ECFE9D7D /* Settings.swift in Sources */,
 				00A5FC20A86296AAD35E0423 /* SettingsView.swift in Sources */,
 				5DD4F9F766A6051E1EA8C77F /* ShareSheet.swift in Sources */,
@@ -519,7 +523,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -533,7 +537,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -601,7 +605,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -621,7 +625,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

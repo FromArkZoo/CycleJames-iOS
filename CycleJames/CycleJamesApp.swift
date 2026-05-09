@@ -23,6 +23,11 @@ struct CycleJamesApp: App {
                 .preferredColorScheme(.dark)
                 .tint(CJColors.accent)
                 .environmentObject(favourites)
+                .onAppear {
+                    if ScreenshotSeeder.isRequested {
+                        ScreenshotSeeder.seed(modelContext: modelContainer.mainContext)
+                    }
+                }
         }
         .modelContainer(modelContainer)
     }

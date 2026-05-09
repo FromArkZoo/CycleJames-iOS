@@ -6,10 +6,10 @@ iPhone 6.9" Display. Drag in upload order:
 | Order | File | Story |
 |---|---|---|
 | 1 | `01_onboarding.png` | First-launch FTP entry — sets the hook. |
-| 2 | `02_workout_detail.png` | Kitchen Sink workout chart with intervals list + Start button. The hero shot. |
-| 3 | `03_workouts.png` | Built-in library + filter pills. |
-| 4 | `04_settings.png` | FTP-driven personalization, on-device storage. |
-| 5 | `05_history.png` | Tracking surface (empty state). |
+| 2 | `02_workouts.png` | Workout library with brand wordmark + zone bars, hearts on cards, and the new tab bar including Favourites. |
+| 3 | `03_workout_detail.png` | Kitchen Sink chart with all five training zones + the +/- adjuster + Schedule-for-later button. Hero shot. |
+| 4 | `04_calendar.png` | Calendar with three scheduled rides on the grid, today highlighted, day-detail card showing Kitchen Sink scheduled for May 10. |
+| 5 | `05_favourites.png` | Favourites tab with three heart-curated workouts. |
 
 ## How they were captured
 
