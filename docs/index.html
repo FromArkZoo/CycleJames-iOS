@@ -43,6 +43,22 @@
     border-radius: 8px;
     text-decoration: none;
   }
+  .app-store-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 28px 0 8px;
+  }
+  .app-store-cta .now-live {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .app-store-cta a { display: inline-block; }
+  .app-store-cta img { height: 56px; width: auto; display: block; }
 </style>
 </head>
 <body>
@@ -50,6 +66,13 @@
   <span class="tag">CycleJames</span>
   <h1>Indoor cycling workouts that talk to your trainer.</h1>
   <p class="lead">A focused, single-purpose iOS app for structured power-based training on FTMS-compatible smart trainers.</p>
+
+  <div class="app-store-cta">
+    <span class="now-live">Now on the App Store</span>
+    <a href="https://apps.apple.com/gb/app/cyclejames/id6765917117" aria-label="Download CycleJames on the App Store">
+      <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-gb?releaseDate=2026-05-09" alt="Download on the App Store" />
+    </a>
+  </div>
 
   <div class="card">
     <h2>What it does</h2>
