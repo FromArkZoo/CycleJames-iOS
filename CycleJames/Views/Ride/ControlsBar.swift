@@ -2,11 +2,16 @@ import SwiftUI
 
 struct ControlsBar: View {
     @EnvironmentObject private var ride: RideController
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     var onStart: () -> Void
     var onStop: () -> Void
 
+    private var compact: Bool { verticalSizeClass == .compact }
+    private var sideButtonSize: CGFloat { compact ? 44 : 56 }
+    private var primaryHeight: CGFloat { compact ? 44 : 56 }
+
     var body: some View {
-        HStack(spacing: CJSpacing.m) {
+        HStack(spacing: compact ? CJSpacing.s : CJSpacing.m) {
             controlButton(systemName: "backward.fill", label: "Skip to previous interval", isEnabled: isRideActive) {
                 ride.skipBackward()
             }
@@ -23,8 +28,8 @@ struct ControlsBar: View {
                 ride.skipForward()
             }
         }
-        .padding(.horizontal, CJSpacing.l)
-        .padding(.vertical, CJSpacing.m)
+        .padding(.horizontal, compact ? CJSpacing.m : CJSpacing.l)
+        .padding(.vertical, compact ? CJSpacing.s : CJSpacing.m)
         .background(CJColors.bgSecondary)
     }
 
@@ -60,8 +65,8 @@ struct ControlsBar: View {
             }
         } label: {
             Text(primaryLabel)
-                .font(.system(size: 18, weight: .heavy))
-                .frame(maxWidth: .infinity, minHeight: 56)
+                .font(.system(size: compact ? 16 : 18, weight: .heavy))
+                .frame(maxWidth: .infinity, minHeight: primaryHeight)
                 .foregroundStyle(.white)
                 .background(primaryColor)
                 .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
@@ -74,8 +79,8 @@ struct ControlsBar: View {
     private func controlButton(systemName: String, label: String, isEnabled: Bool = true, color: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 18, weight: .bold))
-                .frame(width: 56, height: 56)
+                .font(.system(size: compact ? 16 : 18, weight: .bold))
+                .frame(width: sideButtonSize, height: sideButtonSize)
                 .foregroundStyle(color ?? CJColors.textPrimary)
                 .background(CJColors.card)
                 .overlay(RoundedRectangle(cornerRadius: CJRadius.medium).stroke(CJColors.border, lineWidth: 1))

@@ -7,6 +7,9 @@ struct MetricCard: View {
     var emphasis: Bool = false
     var tint: Color? = nil
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var compact: Bool { verticalSizeClass == .compact }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
@@ -14,7 +17,7 @@ struct MetricCard: View {
                 .foregroundStyle(CJColors.textSecondary)
             HStack(alignment: .lastTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(emphasis ? CJFont.metricLarge : CJFont.metricSmall)
+                    .font(valueFont)
                     .foregroundStyle(CJColors.textPrimary)
                 if let unit {
                     Text(unit)
@@ -23,14 +26,21 @@ struct MetricCard: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: compact ? 0 : 54, alignment: .leading)
         .padding(.horizontal, CJSpacing.s)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 4 : 8)
         .background(tint?.opacity(0.18) ?? CJColors.card.opacity(0.85))
         .overlay(
             RoundedRectangle(cornerRadius: CJRadius.medium)
                 .stroke(tint ?? CJColors.border, lineWidth: tint == nil ? 1 : 1.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
+    }
+
+    private var valueFont: Font {
+        if compact && emphasis {
+            return .system(size: 28, weight: .heavy, design: .rounded).monospacedDigit()
+        }
+        return emphasis ? CJFont.metricLarge : CJFont.metricSmall
     }
 }
