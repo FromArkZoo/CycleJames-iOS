@@ -43,6 +43,9 @@ struct HistoryDetailView: View {
                     chart
                 }
                 statsGrid
+                if let intervals = session.intervalSummaries, !intervals.isEmpty {
+                    IntervalSummaryList(intervals: intervals)
+                }
                 exportButton
                 deleteButton
             }

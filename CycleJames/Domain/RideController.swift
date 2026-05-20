@@ -30,6 +30,9 @@ final class RideController: ObservableObject {
     @Published var intensityFactor: Double = 0
     @Published var tss: Int = 0
     @Published var countdownNumber: Int = 5
+    /// One smoothed (3-second rolling) watts sample per elapsed second of the
+    /// ride. Powers the trailing white line over the workout graph.
+    @Published var powerHistory: [Int] = []
 
     let player = WorkoutPlayer()
     let recorder = RideRecorder()
@@ -42,6 +45,9 @@ final class RideController: ObservableObject {
     private var statHR: [Int] = []
     private var lastHR: Int = 0
     private var tssTickCounter = 0
+    private var lastHistorySecond: Int = -1
+    private var perIntervalSums: [Int] = []
+    private var perIntervalCounts: [Int] = []
 
     private var cancellables = Set<AnyCancellable>()
     private weak var trainer: FTMSManager?
@@ -104,6 +110,9 @@ final class RideController: ObservableObject {
         trainer?.autoReconnectEnabled = true
         recorder.start()
         statPower.removeAll(); statCadence.removeAll(); statHR.removeAll()
+        powerHistory.removeAll()
+        lastHistorySecond = -1
+        perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
     }
 
@@ -298,6 +307,14 @@ final class RideController: ObservableObject {
                 statHR.append(data.heartRate)
                 if data.heartRate > peakHR { peakHR = data.heartRate }
             }
+            if let idx = currentIntervalContext?.index {
+                while perIntervalSums.count <= idx {
+                    perIntervalSums.append(0)
+                    perIntervalCounts.append(0)
+                }
+                perIntervalSums[idx] += data.power
+                perIntervalCounts[idx] += 1
+            }
             recorder.record(power: data.power, cadence: data.cadence, hr: data.heartRate > 0 ? data.heartRate : lastHR, target: currentTarget)
         }
     }
@@ -333,6 +350,16 @@ final class RideController: ObservableObject {
             avgPower = statPower.reduce(0, +) / statPower.count
         }
 
+        // One trailing-line sample per elapsed second. Pad with the latest
+        // rolling 3-second power if iOS dropped ticks while suspended so the
+        // x-axis stays aligned to workout time.
+        if state == .riding {
+            while lastHistorySecond < elapsed - 1 {
+                lastHistorySecond += 1
+                powerHistory.append(rolling3sPower)
+            }
+        }
+
         tssTickCounter += 1
         if tssTickCounter >= 5 && !statPower.isEmpty {
             tssTickCounter = 0
@@ -360,6 +387,20 @@ final class RideController: ObservableObject {
         let snapshot = recorder.snapshot()
         let samplesData = try? JSONEncoder().encode(snapshot.samples)
 
+        let summaries: [IntervalSummary] = w.intervals.enumerated().map { i, iv in
+            let avg = (i < perIntervalCounts.count && perIntervalCounts[i] > 0)
+                ? perIntervalSums[i] / perIntervalCounts[i]
+                : 0
+            let target = Int((iv.midPercent / 100.0 * Double(ftp)).rounded())
+            return IntervalSummary(
+                name: iv.name,
+                durationSec: iv.duration,
+                avgPower: avg,
+                targetWatts: target
+            )
+        }
+        let summariesData = try? JSONEncoder().encode(summaries)
+
         let model = RideSessionModel(
             workoutId: w.id,
             workoutName: w.name,
@@ -377,7 +418,8 @@ final class RideController: ObservableObject {
             tss: tss,
             partial: partial,
             sampleInterval: snapshot.interval,
-            samplesJSON: samplesData
+            samplesJSON: samplesData,
+            intervalSummariesJSON: summariesData
         )
         context.insert(model)
         try? context.save()
@@ -414,6 +456,9 @@ final class RideController: ObservableObject {
         np = 0; intensityFactor = 0; tss = 0
         powerBuffer.removeAll()
         statPower.removeAll(); statCadence.removeAll(); statHR.removeAll()
+        powerHistory.removeAll()
+        lastHistorySecond = -1
+        perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
     }
 }

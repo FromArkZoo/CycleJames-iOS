@@ -25,6 +25,10 @@ final class RideSessionModel {
     /// Compact JSON-encoded sample arrays: { "power": [...], "cadence": [...], "hr": [...], "targets": [...] }
     var samplesJSON: Data?
 
+    /// JSON-encoded `[IntervalSummary]` — per-interval averages locked in as
+    /// each interval finishes. Optional so older sessions still decode.
+    var intervalSummariesJSON: Data?
+
     init(
         id: UUID = UUID(),
         date: Date = Date(),
@@ -44,7 +48,8 @@ final class RideSessionModel {
         tss: Int,
         partial: Bool,
         sampleInterval: Int,
-        samplesJSON: Data? = nil
+        samplesJSON: Data? = nil,
+        intervalSummariesJSON: Data? = nil
     ) {
         self.id = id
         self.date = date
@@ -65,6 +70,7 @@ final class RideSessionModel {
         self.partial = partial
         self.sampleInterval = sampleInterval
         self.samplesJSON = samplesJSON
+        self.intervalSummariesJSON = intervalSummariesJSON
     }
 }
 
@@ -75,6 +81,13 @@ struct RideSamples: Codable {
     var targets: [Int]
 }
 
+struct IntervalSummary: Codable, Hashable {
+    var name: String
+    var durationSec: Int
+    var avgPower: Int
+    var targetWatts: Int
+}
+
 extension RideSessionModel {
     var samples: RideSamples? {
         get {
@@ -83,6 +96,16 @@ extension RideSessionModel {
         }
         set {
             samplesJSON = newValue.flatMap { try? JSONEncoder().encode($0) }
+        }
+    }
+
+    var intervalSummaries: [IntervalSummary]? {
+        get {
+            guard let data = intervalSummariesJSON else { return nil }
+            return try? JSONDecoder().decode([IntervalSummary].self, from: data)
+        }
+        set {
+            intervalSummariesJSON = newValue.flatMap { try? JSONEncoder().encode($0) }
         }
     }
 }

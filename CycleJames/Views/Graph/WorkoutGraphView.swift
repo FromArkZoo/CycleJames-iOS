@@ -12,6 +12,13 @@ struct WorkoutGraphView: View {
     var showElapsedMarker: Bool = true
     var showAxisLabels: Bool = true
     var compact: Bool = false
+    /// One smoothed watts sample per elapsed second of the live ride. Drawn as
+    /// a white line over the workout profile so the rider can see how they
+    /// tracked the target.
+    var powerHistory: [Int] = []
+    /// Seconds per `powerHistory` sample. Live trailing is 1Hz; the history
+    /// view downsamples long rides.
+    var historyInterval: Int = 1
     /// Optional callback for drag-to-edit. Receives (intervalIndex, wattsDelta) where the
     /// delta is incremental (5W step) since the last emit.
     var onIntervalEdit: ((Int, Int) -> Void)? = nil
@@ -170,6 +177,20 @@ struct WorkoutGraphView: View {
         return "\(m)m"
     }
 
+    private struct HistoryPoint: Identifiable {
+        let id: Int
+        let secs: Int
+        let percent: Double
+    }
+
+    private var historyPoints: [HistoryPoint] {
+        guard !powerHistory.isEmpty, ftp > 0 else { return [] }
+        let stride = max(historyInterval, 1)
+        return powerHistory.enumerated().map { i, watts in
+            HistoryPoint(id: i, secs: i * stride, percent: Double(watts) * 100.0 / Double(ftp))
+        }
+    }
+
     var body: some View {
         Chart {
             // Power profile (zone-coloured rectangles).
@@ -181,6 +202,18 @@ struct WorkoutGraphView: View {
                     yEnd: .value("Top", slice.percent)
                 )
                 .foregroundStyle(slice.zoneColor.opacity(slice.isComplete ? 0.4 : 0.85))
+            }
+
+            // Live trailing power line.
+            ForEach(historyPoints, id: \.secs) { p in
+                LineMark(
+                    x: .value("Time", p.secs),
+                    y: .value("Watts %", p.percent),
+                    series: .value("Series", "Actual")
+                )
+                .foregroundStyle(Color.white.opacity(0.92))
+                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.monotone)
             }
 
             if showFTPLine {
