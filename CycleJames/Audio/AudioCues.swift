@@ -5,8 +5,9 @@ import AVFoundation
 final class AudioCues {
     static let shared = AudioCues()
 
-    private var engine: AVAudioEngine?
+    private let engine = AVAudioEngine()
     private var sessionConfigured = false
+    private var engineStarted = false
 
     private func configureSession() {
         guard !sessionConfigured else { return }
@@ -19,12 +20,22 @@ final class AudioCues {
         sessionConfigured = true
     }
 
-    /// Plays a sine-wave beep using AVAudioEngine + a source node.
+    private func ensureEngineRunning() {
+        guard !engineStarted else { return }
+        do {
+            try engine.start()
+            engineStarted = true
+        } catch {
+            engineStarted = false
+        }
+    }
+
+    /// Plays a sine-wave beep using a one-shot AVAudioSourceNode attached to
+    /// the shared engine. The node detaches itself after the cue finishes so
+    /// repeated beeps don't accumulate nodes on the engine across a long ride.
     func beep(frequency: Double, duration: TimeInterval, volume: Float = 0.4) {
         configureSession()
         let sampleRate: Double = 44_100
-
-        let engine = AVAudioEngine()
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                    sampleRate: sampleRate,
                                    channels: 1,
@@ -58,16 +69,11 @@ final class AudioCues {
         engine.attach(source)
         engine.connect(source, to: engine.mainMixerNode, format: format)
         engine.mainMixerNode.outputVolume = 1.0
+        ensureEngineRunning()
 
-        do {
-            try engine.start()
-        } catch {
-            return
-        }
-        self.engine = engine
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) {
-            engine.stop()
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.05) { [weak self] in
+            guard let self else { return }
+            self.engine.detach(source)
         }
     }
 

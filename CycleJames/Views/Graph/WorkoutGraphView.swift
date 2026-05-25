@@ -185,10 +185,26 @@ struct WorkoutGraphView: View {
 
     private var historyPoints: [HistoryPoint] {
         guard !powerHistory.isEmpty, ftp > 0 else { return [] }
-        let stride = max(historyInterval, 1)
-        return powerHistory.enumerated().map { i, watts in
-            HistoryPoint(id: i, secs: i * stride, percent: Double(watts) * 100.0 / Double(ftp))
+        let baseStride = max(historyInterval, 1)
+        // Cap mark count so Swift Charts stays smooth on multi-hour rides.
+        let maxPoints = 600
+        let n = powerHistory.count
+        let decim = max(1, (n + maxPoints - 1) / maxPoints)
+        var out: [HistoryPoint] = []
+        out.reserveCapacity(min(n / decim + 2, maxPoints + 2))
+        var i = 0
+        while i < n {
+            let watts = powerHistory[i]
+            out.append(HistoryPoint(id: i, secs: i * baseStride, percent: Double(watts) * 100.0 / Double(ftp)))
+            i += decim
         }
+        // Always include the latest sample so the trace tip stays current.
+        let last = n - 1
+        if last > 0, last % decim != 0 {
+            let watts = powerHistory[last]
+            out.append(HistoryPoint(id: last, secs: last * baseStride, percent: Double(watts) * 100.0 / Double(ftp)))
+        }
+        return out
     }
 
     var body: some View {
