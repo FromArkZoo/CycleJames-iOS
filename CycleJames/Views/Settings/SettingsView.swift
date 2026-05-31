@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(SettingsKeys.ftp) private var ftp: Int = AppSettings.defaultFTP
     @State private var ftpInput: String = ""
     @State private var saved = false
@@ -78,6 +79,13 @@ struct SettingsView: View {
             }
             .background(CJColors.bgPrimary.ignoresSafeArea())
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(CJColors.accent)
+                }
+            }
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -89,6 +97,9 @@ struct SettingsView: View {
         guard let v = Int(ftpInput) else { return }
         ftp = max(AppSettings.minFTP, min(AppSettings.maxFTP, v))
         ftpInput = "\(ftp)"
+        // Flush immediately so the new FTP survives even if the app is killed
+        // from the app switcher before the next periodic UserDefaults sync.
+        UserDefaults.standard.synchronize()
         withAnimation { saved = true }
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)

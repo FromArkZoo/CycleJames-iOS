@@ -9,6 +9,7 @@ struct WorkoutsView: View {
     @State private var filterState = WorkoutFilterState()
     @State private var selectedWorkout: Workout?
     @State private var navigationPath: [Workout] = []
+    @State private var showSettings = false
 
     private var allWorkouts: [Workout] {
         let custom = customWorkouts.map { $0.toWorkout() }
@@ -62,8 +63,8 @@ struct WorkoutsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        SettingsView()
+                    Button {
+                        showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
                             .foregroundStyle(CJColors.textPrimary)
@@ -75,6 +76,9 @@ struct WorkoutsView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { applyScreenshotPush() }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 
