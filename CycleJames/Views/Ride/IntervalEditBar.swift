@@ -7,17 +7,21 @@ struct IntervalEditBar: View {
     var onShowSettings: () -> Void
 
     var body: some View {
-        let ctx = ride.currentIntervalContext
         HStack(spacing: CJSpacing.s) {
             HStack(spacing: 6) {
-                adjustButton(systemName: "minus", label: "Decrease current interval power by 5 watts", enabled: ctx != nil) {
-                    ride.adjustCurrentInterval(byWatts: -5)
+                adjustButton(systemName: "minus", label: "Decrease whole-ride power by 5 watts") {
+                    ride.adjustWholeRide(byWatts: -5)
                 }
-                Text("5W")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(CJColors.textSecondary)
-                adjustButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: ctx != nil) {
-                    ride.adjustCurrentInterval(byWatts: 5)
+                VStack(spacing: 0) {
+                    Text("Whole ride")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(CJColors.textSecondary)
+                    Text(IntensityReadout.wholeRide(offsetWatts: ride.wholeRideOffsetWatts))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(CJColors.textPrimary)
+                }
+                adjustButton(systemName: "plus", label: "Increase whole-ride power by 5 watts") {
+                    ride.adjustWholeRide(byWatts: 5)
                 }
             }
             Spacer(minLength: CJSpacing.s)
@@ -67,7 +71,7 @@ struct IntervalEditBar: View {
         .clipShape(RoundedRectangle(cornerRadius: CJRadius.medium))
     }
 
-    private func adjustButton(systemName: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func adjustButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 14, weight: .bold))
@@ -75,10 +79,15 @@ struct IntervalEditBar: View {
                 .foregroundStyle(.white)
                 .background(CJColors.card)
                 .clipShape(Circle())
-                .opacity(enabled ? 1.0 : 0.4)
         }
         .buttonStyle(.plain)
-        .disabled(!enabled)
         .accessibilityLabel(label)
     }
+}
+
+#Preview {
+    IntervalEditBar(onShowUpcoming: {}, onShowAddInterval: {}, onShowSettings: {})
+        .environmentObject(RideController())
+        .padding()
+        .background(CJColors.bgPrimary)
 }
