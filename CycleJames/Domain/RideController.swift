@@ -33,6 +33,7 @@ final class RideController: ObservableObject {
     @Published var intensityFactor: Double = 0
     @Published var tss: Int = 0
     @Published var countdownNumber: Int = 5
+    @Published var wholeRideOffsetWatts: Int = 0
     /// One smoothed (3-second rolling) watts sample per elapsed second of the
     /// ride. Powers the trailing white line over the workout graph.
     @Published var powerHistory: [Int] = []
@@ -117,6 +118,7 @@ final class RideController: ObservableObject {
         lastHistorySecond = -1
         perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
+        wholeRideOffsetWatts = 0
         mode = .erg
     }
 
@@ -149,6 +151,17 @@ final class RideController: ObservableObject {
         let updated = workout.adjustingInterval(at: ctx.index, byWatts: delta, ftp: ftp)
         selectedWorkout = updated
         player.updateWorkout(updated)
+    }
+
+    /// Adjust the power of every interval by a fixed watts delta (whole-ride
+    /// intensity). Composes with per-interval adjustments. Takes effect on
+    /// the next tick.
+    func adjustWholeRide(byWatts delta: Int) {
+        guard let workout = selectedWorkout else { return }
+        let updated = workout.adjustingAllIntervals(byWatts: delta, ftp: ftp)
+        selectedWorkout = updated
+        player.updateWorkout(updated)
+        wholeRideOffsetWatts += delta
     }
 
     nonisolated static func shouldSendErgTarget(mode: RideMode, connected: Bool) -> Bool {
