@@ -20,6 +20,7 @@ struct IntervalEditBar: View {
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
                         .foregroundStyle(CJColors.textPrimary)
                 }
+                .frame(minWidth: 64)
                 adjustButton(systemName: "plus", label: "Increase whole-ride power by 5 watts") {
                     ride.adjustWholeRide(byWatts: 5)
                 }
