@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact in-ride settings overlay: ride mode + whole-ride intensity.
+/// Compact in-ride settings overlay: ride mode + per-interval intensity.
 /// Presented over the ride; never pauses it.
 struct RideSettingsPanel: View {
     @EnvironmentObject private var ride: RideController
@@ -34,18 +34,19 @@ struct RideSettingsPanel: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("WHOLE-RIDE INTENSITY").font(CJFont.labelUpper)
+                Text("THIS INTERVAL").font(CJFont.labelUpper)
                     .foregroundStyle(CJColors.textSecondary)
+                let hasInterval = ride.currentIntervalContext != nil
                 HStack(spacing: CJSpacing.m) {
-                    stepButton(systemName: "minus", label: "Decrease whole-ride power by 5 watts") {
-                        ride.adjustWholeRide(byWatts: -5)
+                    stepButton(systemName: "minus", label: "Decrease current interval power by 5 watts", enabled: hasInterval) {
+                        ride.adjustCurrentInterval(byWatts: -5)
                     }
-                    Text(offsetLabel)
+                    Text(IntensityReadout.intervalTarget(watts: ride.currentTarget, hasActiveInterval: hasInterval))
                         .font(.system(size: 15, weight: .semibold).monospacedDigit())
                         .foregroundStyle(CJColors.textPrimary)
                         .frame(minWidth: 120)
-                    stepButton(systemName: "plus", label: "Increase whole-ride power by 5 watts") {
-                        ride.adjustWholeRide(byWatts: 5)
+                    stepButton(systemName: "plus", label: "Increase current interval power by 5 watts", enabled: hasInterval) {
+                        ride.adjustCurrentInterval(byWatts: 5)
                     }
                 }
             }
@@ -58,12 +59,7 @@ struct RideSettingsPanel: View {
         .shadow(radius: 12)
     }
 
-    private var offsetLabel: String {
-        let w = ride.wholeRideOffsetWatts
-        return w == 0 ? "Whole ride: 0 W" : String(format: "Whole ride: %+d W", w)
-    }
-
-    private func stepButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
+    private func stepButton(systemName: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 16, weight: .bold))
@@ -71,8 +67,10 @@ struct RideSettingsPanel: View {
                 .foregroundStyle(.white)
                 .background(CJColors.bgSecondary)
                 .clipShape(Circle())
+                .opacity(enabled ? 1.0 : 0.4)
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 }
