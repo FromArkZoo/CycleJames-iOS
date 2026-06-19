@@ -86,7 +86,7 @@ Expected: `Created project at .../CycleJames.xcodeproj`
 
 - [ ] **Step 4: Run the test (verify infrastructure works)**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 (If that device is missing, pick one from `xcrun simctl list devices available` and substitute its name.)
 Expected: `** TEST SUCCEEDED **`
 
@@ -153,7 +153,7 @@ Re-open the Preview from Step 1. Expected: `1:17:44` renders on a single line, s
 
 - [ ] **Step 4: Build to confirm no regressions**
 
-Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** BUILD SUCCEEDED **`
 
 - [ ] **Step 5: Commit**
@@ -202,7 +202,7 @@ final class FTMSEncodingTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: FAIL — compile error `type 'FTMSManager' has no member 'simulationParametersData'`.
 
 - [ ] **Step 3: Implement the opcode + encoder + writer**
@@ -247,7 +247,7 @@ In the "Control point writes" section (after `setTargetPower`, ~line 143), add:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** TEST SUCCEEDED **`
 
 - [ ] **Step 5: Commit**
@@ -296,7 +296,7 @@ final class RideModeTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: FAIL — compile error `cannot find 'RideController' member 'shouldSendErgTarget'` (and `RideMode` unknown).
 
 - [ ] **Step 3: Implement the mode type, state, gating, and toggle**
@@ -363,7 +363,7 @@ In `beginRiding` (after line 116, `tssTickCounter = 0`), reset the mode so every
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** TEST SUCCEEDED **`
 
 - [ ] **Step 5: Commit**
@@ -426,7 +426,7 @@ final class WholeRideIntensityTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: FAIL — compile error `value of type 'RideController' has no member 'adjustWholeRide'` / `wholeRideOffsetWatts`.
 
 - [ ] **Step 3: Implement the accumulator + mutator**
@@ -460,7 +460,7 @@ In `beginRiding` (after the `mode = .erg` line added in Task 4), reset the offse
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** TEST SUCCEEDED **`
 
 - [ ] **Step 5: Commit**
@@ -506,7 +506,7 @@ final class ReviewPromptTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: FAIL — compile error `cannot find 'ReviewPrompt' in scope`.
 
 - [ ] **Step 3: Implement the key, counter, and gate**
@@ -541,7 +541,7 @@ enum ReviewPrompt {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** TEST SUCCEEDED **`
 
 - [ ] **Step 5: Commit**
@@ -746,7 +746,7 @@ Update its `IntervalEditBar` call (lines 32-35):
 
 - [ ] **Step 5: Build and verify visually in the simulator**
 
-Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** BUILD SUCCEEDED **`
 
 Then launch in the simulator, start a ride (use the existing seeded state if no trainer), and confirm in **both portrait and landscape**: the gear button appears in the edit bar; tapping it shows the panel; the Mode segmented control flips ERG/Free Ride; the ± buttons change the "Whole ride: ±N W" label; tap-away and the ✕ dismiss it; the ride timer keeps running underneath.
@@ -801,7 +801,7 @@ In the `.onChange(of: ride.state)` handler (lines 113-121), inside the `if new =
 
 - [ ] **Step 3: Build to confirm it compiles**
 
-Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** BUILD SUCCEEDED **`
 
 - [ ] **Step 4: Commit**
@@ -857,7 +857,7 @@ In `LandscapeRideLayout.swift`, add to its `WorkoutGraphView(...)` call (after `
 
 - [ ] **Step 3: Build + visual check**
 
-Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild build -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** BUILD SUCCEEDED **`
 
 In the simulator, open the settings panel mid-ride and switch to Free Ride; confirm the target profile dims and the live trace stays full-strength. Screenshot: `xcrun simctl io booted screenshot /tmp/cj-freeride-ghost.png` and inspect.
@@ -888,5 +888,5 @@ BLE cannot be exercised in the simulator, so verify on the Wattbike:
 
 Run the full suite once more before opening the PR:
 
-Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'`
+Run: `xcodebuild test -project CycleJames.xcodeproj -scheme CycleJames -destination 'platform=iOS Simulator,name=iPhone 17'`
 Expected: `** TEST SUCCEEDED **` with all of `FTMSEncodingTests`, `RideModeTests`, `WholeRideIntensityTests`, `ReviewPromptTests`, `SmokeTests` passing.
