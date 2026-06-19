@@ -14,6 +14,7 @@ struct RideView: View {
     @State private var showAddIntervalSheet = false
     @State private var showUpcomingSheet = false
     @State private var showConnectSheet = false
+    @State private var showSettings = false
     @State private var savedSession: RideSessionModel?
 
     private var ftp: Int { AppSettings.ftp }
@@ -79,6 +80,18 @@ struct RideView: View {
                     ride.dismissCompletion()
                     dismiss()
                 }
+            }
+        }
+        .overlay {
+            if showSettings {
+                ZStack {
+                    Color.black.opacity(0.45).ignoresSafeArea()
+                        .onTapGesture { showSettings = false }
+                    RideSettingsPanel(onClose: { showSettings = false })
+                        .environmentObject(ride)
+                        .padding(CJSpacing.l)
+                }
+                .transition(.opacity)
             }
         }
         .toolbar {
@@ -171,7 +184,8 @@ struct RideView: View {
             if canEditLive {
                 IntervalEditBar(
                     onShowUpcoming: { showUpcomingSheet = true },
-                    onShowAddInterval: { showAddIntervalSheet = true }
+                    onShowAddInterval: { showAddIntervalSheet = true },
+                    onShowSettings: { showSettings = true }
                 )
                 .padding(.horizontal, CJSpacing.l)
             }
@@ -192,7 +206,8 @@ struct RideView: View {
             }
             LandscapeRideLayout(
                 onShowUpcoming: { showUpcomingSheet = true },
-                onShowAddInterval: { showAddIntervalSheet = true }
+                onShowAddInterval: { showAddIntervalSheet = true },
+                onShowSettings: { showSettings = true }
             )
         }
         .animation(.easeInOut(duration: 0.2), value: showDisconnectBanner)

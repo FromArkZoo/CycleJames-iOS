@@ -7,6 +7,7 @@ struct LandscapeRideLayout: View {
     @EnvironmentObject private var ride: RideController
     var onShowUpcoming: () -> Void
     var onShowAddInterval: () -> Void
+    var onShowSettings: () -> Void
 
     private var ftp: Int { AppSettings.ftp }
     private var canEditLive: Bool { ride.state == .riding || ride.state == .paused }
@@ -31,7 +32,8 @@ struct LandscapeRideLayout: View {
             if canEditLive {
                 IntervalEditBar(
                     onShowUpcoming: onShowUpcoming,
-                    onShowAddInterval: onShowAddInterval
+                    onShowAddInterval: onShowAddInterval,
+                    onShowSettings: onShowSettings
                 )
             }
         }

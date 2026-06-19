@@ -4,6 +4,7 @@ struct IntervalEditBar: View {
     @EnvironmentObject private var ride: RideController
     var onShowUpcoming: () -> Void
     var onShowAddInterval: () -> Void
+    var onShowSettings: () -> Void
 
     var body: some View {
         let ctx = ride.currentIntervalContext
@@ -48,6 +49,17 @@ struct IntervalEditBar: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
+            Button(action: onShowSettings) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 32, height: 32)
+                    .foregroundStyle(.white)
+                    .background(CJColors.card)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(CJColors.border, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Ride settings")
         }
         .padding(.horizontal, CJSpacing.s)
         .padding(.vertical, 6)
