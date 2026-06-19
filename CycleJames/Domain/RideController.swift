@@ -3,6 +3,8 @@ import SwiftUI
 import SwiftData
 import Combine
 
+enum RideMode: Equatable { case erg, freeRide }
+
 /// Orchestrates a single ride session: workout selection → countdown → riding → save/discard.
 @MainActor
 final class RideController: ObservableObject {
@@ -12,6 +14,7 @@ final class RideController: ObservableObject {
 
     @Published var selectedWorkout: Workout?
     @Published var state: AppState = .setup
+    @Published var mode: RideMode = .erg
 
     @Published var currentPower: Int = 0
     @Published var currentCadence: Int = 0
@@ -114,6 +117,7 @@ final class RideController: ObservableObject {
         lastHistorySecond = -1
         perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
+        mode = .erg
     }
 
     /// Manual reconnect from the disconnect banner.
@@ -145,6 +149,25 @@ final class RideController: ObservableObject {
         let updated = workout.adjustingInterval(at: ctx.index, byWatts: delta, ftp: ftp)
         selectedWorkout = updated
         player.updateWorkout(updated)
+    }
+
+    nonisolated static func shouldSendErgTarget(mode: RideMode, connected: Bool) -> Bool {
+        mode == .erg && connected
+    }
+
+    /// Switch between ERG and Free Ride mid-ride. Free Ride drops ERG and
+    /// puts the trainer into sim @ 0% so its own gears drive resistance.
+    func setMode(_ newMode: RideMode) {
+        guard newMode != mode else { return }
+        mode = newMode
+        switch newMode {
+        case .freeRide:
+            trainer?.setSimulationGrade(0)
+        case .erg:
+            if trainer?.connectionState == .connected {
+                trainer?.setTargetPower(currentTarget)
+            }
+        }
     }
 
     /// Insert a new interval into the active workout at the given index.
@@ -339,8 +362,9 @@ final class RideController: ObservableObject {
         if let ctx {
             let pct = ctx.interval.powerPercent(atElapsed: ctx.elapsed)
             currentTarget = Int((pct / 100.0 * Double(ftp)).rounded())
-            // Send to trainer
-            if trainer?.connectionState == .connected {
+            // Send to trainer (ERG only; Free Ride leaves the bike under
+            // its own gear/resistance control).
+            if Self.shouldSendErgTarget(mode: mode, connected: trainer?.connectionState == .connected) {
                 trainer?.setTargetPower(currentTarget)
             }
         }
