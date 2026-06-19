@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00A5FC20A86296AAD35E0423 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F4859E3D38DF207CB2764F /* SettingsView.swift */; };
+		02EBCFAC3216A2C65DCED706 /* IntensityReadoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62ADCB1C9A0612562F0EA65A /* IntensityReadoutTests.swift */; };
 		047F9539A8656D70FB3F8E68 /* Spacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D93FAB6C59AE25DD9AF852BA /* Spacing.swift */; };
 		05CD389BABE1E3CCAEC9DBD7 /* FavouritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81501E582C63A162BDD750B9 /* FavouritesStore.swift */; };
 		0E410A7BD79EFC41BDA817CC /* PowerMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */; };
@@ -54,6 +55,7 @@
 		A840ECE284C2940A72A2FD74 /* LandscapeRideLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */; };
 		AAB2DF84372511D2065BFA98 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2294C31B2EE1486F494A85E6 /* SmokeTests.swift */; };
 		ACBDD06292DCBB13830FDD3F /* WorkoutBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632744E01C6648C30E450740 /* WorkoutBuilderView.swift */; };
+		AF136884F212E822D48FCEBC /* IntensityReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D4E1DADAAB09C06356114E /* IntensityReadout.swift */; };
 		B219FB62D014FDA3EC24CB3E /* WholeRideIntensityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247B7303868D62A1EC8D1406 /* WholeRideIntensityTests.swift */; };
 		B99A429F7F044A47390773C6 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82E9EF5F75072ED161477C6 /* Typography.swift */; };
 		BABED744A2BA262F9A23BC1B /* IntervalEditBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */; };
@@ -115,6 +117,7 @@
 		4CBD4E56475D4CD7DB451D48 /* CompleteSummaryOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompleteSummaryOverlay.swift; sourceTree = "<group>"; };
 		4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCard.swift; sourceTree = "<group>"; };
 		5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideRecorder.swift; sourceTree = "<group>"; };
+		62ADCB1C9A0612562F0EA65A /* IntensityReadoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntensityReadoutTests.swift; sourceTree = "<group>"; };
 		632744E01C6648C30E450740 /* WorkoutBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutBuilderView.swift; sourceTree = "<group>"; };
 		6387688F8F5658F6EBEDFD5A /* HeroIntervalCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroIntervalCard.swift; sourceTree = "<group>"; };
 		6E622560DBC9D6C4741D51D3 /* StopConfirmOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopConfirmOverlay.swift; sourceTree = "<group>"; };
@@ -124,6 +127,7 @@
 		81501E582C63A162BDD750B9 /* FavouritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavouritesStore.swift; sourceTree = "<group>"; };
 		84017D53FDC7E40D16B71DB9 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		968D2E2E0F76370A84721343 /* FTMSManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FTMSManager.swift; sourceTree = "<group>"; };
+		97D4E1DADAAB09C06356114E /* IntensityReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntensityReadout.swift; sourceTree = "<group>"; };
 		9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntervalEditBar.swift; sourceTree = "<group>"; };
 		9C33D6C05219ED4ACF14DE19 /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		9C7385020B3CE86C9767E793 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -233,6 +237,7 @@
 				D97EFEE40817AD4181CF4FEB /* ControlsBar.swift */,
 				F53FCFAC11CC0FC2EA92458A /* CountdownOverlay.swift */,
 				6387688F8F5658F6EBEDFD5A /* HeroIntervalCard.swift */,
+				97D4E1DADAAB09C06356114E /* IntensityReadout.swift */,
 				9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */,
 				C696C4A9FC4E7C29A43CF314 /* IntervalPill.swift */,
 				06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */,
@@ -325,6 +330,7 @@
 			isa = PBXGroup;
 			children = (
 				01E9D4B7E075307B78DF4546 /* FTMSEncodingTests.swift */,
+				62ADCB1C9A0612562F0EA65A /* IntensityReadoutTests.swift */,
 				E013CE6A3276A89C81289B5A /* ReviewPromptTests.swift */,
 				0CB2962BC5C9256A11E8BC5C /* RideModeTests.swift */,
 				2294C31B2EE1486F494A85E6 /* SmokeTests.swift */,
@@ -483,6 +489,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9514B112188173FCC00CED4F /* FTMSEncodingTests.swift in Sources */,
+				02EBCFAC3216A2C65DCED706 /* IntensityReadoutTests.swift in Sources */,
 				8209DFD43F6B36F532D762D3 /* ReviewPromptTests.swift in Sources */,
 				D0E27D29FCAFBA75FE10BE25 /* RideModeTests.swift in Sources */,
 				AAB2DF84372511D2065BFA98 /* SmokeTests.swift in Sources */,
@@ -514,6 +521,7 @@
 				F3A003CD49A9C10FCF55A2DF /* HeroIntervalCard.swift in Sources */,
 				2E731837FEF572A30EDF4FAE /* HistoryDetailView.swift in Sources */,
 				743FF29A0382690D17130F38 /* HistoryView.swift in Sources */,
+				AF136884F212E822D48FCEBC /* IntensityReadout.swift in Sources */,
 				BABED744A2BA262F9A23BC1B /* IntervalEditBar.swift in Sources */,
 				5DE689B21ACF8BCBD177EE4D /* IntervalPill.swift in Sources */,
 				A840ECE284C2940A72A2FD74 /* LandscapeRideLayout.swift in Sources */,
