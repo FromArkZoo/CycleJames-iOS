@@ -13,7 +13,7 @@ final class FTMSManager: NSObject, ObservableObject {
     // Control point opcodes.
     private static let opRequestControl: UInt8 = 0x00
     private static let opSetTargetPower: UInt8 = 0x05
-    private static let opSetSimulationParameters: UInt8 = 0x11
+    private nonisolated static let opSetSimulationParameters: UInt8 = 0x11
     private static let opStart: UInt8 = 0x07
     private static let opStop: UInt8 = 0x08
 
