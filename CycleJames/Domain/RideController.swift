@@ -34,6 +34,10 @@ final class RideController: ObservableObject {
     @Published var tss: Int = 0
     @Published var countdownNumber: Int = 5
     @Published var wholeRideOffsetWatts: Int = 0
+    /// True only when the ride ended via natural completion (`handleComplete`).
+    /// False on Save & Stop or any other manual exit. Reset at the start of
+    /// each new ride so the flag is always ride-scoped.
+    @Published var didCompleteNaturally: Bool = false
     /// One smoothed (3-second rolling) watts sample per elapsed second of the
     /// ride. Powers the trailing white line over the workout graph.
     @Published var powerHistory: [Int] = []
@@ -119,6 +123,7 @@ final class RideController: ObservableObject {
         perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
         wholeRideOffsetWatts = 0
+        didCompleteNaturally = false
         mode = .erg
     }
 
@@ -290,11 +295,14 @@ final class RideController: ObservableObject {
         resetMetrics()
     }
 
-    /// Called on natural workout completion.
+    /// Called on natural workout completion (player exhausts all intervals).
+    /// This is the ONLY place `didCompleteNaturally` is set to true; Save &
+    /// Stop and other manual exits do not call this method.
     private func handleComplete() {
         trainer?.autoReconnectEnabled = false
         trainer?.stopTraining()
         recorder.stop()
+        didCompleteNaturally = true
         state = .completed
     }
 

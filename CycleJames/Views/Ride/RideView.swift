@@ -127,17 +127,20 @@ struct RideView: View {
         }
         .onChange(of: ride.state) { _, new in
             if new == .completed && !showCompleteOverlay {
-                // Workout finished naturally — persist and show summary.
+                // Workout finished — persist and show summary (natural or Save & Stop).
                 if savedSession == nil {
                     savedSession = ride.savedSessionAndDismiss(context: modelContext)
                 }
                 showCompleteOverlay = true
                 // Count completed rides and, from the 3rd onward, ask for a
-                // review on this positive moment. Guarded by savedSession so
-                // it fires exactly once per natural completion.
-                AppSettings.completedRideCount += 1
-                if ReviewPrompt.shouldRequest(afterCompletedCount: AppSettings.completedRideCount) {
-                    requestReview()
+                // review on this positive moment. Gated by `ride.didCompleteNaturally`
+                // so it fires only on natural completion (player exhausted all
+                // intervals), never on Save & Stop or other manual exits.
+                if ride.didCompleteNaturally {
+                    AppSettings.completedRideCount += 1
+                    if ReviewPrompt.shouldRequest(afterCompletedCount: AppSettings.completedRideCount) {
+                        requestReview()
+                    }
                 }
             }
         }
