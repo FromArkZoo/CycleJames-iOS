@@ -24,6 +24,9 @@ struct MetricCard: View {
                 Text(value)
                     .font(valueFont)
                     .foregroundStyle(valueColor ?? CJColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .allowsTightening(true)
                 if let unit {
                     Text(unit)
                         .font(CJFont.caption)
@@ -55,4 +58,14 @@ struct MetricCard: View {
         }
         return emphasis ? CJFont.metricLarge : CJFont.metricSmall
     }
+}
+
+#Preview("Long elapsed (landscape emphasis)") {
+    HStack {
+        MetricCard(label: "Elapsed", value: "1:17:44", emphasis: true)
+            .frame(width: 110)   // approximate landscape tile width
+    }
+    .environment(\.verticalSizeClass, .compact)
+    .padding()
+    .background(CJColors.bgPrimary)
 }
