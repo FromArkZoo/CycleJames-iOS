@@ -50,6 +50,7 @@
 		A49A1514DC06597A7EA19D27 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */; };
 		A6E3841921A014B458E5F48D /* WorkoutPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */; };
 		A840ECE284C2940A72A2FD74 /* LandscapeRideLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */; };
+		AAB2DF84372511D2065BFA98 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2294C31B2EE1486F494A85E6 /* SmokeTests.swift */; };
 		ACBDD06292DCBB13830FDD3F /* WorkoutBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632744E01C6648C30E450740 /* WorkoutBuilderView.swift */; };
 		B99A429F7F044A47390773C6 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82E9EF5F75072ED161477C6 /* Typography.swift */; };
 		BABED744A2BA262F9A23BC1B /* IntervalEditBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */; };
@@ -69,10 +70,21 @@
 		FFCDA543FC7F02481025181B /* RideRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		F7FE353529917BF4BB34924A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7101685B9B2F4D8029ECA768 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 47C0DD0AD4F0823E3B6B33AF;
+			remoteInfo = CycleJames;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReschedulePickerSheet.swift; sourceTree = "<group>"; };
 		06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LandscapeRideLayout.swift; sourceTree = "<group>"; };
 		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		0801789C3556EAA0FFDCF3B0 /* CycleJamesTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CycleJamesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		096E8D20A018E13E1B268E0A /* OrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationLock.swift; sourceTree = "<group>"; };
 		0B4FB825551E14BEBA7EA0AB /* WorkoutFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilter.swift; sourceTree = "<group>"; };
 		0C62025073FCB2FE20DCB8CA /* BrandMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandMark.swift; sourceTree = "<group>"; };
@@ -80,6 +92,7 @@
 		13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMetrics.swift; sourceTree = "<group>"; };
 		1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
 		20C4CD232999F7AC5CCD46D0 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		2294C31B2EE1486F494A85E6 /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
 		27045B67616F657CBEBCC974 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		2833CB8B069F0020C986152B /* ScreenshotSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSeeder.swift; sourceTree = "<group>"; };
 		2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlayer.swift; sourceTree = "<group>"; };
@@ -236,6 +249,7 @@
 			isa = PBXGroup;
 			children = (
 				B747C05886E14DF23365E07F /* CycleJames */,
+				CC9DF6BE51CDAB07325A8132 /* CycleJamesTests */,
 				E5F465A76BC8F142FCA0E03E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -296,6 +310,14 @@
 			path = DesignSystem;
 			sourceTree = "<group>";
 		};
+		CC9DF6BE51CDAB07325A8132 /* CycleJamesTests */ = {
+			isa = PBXGroup;
+			children = (
+				2294C31B2EE1486F494A85E6 /* SmokeTests.swift */,
+			);
+			path = CycleJamesTests;
+			sourceTree = "<group>";
+		};
 		D0B0452C36105B37DBB8EFB1 /* Workouts */ = {
 			isa = PBXGroup;
 			children = (
@@ -332,6 +354,7 @@
 			isa = PBXGroup;
 			children = (
 				BD8AC393078D4153E26FD147 /* CycleJames.app */,
+				0801789C3556EAA0FFDCF3B0 /* CycleJamesTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -356,6 +379,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1BD24A03E91040946E70700D /* CycleJamesTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2730D94FFDD987F1EB7A4D3B /* Build configuration list for PBXNativeTarget "CycleJamesTests" */;
+			buildPhases = (
+				9320A64F5DF7AD75810880BA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				706BBF3A5E19B2DE75A445DA /* PBXTargetDependency */,
+			);
+			name = CycleJamesTests;
+			packageProductDependencies = (
+			);
+			productName = CycleJamesTests;
+			productReference = 0801789C3556EAA0FFDCF3B0 /* CycleJamesTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		47C0DD0AD4F0823E3B6B33AF /* CycleJames */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3F612BC8C7E11F615D710381 /* Build configuration list for PBXNativeTarget "CycleJames" */;
@@ -404,6 +445,7 @@
 			projectRoot = "";
 			targets = (
 				47C0DD0AD4F0823E3B6B33AF /* CycleJames */,
+				1BD24A03E91040946E70700D /* CycleJamesTests */,
 			);
 		};
 /* End PBXProject section */
@@ -421,6 +463,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		9320A64F5DF7AD75810880BA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAB2DF84372511D2065BFA98 /* SmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E15B6E34AFD73258F0A3005F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -487,6 +537,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		706BBF3A5E19B2DE75A445DA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 47C0DD0AD4F0823E3B6B33AF /* CycleJames */;
+			targetProxy = F7FE353529917BF4BB34924A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		015E1E0C2C86C6D11EED3DF4 /* Release */ = {
@@ -637,6 +695,42 @@
 			};
 			name = Debug;
 		};
+		3E1F7CAC5A70A2FF0A42A06D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jamesbrowne.cyclejames.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CycleJames.app/CycleJames";
+			};
+			name = Release;
+		};
+		70B451E94E3113F644CDB9BC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jamesbrowne.cyclejames.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CycleJames.app/CycleJames";
+			};
+			name = Debug;
+		};
 		8CD2082FEB6CCB728A459D77 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -663,6 +757,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		2730D94FFDD987F1EB7A4D3B /* Build configuration list for PBXNativeTarget "CycleJamesTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				70B451E94E3113F644CDB9BC /* Debug */,
+				3E1F7CAC5A70A2FF0A42A06D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		3F612BC8C7E11F615D710381 /* Build configuration list for PBXNativeTarget "CycleJames" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -54,3 +54,25 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
         DEVELOPMENT_TEAM: 278RL79DB5
         CODE_SIGN_STYLE: Automatic
+  CycleJamesTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: CycleJamesTests
+    dependencies:
+      - target: CycleJames
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jamesbrowne.cyclejames.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  CycleJames:
+    build:
+      targets:
+        CycleJames: all
+    test:
+      targets:
+        - CycleJamesTests
+    run:
+      config: Debug
