@@ -22,6 +22,10 @@ struct WorkoutGraphView: View {
     /// Optional callback for drag-to-edit. Receives (intervalIndex, wattsDelta) where the
     /// delta is incremental (5W step) since the last emit.
     var onIntervalEdit: ((Int, Int) -> Void)? = nil
+    /// When true the target profile (zone-coloured rectangles) is dimmed to
+    /// signal it is not being enforced (Free Ride mode). The live power trace
+    /// and elapsed marker are unaffected.
+    var ghostTarget: Bool = false
 
     @State private var dragIntervalIndex: Int? = nil
     @State private var lastEmittedWatts: Int = 0
@@ -217,7 +221,7 @@ struct WorkoutGraphView: View {
                     yStart: .value("Base", 0),
                     yEnd: .value("Top", slice.percent)
                 )
-                .foregroundStyle(slice.zoneColor.opacity(slice.isComplete ? 0.4 : 0.85))
+                .foregroundStyle(slice.zoneColor.opacity((slice.isComplete ? 0.4 : 0.85) * (ghostTarget ? 0.35 : 1.0)))
             }
 
             // Live trailing power line.

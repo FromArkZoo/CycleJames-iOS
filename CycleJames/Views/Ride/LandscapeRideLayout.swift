@@ -25,7 +25,8 @@ struct LandscapeRideLayout: View {
                     showElapsedMarker: true,
                     showAxisLabels: false,
                     compact: true,
-                    powerHistory: ride.powerHistory
+                    powerHistory: ride.powerHistory,
+                    ghostTarget: ride.mode == .freeRide
                 )
                 .frame(maxHeight: .infinity)
             }

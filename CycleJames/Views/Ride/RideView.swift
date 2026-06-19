@@ -184,7 +184,8 @@ struct RideView: View {
                     showFTPLine: true,
                     showElapsedMarker: true,
                     showAxisLabels: false,
-                    compact: true
+                    compact: true,
+                    ghostTarget: ride.mode == .freeRide
                 )
                 .frame(height: 130)
                 .padding(.horizontal, CJSpacing.l)
