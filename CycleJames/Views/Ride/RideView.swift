@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import StoreKit
 
 struct RideView: View {
     @EnvironmentObject private var ride: RideController
@@ -8,6 +9,7 @@ struct RideView: View {
     @EnvironmentObject private var hr: HRManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.requestReview) private var requestReview
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var showStopOverlay = false
     @State private var showCompleteOverlay = false
@@ -130,6 +132,13 @@ struct RideView: View {
                     savedSession = ride.savedSessionAndDismiss(context: modelContext)
                 }
                 showCompleteOverlay = true
+                // Count completed rides and, from the 3rd onward, ask for a
+                // review on this positive moment. Guarded by savedSession so
+                // it fires exactly once per natural completion.
+                AppSettings.completedRideCount += 1
+                if ReviewPrompt.shouldRequest(afterCompletedCount: AppSettings.completedRideCount) {
+                    requestReview()
+                }
             }
         }
         .sheet(isPresented: $showAddIntervalSheet) {
