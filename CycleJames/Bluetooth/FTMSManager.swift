@@ -13,6 +13,7 @@ final class FTMSManager: NSObject, ObservableObject {
     // Control point opcodes.
     private static let opRequestControl: UInt8 = 0x00
     private static let opSetTargetPower: UInt8 = 0x05
+    private static let opSetSimulationParameters: UInt8 = 0x11
     private static let opStart: UInt8 = 0x07
     private static let opStop: UInt8 = 0x08
 
@@ -139,6 +140,34 @@ final class FTMSManager: NSObject, ObservableObject {
         var data = Data([Self.opSetTargetPower])
         var w = clamped.littleEndian
         withUnsafeBytes(of: &w) { data.append(contentsOf: $0) }
+        p.writeValue(data, for: char, type: .withResponse)
+    }
+
+    /// Encodes an FTMS "Set Indoor Bike Simulation Parameters" payload.
+    /// grade is a percentage (0 = flat). Crr/Cw use typical road defaults.
+    nonisolated static func simulationParametersData(
+        grade: Double,
+        windSpeedMps: Double = 0,
+        crr: Double = 0.0040,
+        cw: Double = 0.51
+    ) -> Data {
+        var data = Data([opSetSimulationParameters])
+        let wind = Int16(clamping: Int((windSpeedMps / 0.001).rounded())).littleEndian
+        let gr = Int16(clamping: Int((grade / 0.01).rounded())).littleEndian
+        let crrByte = UInt8(max(0, min(255, Int((crr / 0.0001).rounded()))))
+        let cwByte = UInt8(max(0, min(255, Int((cw / 0.01).rounded()))))
+        withUnsafeBytes(of: wind) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: gr) { data.append(contentsOf: $0) }
+        data.append(crrByte)
+        data.append(cwByte)
+        return data
+    }
+
+    /// Puts the trainer into simulation mode at the given grade. Used by
+    /// Free Ride at grade 0 so the bike's own gears drive resistance.
+    func setSimulationGrade(_ grade: Double) {
+        guard hasControl, let char = controlPointChar, let p = peripheral else { return }
+        let data = Self.simulationParametersData(grade: grade)
         p.writeValue(data, for: char, type: .withResponse)
     }
 
