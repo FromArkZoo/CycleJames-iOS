@@ -188,6 +188,7 @@ struct RideView: View {
                     showElapsedMarker: true,
                     showAxisLabels: false,
                     compact: true,
+                    powerHistory: ride.powerHistory,
                     ghostTarget: ride.mode == .freeRide
                 )
                 .frame(height: 130)
