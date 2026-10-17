@@ -38,3 +38,7 @@ Package.resolved
 Carthage/Build/
 Pods/
 scripts/.env
+
+# Course data pipeline: raw downloads and debug renders
+scripts/courses/.cache/
+scripts/courses/debug/

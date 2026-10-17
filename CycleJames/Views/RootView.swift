@@ -28,6 +28,14 @@ struct RootView: View {
     }
 
     var body: some View {
+        if let preview = CourseScenePreviewHost.request {
+            CourseScenePreviewHost(request: preview)
+        } else {
+            tabs
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $selection) {
             WorkoutsView()
                 .tabItem { Label("Workouts", systemImage: "bolt.heart") }

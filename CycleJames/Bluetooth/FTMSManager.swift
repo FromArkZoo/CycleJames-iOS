@@ -166,8 +166,15 @@ final class FTMSManager: NSObject, ObservableObject {
     /// Puts the trainer into simulation mode at the given grade. Used by
     /// Free Ride at grade 0 so the bike's own gears drive resistance.
     func setSimulationGrade(_ grade: Double) {
+        setSimulation(grade: grade)
+    }
+
+    /// Full simulation-mode update used by course rides: gradient (%),
+    /// rolling resistance (cobbles are roughly double asphalt) and the
+    /// wind-resistance coefficient (kg/m).
+    func setSimulation(grade: Double, crr: Double = 0.0040, cw: Double = 0.51) {
         guard hasControl, let char = controlPointChar, let p = peripheral else { return }
-        let data = Self.simulationParametersData(grade: grade)
+        let data = Self.simulationParametersData(grade: grade, crr: crr, cw: cw)
         p.writeValue(data, for: char, type: .withResponse)
     }
 
