@@ -77,6 +77,11 @@ final class CourseRideController: ObservableObject {
     /// Gradient the trainer last took, after the difficulty setting.
     /// Meaningful only while `trainerControlGranted`.
     @Published private(set) var trainerGradePct: Double = 0
+    /// Why the trainer refused the last gradient it was sent ("no
+    /// control", "not supported", …), or nil when it took it or hasn't
+    /// answered. A refused gradient leaves the trainer in its previous
+    /// mode, where its gears may do nothing.
+    @Published private(set) var trainerSlopeRefusal: String?
     /// The trainer that powered this ride dropped (link lost or readings
     /// stopped): power is 0 and the rider coasts until it's back, unless
     /// they take up the virtual power control (`useVirtualPower()`).
@@ -220,6 +225,9 @@ final class CourseRideController: ObservableObject {
         trainer.$hasControl
             .receive(on: DispatchQueue.main)
             .sink { [weak self] has in MainActor.assumeIsolated { self?.handleTrainerControl(has) } }
+            .store(in: &cancellables)
+        trainer.$slopeReply
+            .sink { [weak self] reply in MainActor.assumeIsolated { self?.handleSlopeReply(reply) } }
             .store(in: &cancellables)
         hr.$heartRate
             .sink { [weak self] bpm in MainActor.assumeIsolated { self?.handleHR(bpm) } }
@@ -639,6 +647,12 @@ final class CourseRideController: ObservableObject {
         if regained, phase == .riding || phase == .paused {
             bridge.resync(now: now)
         }
+    }
+
+    func handleSlopeReply(_ reply: FTMSManager.SlopeReply) {
+        var refusal: String?
+        if case .refused(let code) = reply { refusal = FTMSManager.refusalReason(code: code) }
+        if trainerSlopeRefusal != refusal { trainerSlopeRefusal = refusal }
     }
 
     private func handleHR(_ bpm: Int) {

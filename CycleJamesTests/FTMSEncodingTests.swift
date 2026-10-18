@@ -15,6 +15,29 @@ final class FTMSEncodingTests: XCTestCase {
         XCTAssertEqual([UInt8](data), [0x11, 0x00, 0x00, 0xF4, 0x01, 0x28, 0x33])
     }
 
+    // Control-point responses: [0x80, request opcode, result code].
+    func test_controlPointResponse_readsOpcodeAndResult() {
+        let accepted = FTMSManager.controlPointResponse(Data([0x80, 0x11, 0x01]))
+        XCTAssertEqual(accepted?.opcode, 0x11)
+        XCTAssertEqual(accepted?.result, 0x01)
+        let refused = FTMSManager.controlPointResponse(Data([0x80, 0x11, 0x05]))
+        XCTAssertEqual(refused?.result, 0x05)
+    }
+
+    func test_controlPointResponse_ignoresOtherData() {
+        XCTAssertNil(FTMSManager.controlPointResponse(Data([0x11, 0x00, 0x00])))  // a request, not a response
+        XCTAssertNil(FTMSManager.controlPointResponse(Data([0x80, 0x11])))        // too short
+        XCTAssertNil(FTMSManager.controlPointResponse(Data()))
+    }
+
+    func test_refusalReason_namesTheFTMSResultCodes() {
+        XCTAssertEqual(FTMSManager.refusalReason(code: 0x02), "not supported")
+        XCTAssertEqual(FTMSManager.refusalReason(code: 0x03), "invalid value")
+        XCTAssertEqual(FTMSManager.refusalReason(code: 0x04), "failed")
+        XCTAssertEqual(FTMSManager.refusalReason(code: 0x05), "no control")
+        XCTAssertEqual(FTMSManager.refusalReason(code: 0x09), "code 0x09")
+    }
+
     // Indoor Bike Data (0x2AD2): uint16 flags, then the fields they flag.
     func test_bikeData_fullRecord() {
         // Flags 0x0244: speed (bit 0 clear), cadence, power, heart rate.
