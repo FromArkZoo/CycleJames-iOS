@@ -97,6 +97,9 @@ struct CourseFile: Codable, Sendable {
         let rows: Int
     }
 
+    /// The course's aerial photo. The 3D world drapes the baked
+    /// `CourseTextures/<id>_ortho_ground.jpg` over this footprint; the raw
+    /// photo in `file` stays with the pipeline and isn't in the app bundle.
     struct OrthoHeader: Codable, Sendable {
         let file: String
         /// North-west corner of the image, local metres.

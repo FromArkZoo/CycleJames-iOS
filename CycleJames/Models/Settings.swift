@@ -10,6 +10,9 @@ enum SettingsKeys {
     static let trainerDifficultyPct = "cyclejames_trainerDifficultyPct"
     static let graphicsQuality = "cyclejames_graphicsQuality"
     static let coursePersonalBests = "cyclejames_coursePersonalBests"
+    static let coursePersonalBestSplits = "cyclejames_coursePersonalBestSplits"
+    static let coursePersonalBestSessions = "cyclejames_coursePersonalBestSessions"
+    static let coursePersonalBestClearedAt = "cyclejames_coursePersonalBestClearedAt"
 }
 
 enum AppSettings {
@@ -82,6 +85,56 @@ enum AppSettings {
         var all = UserDefaults.standard.dictionary(forKey: SettingsKeys.coursePersonalBests) as? [String: Double] ?? [:]
         all[courseID] = seconds
         UserDefaults.standard.set(all, forKey: SettingsKeys.coursePersonalBests)
+    }
+
+    /// The personal-best run's time since the climb start at every 10 m of
+    /// the climb (see `ClimbTimer.splitDistances`), for live PB deltas.
+    static func personalBestSplits(courseID: String) -> [Double]? {
+        let all = UserDefaults.standard.dictionary(forKey: SettingsKeys.coursePersonalBestSplits) as? [String: [Double]]
+        return all?[courseID]
+    }
+
+    /// The History ride (`RideSessionModel.id`) that set the personal best,
+    /// when known.
+    static func personalBestSessionID(courseID: String) -> UUID? {
+        let all = UserDefaults.standard.dictionary(forKey: SettingsKeys.coursePersonalBestSessions) as? [String: String]
+        return all?[courseID].flatMap(UUID.init(uuidString:))
+    }
+
+    /// Stores a new personal best: the climb time, its splits and the
+    /// History ride it came from.
+    static func setPersonalBest(seconds: Double, splits: [Double], courseID: String, sessionID: UUID? = nil) {
+        setPersonalBestSeconds(seconds, courseID: courseID)
+        let defaults = UserDefaults.standard
+        var all = defaults.dictionary(forKey: SettingsKeys.coursePersonalBestSplits) as? [String: [Double]] ?? [:]
+        all[courseID] = splits
+        defaults.set(all, forKey: SettingsKeys.coursePersonalBestSplits)
+        var sessions = defaults.dictionary(forKey: SettingsKeys.coursePersonalBestSessions) as? [String: String] ?? [:]
+        sessions[courseID] = sessionID?.uuidString
+        defaults.set(sessions, forKey: SettingsKeys.coursePersonalBestSessions)
+    }
+
+    /// Forgets a course's personal best (time, splits and source ride).
+    /// Rides started before now can't become it again when History is
+    /// worked out anew (`CourseRideRecorder.recomputePersonalBest`), so a
+    /// reset holds even if the next PB ride is deleted.
+    static func clearPersonalBest(courseID: String) {
+        let defaults = UserDefaults.standard
+        for key in [SettingsKeys.coursePersonalBests, SettingsKeys.coursePersonalBestSplits,
+                    SettingsKeys.coursePersonalBestSessions] {
+            guard var all = defaults.dictionary(forKey: key) else { continue }
+            all[courseID] = nil
+            defaults.set(all, forKey: key)
+        }
+        var cleared = defaults.dictionary(forKey: SettingsKeys.coursePersonalBestClearedAt) as? [String: Double] ?? [:]
+        cleared[courseID] = Date().timeIntervalSince1970
+        defaults.set(cleared, forKey: SettingsKeys.coursePersonalBestClearedAt)
+    }
+
+    /// When the course's personal best was last cleared, if ever.
+    static func personalBestClearedAt(courseID: String) -> Date? {
+        let all = UserDefaults.standard.dictionary(forKey: SettingsKeys.coursePersonalBestClearedAt) as? [String: Double]
+        return all?[courseID].map(Date.init(timeIntervalSince1970:))
     }
 
     private static func storedDouble(_ key: String, default value: Double, in range: ClosedRange<Double>) -> Double {

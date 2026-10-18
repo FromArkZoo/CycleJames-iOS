@@ -3,7 +3,10 @@
 Baked course data for the 3D climb simulator. One folder per course under
 `CycleJames/Resources/Courses/<course-id>/`, produced by the pipeline in
 `scripts/courses/` from open data. The app only reads these files; it never
-calls a map or elevation service at runtime.
+calls a map or elevation service at runtime. That folder is copied into the
+app as a folder reference, so everything in it ships: inputs only the
+pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
+[Pipeline-only data](#pipeline-only-data)).
 
 ## Frames and units
 
@@ -42,7 +45,10 @@ calls a map or elevation service at runtime.
     "climbAvgGradePct": 0,
     "climbMaxGradePct10m": 0, "climbMaxGradePct25m": 0, "climbMaxGradePct50m": 0,
     "startElevationM": 0, "summitElevationM": 0,
-    "per100m": [{ "fromS": 0, "toS": 100, "avgGradePct": 0 }]
+    // Consecutive 100 m slices of the climb. fromS/toS are distances along the
+    // route (same frame as climb.startS/endS), not relative to the climb start;
+    // the first slice starts at climb.startS and the last one may be shorter.
+    "per100m": [{ "fromS": 312.0, "toS": 412.0, "avgGradePct": 0 }]
   },
 
   // Resampled centreline at a fixed spacing; all arrays have the same length.
@@ -72,13 +78,21 @@ calls a map or elevation service at runtime.
   // Canopy/object height above ground (DSM − DTM), same grid as terrain.near.
   "canopy": { "file": "canopy_near.u16", "encoding": "u16le_cm", "baseM": 0,
               "originEast": 0, "originNorth": 0, "cellM": 1.0, "cols": 0, "rows": 0 },
-  // Aerial photo draped over terrain.near (optional).
+  // Aerial photo over terrain.near (optional). The app drapes the baked
+  // CourseTextures/<id>_ortho_ground.jpg over this footprint. "file" is the
+  // raw photo, which stays in scripts/courses/pipeline/<id>/ (not shipped);
+  // the app falls back to it only if it is in this folder.
   "ortho": { "file": "ortho_near.jpg", "originEast": 0, "originNorth": 0,
              "widthM": 0, "heightM": 0, "pixelsWide": 0, "pixelsHigh": 0,
              "capturedSeason": "summer|winter", "capturedYear": 0 },
   "scenery": "scenery.json"
 }
 ```
+
+Attribution lines are shown on the course page. Lines naming
+"OpenStreetMap" link to openstreetmap.org/copyright and lines naming
+"Modellicentie Gratis Hergebruik" link to that licence
+(`CourseLicence` in `CourseDetailView.swift`); keep those names in the text.
 
 ## `scenery.json`
 
@@ -99,3 +113,12 @@ calls a map or elevation service at runtime.
 
 All rings are closed implicitly (do not repeat the first point) and wound
 counter-clockwise in (east, north).
+
+## Pipeline-only data
+
+`build_course.py` writes the raw aerial photo, `course.json → ortho.file`
+(`ortho_near.jpg`), into `scripts/courses/pipeline/<course-id>/` rather than
+the shipped folder: only `build_scenery.py` and
+`textures/bake_course_maps.py` read it, and the app ships the baked
+ground photo made from it instead. Pipeline scripts open `ortho.file` from
+there and every other file named in `course.json` from the course folder.

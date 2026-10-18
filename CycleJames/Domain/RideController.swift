@@ -13,7 +13,9 @@ final class RideController: ObservableObject {
     }
 
     @Published var selectedWorkout: Workout?
-    @Published var state: AppState = .setup
+    @Published var state: AppState = .setup {
+        didSet { syncTrainerClaim() }
+    }
     @Published var mode: RideMode = .erg
 
     @Published var currentPower: Int = 0
@@ -42,6 +44,9 @@ final class RideController: ObservableObject {
     /// ride. Powers the trailing white line over the workout graph.
     @Published var powerHistory: [Int] = []
 
+    /// One second of the start countdown; tests shorten it.
+    var countdownStepNanoseconds: UInt64 = 1_000_000_000
+
     let player = WorkoutPlayer()
     let recorder = RideRecorder()
 
@@ -56,6 +61,10 @@ final class RideController: ObservableObject {
     private var lastHistorySecond: Int = -1
     private var perIntervalSums: [Int] = []
     private var perIntervalCounts: [Int] = []
+    /// Bumped whenever a countdown in flight must not start the ride.
+    private var countdownGeneration = 0
+    /// Last heart rate the trainer reported (0 when it has none).
+    private var trainerHR: Int = 0
 
     private var cancellables = Set<AnyCancellable>()
     private weak var trainer: FTMSManager?
@@ -83,6 +92,7 @@ final class RideController: ObservableObject {
     // MARK: Selection / state transitions
 
     func select(_ workout: Workout) {
+        countdownGeneration += 1
         selectedWorkout = workout
         player.load(workout, ftp: ftp)
         state = .ready
@@ -90,25 +100,47 @@ final class RideController: ObservableObject {
     }
 
     func deselect() {
+        countdownGeneration += 1
         selectedWorkout = nil
         player.stop()
         state = .setup
         resetMetrics()
     }
 
-    /// Begin countdown → riding flow. Returns when riding starts.
+    /// Begin countdown → riding flow. Returns when riding starts, or as
+    /// soon as the countdown is abandoned. Does nothing while a course ride
+    /// holds the trainer.
     func startRide() async {
-        guard selectedWorkout != nil else { return }
+        guard selectedWorkout != nil, TrainerOwnership.isAvailable(to: self) else { return }
+        countdownGeneration += 1
+        let generation = countdownGeneration
         state = .countdown
         for n in stride(from: 5, through: 1, by: -1) {
             countdownNumber = n
             AudioCues.shared.countdownTick(secondsRemaining: n)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: countdownStepNanoseconds)
+            // Left mid-countdown (Back, then Save or Discard & Stop): don't
+            // start a workout nobody is looking at.
+            guard isCountingDown(generation) else { return }
         }
         countdownNumber = 0
         AudioCues.shared.countdownTick(secondsRemaining: 0)
-        try? await Task.sleep(nanoseconds: 800_000_000)
+        try? await Task.sleep(nanoseconds: countdownStepNanoseconds / 5 * 4)
+        guard isCountingDown(generation) else { return }
         beginRiding()
+    }
+
+    private func isCountingDown(_ generation: Int) -> Bool {
+        state == .countdown && generation == countdownGeneration
+    }
+
+    /// Holds the trainer against a course ride while this ride counts
+    /// down, runs or is paused.
+    private func syncTrainerClaim() {
+        switch state {
+        case .countdown, .riding, .paused: TrainerOwnership.claim(self)
+        case .setup, .ready, .completed: TrainerOwnership.release(self)
+        }
     }
 
     private func beginRiding() {
@@ -276,6 +308,7 @@ final class RideController: ObservableObject {
 
     /// Save partial ride and end.
     func saveAndStop(context: ModelContext) -> RideSessionModel? {
+        countdownGeneration += 1
         recorder.stop()
         let model = persist(context: context, partial: true)
         player.stop()
@@ -286,6 +319,7 @@ final class RideController: ObservableObject {
     }
 
     func discardAndStop() {
+        countdownGeneration += 1
         player.stop()
         trainer?.autoReconnectEnabled = false
         trainer?.stopTraining()
@@ -320,46 +354,55 @@ final class RideController: ObservableObject {
     // MARK: Live data ingestion
 
     private func handleTrainerData(_ data: TrainerData) {
-        powerBuffer.append(data.power)
-        if powerBuffer.count > powerBufferSize { powerBuffer.removeFirst() }
-        rolling3sPower = powerBuffer.reduce(0, +) / max(powerBuffer.count, 1)
+        // A trainer may split one reading across several notifications;
+        // fields a notification doesn't carry keep their last value.
+        if let cadence = data.cadence { currentCadence = cadence }
+        if let bpm = data.heartRate { trainerHR = bpm }
 
-        currentPower = data.power
-        currentCadence = data.cadence
-
-        if data.heartRate > 0, hr?.connectionState != .connected {
-            currentHR = data.heartRate
-            lastHR = data.heartRate
+        if trainerHR > 0, hr?.connectionState != .connected {
+            currentHR = trainerHR
+            lastHR = trainerHR
         }
-
-        let zone = Zones.zone(forWatts: rolling3sPower, ftp: ftp)
-        currentZone = zone
 
         if state == .riding {
             // BLE callbacks fire while backgrounded (we hold `bluetooth-central`
             // background mode); use them as a heartbeat so elapsed/target stay
             // accurate even when iOS suspends our 1Hz Timer.
             player.refresh()
+        }
 
-            statPower.append(data.power)
-            if data.power > peakPower { peakPower = data.power }
-            if data.cadence > 0 {
-                statCadence.append(data.cadence)
-                if data.cadence > peakCadence { peakCadence = data.cadence }
+        // Stats and samples are one per power reading, so a notification
+        // without power doesn't add a 0 W sample.
+        guard let power = data.power else { return }
+        powerBuffer.append(power)
+        if powerBuffer.count > powerBufferSize { powerBuffer.removeFirst() }
+        rolling3sPower = powerBuffer.reduce(0, +) / max(powerBuffer.count, 1)
+
+        currentPower = power
+
+        let zone = Zones.zone(forWatts: rolling3sPower, ftp: ftp)
+        currentZone = zone
+
+        if state == .riding {
+            statPower.append(power)
+            if power > peakPower { peakPower = power }
+            if currentCadence > 0 {
+                statCadence.append(currentCadence)
+                if currentCadence > peakCadence { peakCadence = currentCadence }
             }
-            if data.heartRate > 0 {
-                statHR.append(data.heartRate)
-                if data.heartRate > peakHR { peakHR = data.heartRate }
+            if trainerHR > 0 {
+                statHR.append(trainerHR)
+                if trainerHR > peakHR { peakHR = trainerHR }
             }
             if let idx = currentIntervalContext?.index {
                 while perIntervalSums.count <= idx {
                     perIntervalSums.append(0)
                     perIntervalCounts.append(0)
                 }
-                perIntervalSums[idx] += data.power
+                perIntervalSums[idx] += power
                 perIntervalCounts[idx] += 1
             }
-            recorder.record(power: data.power, cadence: data.cadence, hr: data.heartRate > 0 ? data.heartRate : lastHR, target: currentTarget)
+            recorder.record(power: power, cadence: currentCadence, hr: trainerHR > 0 ? trainerHR : lastHR, target: currentTarget)
         }
     }
 
@@ -505,5 +548,6 @@ final class RideController: ObservableObject {
         lastHistorySecond = -1
         perIntervalSums.removeAll(); perIntervalCounts.removeAll()
         tssTickCounter = 0
+        trainerHR = 0
     }
 }

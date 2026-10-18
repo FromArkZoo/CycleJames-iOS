@@ -8,7 +8,7 @@ struct WorkoutsView: View {
     @Query private var customWorkouts: [CustomWorkoutModel]
     @State private var filterState = WorkoutFilterState()
     @State private var selectedWorkout: Workout?
-    @State private var navigationPath: [Workout] = []
+    @State private var navigationPath = NavigationPath()
     @State private var showSettings = false
 
     private var allWorkouts: [Workout] {
@@ -26,6 +26,11 @@ struct WorkoutsView: View {
             ScrollView {
                 VStack(spacing: CJSpacing.m) {
                     ConnectionRow()
+                    NavigationLink(value: CourseNav.list) {
+                        ClimbsEntryCard()
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, CJSpacing.l)
                     WorkoutFilterBar(state: $filterState)
                     if filtered.isEmpty {
                         Text("No workouts match the current filters.")
@@ -52,6 +57,12 @@ struct WorkoutsView: View {
             .navigationDestination(for: Workout.self) { w in
                 WorkoutDetailView(workout: w)
             }
+            .navigationDestination(for: CourseNav.self) { nav in
+                switch nav {
+                case .list: CourseListView()
+                case .detail(let id): CourseDetailView(courseID: id)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 4) {
@@ -75,7 +86,10 @@ struct WorkoutsView: View {
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear { applyScreenshotPush() }
+            .onAppear {
+                applyScreenshotPush()
+                if CourseLaunchArgs.screenshotSettings { showSettings = true }
+            }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -83,15 +97,26 @@ struct WorkoutsView: View {
     }
 
     /// Honour `-screenshotWorkout <prefix>` launch arg by pushing to the
-    /// matching workout's detail screen on first appear. Used only by the
-    /// screenshot capture script. No-op in production.
+    /// matching workout's detail screen on first appear, and the 3D course
+    /// args (`-screenshotCourses`, `-screenshotCourse <id>`, `-courseRideDemo
+    /// <id>`; see `CourseLaunchArgs`). Used only by the screenshot capture
+    /// script. No-op in production.
     private func applyScreenshotPush() {
         guard navigationPath.isEmpty else { return }
         let args = ProcessInfo.processInfo.arguments
+        if let id = CourseLaunchArgs.rideDemoCourseID ?? CourseLaunchArgs.screenshotCourseID {
+            navigationPath.append(CourseNav.list)
+            navigationPath.append(CourseNav.detail(id))
+            return
+        }
+        if CourseLaunchArgs.screenshotCourses {
+            navigationPath.append(CourseNav.list)
+            return
+        }
         guard let idx = args.firstIndex(of: "-screenshotWorkout"), idx + 1 < args.count else { return }
         let prefix = args[idx + 1]
         if let match = allWorkouts.first(where: { $0.id.contains(prefix) || $0.name.lowercased().contains(prefix.lowercased()) }) {
-            navigationPath = [match]
+            navigationPath.append(match)
         }
     }
 }

@@ -1,10 +1,13 @@
 import Foundation
 
+/// One Indoor Bike Data notification. FTMS lets a trainer split a record
+/// across several notifications (the "More Data" flag), so each field is
+/// nil when this notification didn't carry it, rather than 0.
 struct TrainerData: Equatable {
-    var power: Int = 0
-    var cadence: Int = 0
-    var speedKph: Double = 0
-    var heartRate: Int = 0
+    var power: Int?
+    var cadence: Int?
+    var speedKph: Double?
+    var heartRate: Int?
 }
 
 enum ConnectionState: Equatable {

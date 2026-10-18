@@ -2,7 +2,7 @@
 # Serialised build / preview helper for CycleJames.
 #
 # Only one xcodebuild or Simulator run happens at a time across every caller
-# (a mkdir lock in /tmp), with limited compile parallelism, so several
+# (a mkdir lock in scripts/dev/), with limited compile parallelism, so several
 # agents or terminals can share an 8 GB Mac without exhausting memory.
 #
 #   scripts/dev/cj-build.sh build [file-filter]
@@ -19,7 +19,8 @@
 #       Shuts the preview simulator down to free memory.
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-LOCK=/tmp/cyclejames-build.lock
+# Inside the repo, not /tmp: sandboxed callers may each see a private /tmp.
+LOCK="$REPO/scripts/dev/.build.lock"
 # Every caller shares one DerivedData so builds stay incremental.
 DD="${CJ_DERIVED_DATA:-$HOME/Library/Developer/Xcode/DerivedData/CycleJames-agents}"
 SIM_NAME="${CJ_SIM:-iPhone 17 Pro}"
@@ -27,10 +28,10 @@ BUNDLE_ID=com.jamesbrowne.cyclejames
 JOBS="${CJ_JOBS:-3}"
 
 acquire() {
-  local waited=0
+  local waited=0 owner
   until mkdir "$LOCK" 2>/dev/null; do
     # Break a lock whose owner has died.
-    local owner; owner=$(cat "$LOCK/pid" 2>/dev/null || echo "")
+    owner=$(cat "$LOCK/pid" 2>/dev/null || echo "")
     if [[ -n "$owner" ]] && ! kill -0 "$owner" 2>/dev/null; then
       rm -rf "$LOCK"; continue
     fi
@@ -39,8 +40,15 @@ acquire() {
     if (( waited > 1800 )); then echo "gave up waiting for build lock" >&2; exit 3; fi
   done
   echo $$ > "$LOCK/pid"
-  trap 'rm -rf "$LOCK"' EXIT INT TERM
+  HELD=1
 }
+
+# Released at script exit. These traps must stay at top level: in zsh an
+# EXIT trap set inside a function fires as soon as that function returns.
+HELD=""
+release() { [[ -n "$HELD" ]] && rm -rf "$LOCK"; }
+trap release EXIT
+trap 'release; exit 130' INT TERM
 
 sim_udid() {
   xcrun simctl list devices available | grep -F "    $SIM_NAME (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/'

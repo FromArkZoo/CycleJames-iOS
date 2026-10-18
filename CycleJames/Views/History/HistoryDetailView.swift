@@ -39,6 +39,9 @@ struct HistoryDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: CJSpacing.l) {
                 header
+                if session.category == "Climb" {
+                    ClimbHistorySection(session: session)
+                }
                 if !points.isEmpty {
                     chart
                 }
@@ -169,17 +172,24 @@ struct HistoryDetailView: View {
     }
 
     private var chartXStride: Int {
-        session.durationSec > 3600 ? 600 : 300
+        // Short rides (a 3D climb takes a few minutes) get minute ticks.
+        if session.durationSec <= 900 { return 60 }
+        return session.durationSec > 3600 ? 600 : 300
     }
 
     private var xAxisStops: [Int] {
+        // Drop a tick right at the end of the ride: its label would be
+        // clipped to "…".
         Array(stride(from: 0, through: session.durationSec, by: chartXStride))
+            .filter { $0 == 0 || Double(session.durationSec - $0) >= Double(chartXStride) * 0.4 }
     }
 
     @ViewBuilder
     private var statsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: CJSpacing.s) {
-            stat("Duration", TimeFormat.duration(session.durationSec))
+            stat("Duration", session.category == "Climb"
+                 ? TimeFormat.mmss(session.durationSec)
+                 : TimeFormat.duration(session.durationSec))
             stat("Avg Power", "\(session.avgPower)W")
             stat("Peak Power", session.peakPower > 0 ? "\(session.peakPower)W" : "--")
             stat("NP", "\(session.np)W")
@@ -210,8 +220,7 @@ struct HistoryDetailView: View {
 
     private var deleteButton: some View {
         Button(role: .destructive) {
-            modelContext.delete(session)
-            try? modelContext.save()
+            RideHistory.delete(session, in: modelContext)
             dismiss()
         } label: {
             Label("Delete Ride", systemImage: "trash")
