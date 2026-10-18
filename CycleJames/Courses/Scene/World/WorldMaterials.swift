@@ -10,11 +10,13 @@ final class WorldMaterials {
     let config: WorldConfig
     let textures: WorldTextures
     let bundle: CourseBundle
+    let art: CourseArt
 
-    init(config: WorldConfig, textures: WorldTextures, bundle: CourseBundle) {
+    init(config: WorldConfig, textures: WorldTextures, bundle: CourseBundle, art: CourseArt) {
         self.config = config
         self.textures = textures
         self.bundle = bundle
+        self.art = art
     }
 
     private func pbr(_ color: UIColor, roughness: CGFloat = 0.9, metalness: CGFloat = 0) -> SCNMaterial {
@@ -88,9 +90,16 @@ final class WorldMaterials {
         return m
     }
 
-    lazy var cobbles: SCNMaterial = paved(albedo: "cj_cobble_albedo", detail: "cj_cobble_detail",
-                                          tileU: 1.08, tileV: 1.08, mud: 1, normal: 1,
-                                          fallback: UIColor(red: 0.36, green: 0.34, blue: 0.32, alpha: 1))
+    lazy var cobbles: SCNMaterial = {
+        let m = paved(albedo: "cj_cobble_albedo", detail: "cj_cobble_detail", tileU: 1.08, tileV: 1.08, mud: 1,
+                      normal: 1, fallback: UIColor(red: 0.33, green: 0.34, blue: 0.35, alpha: 1))
+        if m.shaderModifiers != nil {
+            m.shaderModifiers?[.surface] = WorldShaders.cobbleSurface
+            let t = art.setts.tint
+            m.setValue(NSValue(scnVector4: SCNVector4(t.x, t.y, t.z, t.w)), forKey: "stoneTint")
+        }
+        return m
+    }()
     lazy var asphalt: SCNMaterial = paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail",
                                           tileU: 2, tileV: 2, mud: 0.3, normal: 0.7,
                                           fallback: UIColor(white: 0.30, alpha: 1))

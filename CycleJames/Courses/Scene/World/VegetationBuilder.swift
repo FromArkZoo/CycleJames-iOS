@@ -128,13 +128,19 @@ enum VegetationBuilder {
                 arch = archetypes[5]
             } else if lu == "orchard" || (h <= 7.5 && ratio <= 2.6 && lu != "forest") {
                 arch = archetypes[rnd.unit() < 0.5 ? 6 : 7]
-            } else if h >= 13 && ratio >= 4.2 {
+            } else if h >= 13 && ratio >= 4.2 && r >= 1.6 && r <= 3 {
+                // (A LiDAR crown much narrower than this is usually a
+                // broadleaf crown cut short by its neighbours; as a poplar
+                // it would be a bare pole with a tuft on top. Much wider,
+                // the poplar's column thins out to cards and sticks.)
                 arch = archetypes[rnd.unit() < 0.5 ? 3 : 4]
             } else {
                 arch = archetypes[Int(rnd.unit() * 3) % 3]
             }
             let sy = h / arch.refHeight
-            let sxz = min(max(r / arch.refRadius, sy * 0.45), sy * 1.9)
+            // A broadleaf keeps a crown at least about half as wide as it is
+            // tall, however small its LiDAR crown, or it reads as a lollipop.
+            let sxz = min(max(r / arch.refRadius, sy * (arch.kind == .broadleaf ? 0.55 : 0.45)), sy * 1.9)
             let yaw = rnd.range(0, 6.283)
             let phase = rnd.range(0, 6.283)
             let tint = max(0, rnd.range(-0.25, 0.55))
@@ -148,7 +154,7 @@ enum VegetationBuilder {
             if sunk > 0.2, q.dist < 16 {
                 let st = corridor.station(at: q.s)
                 let side: Double = ((e - st.east) * st.rightE + (n - st.north) * st.rightN) >= 0 ? 1 : -1
-                let amount = Float(sunk) * min(0.55 * r, 5) * (1 - Float(q.dist) / 20)
+                let amount = Float(sunk) * min(0.35 * r, 2.5) * (1 - Float(q.dist) / 20)
                 lean = SIMD2(Float(-st.rightE * side), Float(st.rightN * side)) * amount
             }
             if q.dist < config.treeDetailRouteRadius {
@@ -225,9 +231,11 @@ enum VegetationBuilder {
         // face the viewer, so no card is ever seen edge-on. Brambles and
         // stools need a measured bank on their side (`bankTop`): a span can
         // be open on one side, and nothing grows on a side road.
-        var nBank = 0
+        var nBank = 0, nBankShrub = 0
         if config.bankPlantDensity > 0 {
             var rnd = WorldRandom(seed: 4242)
+            // Its own sequence, so the other bank plants stay where they were.
+            var shrubRnd = WorldRandom(seed: 4343)
             let step = 0.55 / config.bankPlantDensity
             for span in corridor.art.sunkenLane {
                 var s = span.lowerBound - 10
@@ -340,12 +348,44 @@ enum VegetationBuilder {
                             clusters[ck] = cl
                             nBank += 1
                         }
+                        // Shrubs on the steep faces (over 30 degrees, within
+                        // 8 m of the road), so a bank reads as overgrown
+                        // earth rather than one smooth slope.
+                        let shrubO = min(8.0, verge - 0.3)
+                        if w > 0.4, shrubO > 0.6, Double(shrubRnd.unit()) < 0.7 * w {
+                            let o = Double(shrubRnd.range(0.4, Float(shrubO)))
+                            let p = RoadBuilder.vergePoint(corridor, st, side: side, offset: o)
+                            let pn = surfaceNormal(corridor, st, side: side, offset: o)
+                            if pn.y < 0.866, !sideRoads.covers(east: p.east, north: p.north) {
+                                let rad = shrubRnd.range(0.45, 0.95), hgt = shrubRnd.range(0.7, 1.5)
+                                let base = SIMD3<Float>(Float(p.east), Float(p.y), Float(-p.north))
+                                let centre = base + SIMD3(0, hgt * 0.4, 0) + pn * 0.12
+                                let radii = SIMD3<Float>(rad, hgt * 0.5, rad)
+                                let ck = key(p.east, p.north)
+                                var cl = take(ck)
+                                let first = cl.full.vertexCount
+                                for _ in 0..<(3 + Int(shrubRnd.unit() * 3)) {
+                                    let d = TreeArchetype.randomDir(&shrubRnd, minY: -0.3)
+                                    TreeArchetype.card(&cl.full, centre: centre + d * radii * shrubRnd.range(0.15, 0.6),
+                                                       size: max(rad, hgt * 0.5) * shrubRnd.range(1.1, 1.5), normal: d,
+                                                       roll: shrubRnd.range(-0.6, 0.6),
+                                                       uv: shrubRnd.unit() < 0.45 ? TreeArchetype.ivyUV : TreeArchetype.broadUV,
+                                                       crownCentre: centre - SIMD3(0, hgt * 0.3, 0), crownRadii: radii,
+                                                       height: max(hgt, 2) * 3, ao: shrubRnd.range(0.8, 0.92), bend: 0.6,
+                                                       baseY: base.y)
+                                }
+                                patchPhase(&cl.full, from: first, phase: shrubRnd.range(0, 6.28), tint: shrubRnd.range(0, 0.2))
+                                clusters[ck] = cl
+                                nBankShrub += 1
+                            }
+                        }
                     }
                     s += step
                 }
             }
         }
         out.counts["bank plants"] = nBank
+        out.counts["bank shrubs"] = nBankShrub
         out.clusters = Array(clusters.values).filter { !$0.light.isEmpty || !$0.full.isEmpty }
 
         buildHedges(corridor: corridor, sideRoads: sideRoads, into: &out.hedges)

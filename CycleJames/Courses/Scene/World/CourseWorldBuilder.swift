@@ -57,7 +57,7 @@ enum CourseWorldBuilder {
         repeat {
             try await waitForForeground()
             textures = WorldTextures(limit: config.textureLimit)
-            materials = WorldMaterials(config: config, textures: textures, bundle: bundle)
+            materials = WorldMaterials(config: config, textures: textures, bundle: bundle, art: corridor.art)
             for m in [materials.terrain, materials.verge, materials.cobbles, materials.asphalt, materials.kerb,
                       materials.concrete, materials.gutter,
                       materials.leaves, materials.bark, materials.impostor, materials.grass, materials.walls,
