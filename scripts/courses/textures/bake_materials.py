@@ -50,117 +50,138 @@ def detail_png(path: Path, height: np.ndarray, strength: float, rough: np.ndarra
 # ---------------------------------------------------------------- cobbles
 
 def bake_cobbles(size: int = 1024) -> None:
-    """cj_cobble_albedo.jpg + cj_cobble_detail.png.
+    """cj_cobble_albedo.jpg + cj_cobble_detail.rgbz.
 
-    One tile is 1.08 m across the road (u) by 1.08 m along it (v): six rows
-    of porphyry setts laid across the lane, nine setts per row, each about
-    12 cm wide (across) by 18 cm long (along travel), staggered row to row,
-    with soil and grit in the joints.
+    One tile is 1.08 m across the road (u) by 1.08 m along it (v): seven
+    rough courses of setts laid across the lane, eight setts per course,
+    each about 13 cm across by 15 cm along travel but irregular: split
+    stones with rounded, chipped outlines, domed tops worn to different
+    heights, slightly turned, in courses that wander, with sandy grit in
+    joints of uneven width. Mostly grey and blue-grey with some brown, ochre
+    and reddish stones (the Koppenberg's porphyry); the app desaturates and
+    cools them per course (CourseArt.SettLook) for the blue-grey setts of
+    the Kwaremont and the Paterberg. Values are stored as sRGB.
     """
     r = rng(11)
     tile_m = 1.08
     ppm = size / tile_m
+    n_rows, n_cols = 7, 8
+    ys = np.arange(size, dtype=np.float32)[:, None]
+    xs = np.arange(size, dtype=np.float32)
+
+    def partition(total: float, n: int, jitter: float) -> np.ndarray:
+        w = 1 + r.uniform(-jitter, jitter, n)
+        w = w / w.sum() * total
+        return np.concatenate([[0], np.cumsum(w)])
+
+    # Course boundaries wander across the road (periodic in u, so the
+    # tile still wraps); the last wraps onto the first.
+    row_edges = partition(size, n_rows, 0.16)
+    bounds = []
+    for k in range(n_rows):
+        k1, k2 = int(r.integers(1, 3)), int(r.integers(3, 7))
+        wob = (np.sin(2 * math.pi * k1 * xs / size + r.uniform(0, 6.28)) * r.uniform(0.004, 0.009)
+               + np.sin(2 * math.pi * k2 * xs / size + r.uniform(0, 6.28)) * r.uniform(0.001, 0.004)) * ppm
+        bounds.append(row_edges[k] + wob)
+    bounds.append(bounds[0] + size)
+    B = np.stack(bounds).astype(np.float32)               # (rows + 1, size)
+    Y = (ys - B[0][None, :]) % size + B[0][None, :]       # row 0 starts at its own boundary
+    row = np.zeros((size, size), np.int32)
+    for k in range(1, n_rows):
+        row += (Y >= B[k][None, :]).astype(np.int32)
+
+    # Mostly grey and blue-grey, some brown, ochre and reddish (sRGB).
+    palette = np.array([
+        [0.40, 0.405, 0.41], [0.35, 0.355, 0.36], [0.365, 0.38, 0.405], [0.315, 0.33, 0.355],
+        [0.41, 0.425, 0.45], [0.26, 0.27, 0.285], [0.345, 0.355, 0.35],
+        [0.415, 0.39, 0.355], [0.44, 0.405, 0.345], [0.42, 0.365, 0.34],
+    ], np.float32)
+    weights = np.array([0.15, 0.13, 0.15, 0.12, 0.07, 0.08, 0.06, 0.09, 0.08, 0.07])
+    grain = fbm(size, size, 64, 4, r) - 0.5
+    edge_wob = fbm(size, size, 16, 3, r) - 0.5
+    chip = value_noise(size, size, 150, 150, r) - 0.5
+    bumps = fbm(size, size, 36, 3, r) - 0.5
+    speck = value_noise(size, size, 300, 300, r)
+    mottle = fbm(size, size, 14, 3, r) - 0.5
     h = np.zeros((size, size), np.float32)
     alb = np.zeros((size, size, 3), np.float32)
     rough = np.zeros((size, size), np.float32)
-    joint_mask = np.zeros((size, size), np.float32)
-
-    def partition(total: int, n: int, jitter: float) -> np.ndarray:
-        w = 1 + r.uniform(-jitter, jitter, n)
-        w = w / w.sum() * total
-        edges = np.concatenate([[0], np.cumsum(w)])
-        return edges
-
-    row_edges = partition(size, 6, 0.10)
-    palette = np.array([
-        [0.355, 0.35, 0.355], [0.39, 0.38, 0.37], [0.32, 0.32, 0.335], [0.41, 0.385, 0.355],
-        [0.28, 0.275, 0.28], [0.37, 0.36, 0.355], [0.43, 0.39, 0.355], [0.34, 0.335, 0.33],
-    ], np.float32)
-    weights = np.array([0.22, 0.18, 0.16, 0.08, 0.1, 0.14, 0.04, 0.08])
-    grain = fbm(size, size, 64, 4, r) - 0.5
-    edge_wob = fbm(size, size, 24, 3, r)
-    chip = value_noise(size, size, 160, 160, r)
-    bumps = fbm(size, size, 40, 3, r) - 0.5
-    speck = value_noise(size, size, 256, 256, r)
-    mottle = fbm(size, size, 12, 3, r) - 0.5
-    xs = np.arange(size, dtype=np.float32)
-    row_wave = np.zeros(size, np.float32)
-    jw = 0.0055 * ppm  # joint half-gap, px
-    for k in range(6):
-        y0, y1 = int(round(row_edges[k])), int(round(row_edges[k + 1]))
-        rows = np.arange(y0, y1, dtype=np.float32)
-        col_edges = partition(size, 9, 0.24)
+    inside = np.zeros((size, size), np.float32)
+    for k in range(n_rows):
+        m = row == k
+        ly_all = Y - B[k][None, :]
+        sh_all = (B[k + 1] - B[k])[None, :]
+        col_edges = partition(size, n_cols, 0.3)
         offset = r.uniform(0, size)
         u = (xs[None, :] - offset) % size
-        idx = np.clip(np.searchsorted(col_edges, u, side="right") - 1, 0, 8)
-        n_st = 9
-        # Per-stone shape and colour parameters.
-        cx_jit = r.uniform(-0.006, 0.006, n_st) * ppm
-        cy_jit = r.uniform(-0.006, 0.006, n_st) * ppm
-        rot = r.uniform(-0.05, 0.05, n_st)
-        corner = r.uniform(0.012, 0.03, n_st) * ppm
-        top = r.uniform(0.82, 1.0, n_st)
-        tilt_x = r.uniform(-0.12, 0.12, n_st)
-        tilt_y = r.uniform(-0.12, 0.12, n_st)
-        cols = palette[r.choice(len(palette), n_st, p=weights / weights.sum())]
-        cols = cols * r.uniform(0.92, 1.08, (n_st, 1))
-        wear = r.uniform(0.0, 1.0, n_st)
+        idx = np.broadcast_to(np.clip(np.searchsorted(col_edges, u, side="right") - 1, 0, n_cols - 1), (size, size))
+        n = n_cols
+        # Per-stone shape and colour.
+        cx_jit = r.uniform(-0.005, 0.005, n) * ppm
+        cy_jit = r.uniform(-0.006, 0.006, n) * ppm
+        rot = r.uniform(-0.1, 0.1, n)
+        jw = r.uniform(0.003, 0.0055, n) * ppm            # joint half-gap
+        shrink_x = r.uniform(0.0, 0.004, n) * ppm
+        shrink_y = r.uniform(0.0, 0.006, n) * ppm
+        corner = r.uniform(0.018, 0.04, n) * ppm
+        shoulder_r = r.uniform(0.016, 0.03, n) * ppm
+        top = r.uniform(0.72, 1.0, n)
+        dome_k = r.uniform(0.2, 0.45, n)
+        tilt_x = r.uniform(-0.14, 0.14, n)
+        tilt_y = r.uniform(-0.14, 0.14, n)
+        cols = palette[r.choice(len(palette), n, p=weights / weights.sum())]
+        cols = cols * r.uniform(0.9, 1.1, (n, 1))
+        wear = r.uniform(0.0, 1.0, n)
         sw = (col_edges[1:] - col_edges[:-1])[idx]
-        sh = float(y1 - y0)
         lx = u - col_edges[:-1][idx] - sw / 2 - cx_jit[idx]
-        ly = (rows[:, None] - y0) - sh / 2 - cy_jit[idx] + row_wave[None, :] * 0.0
-        c, s = np.cos(rot[idx]), np.sin(rot[idx])
-        qx = c * lx + s * ly
-        qy = -s * lx + c * ly
-        hx = sw / 2 - jw - corner[idx]
-        hy = sh / 2 - jw - corner[idx]
+        ly = ly_all - sh_all / 2 - cy_jit[idx]
+        c, s_ = np.cos(rot[idx]), np.sin(rot[idx])
+        qx = c * lx + s_ * ly
+        qy = -s_ * lx + c * ly
+        hx = sw / 2 - jw[idx] - shrink_x[idx] - corner[idx]
+        hy = sh_all / 2 - jw[idx] - shrink_y[idx] - corner[idx]
         dx = np.abs(qx) - hx
         dy = np.abs(qy) - hy
-        outside = np.sqrt(np.maximum(dx, 0) ** 2 + np.maximum(dy, 0) ** 2)
-        inside = np.minimum(np.maximum(dx, dy), 0)
-        sdf = outside + inside - corner[idx]  # px, negative inside
-        # Split-stone edges: wobble the outline, chip the corners.
-        sdf = sdf + (edge_wob[y0:y1] - 0.5) * 0.012 * ppm + (chip[y0:y1] - 0.5) * 0.006 * ppm
-        bevel = 0.014 * ppm
-        dome = np.clip(-sdf / bevel, 0, 1)
-        dome = np.sqrt(dome) * (0.9 + 0.1 * dome)
-        # Gentle crown and tilt so stones catch light differently.
+        sdf = np.sqrt(np.maximum(dx, 0) ** 2 + np.maximum(dy, 0) ** 2) + np.minimum(np.maximum(dx, dy), 0) - corner[idx]
+        # Split-stone outlines: wobbling, chipped.
+        sdf = sdf + edge_wob * 0.008 * ppm + chip * 0.004 * ppm
+        e = np.clip(-sdf / shoulder_r[idx], 0, 1)
+        shoulder = 1 - (1 - e) ** 2
         cnx = qx / np.maximum(sw / 2, 1)
-        cny = qy / max(sh / 2, 1)
-        crown = 1 - 0.18 * (cnx ** 2 + cny ** 2)
-        hh = dome * crown * top[idx] + (tilt_x[idx] * cnx + tilt_y[idx] * cny) * 0.08 * dome
-        band = slice(y0, y1)
-        hh = hh + grain[band] * 0.06 * dome + bumps[band] * 0.22 * dome
-        h[band] = hh
-        inside_mask = (sdf < 0).astype(np.float32)
-        jm = 1 - smoothstep(-0.004 * ppm, 0.001 * ppm, -sdf)
-        joint_mask[band] = smoothstep(-0.0015 * ppm, 0.0015 * ppm, sdf)
+        cny = qy / np.maximum(sh_all / 2, 1)
+        crown = 1 - dome_k[idx] * (cnx ** 2 + cny ** 2)
+        hh = shoulder * crown * top[idx] + (tilt_x[idx] * cnx + tilt_y[idx] * cny) * 0.1 * shoulder
+        hh = hh + (grain * 0.05 + bumps * 0.16) * shoulder
         base = cols[idx]
-        tone = 1 + mottle[band][..., None] * 0.16 + (speck[band][..., None] - 0.5) * 0.14
-        stone = base * tone
-        # Darker grime towards the edges, lighter polished tops.
-        edge_dark = 0.78 + 0.22 * smoothstep(0, 0.6, dome)
-        polish = 1 + 0.06 * wear[idx][..., None] * (dome[..., None] ** 2)
-        stone = stone * edge_dark[..., None] * polish
-        alb[band] = stone
-        rough[band] = 0.62 - 0.12 * wear[idx] * dome ** 2 + grain[band] * 0.1
-        del jm, inside_mask
+        tone = 1 + mottle[..., None] * 0.18 + (speck[..., None] - 0.5) * 0.18
+        # Grime towards the edges, a polish on worn tops.
+        edge_dark = 0.8 + 0.2 * smoothstep(0.0, 0.6, shoulder)
+        polish = 1 + 0.08 * wear[idx][..., None] * (np.clip(hh, 0, 1)[..., None] ** 3)
+        stone = base * tone * edge_dark[..., None] * polish
+        rr = 0.66 - 0.16 * wear[idx] * np.clip(hh, 0, 1) ** 2 + grain * 0.1
+        h = np.where(m, hh, h)
+        alb = np.where(m[..., None], stone, alb)
+        rough = np.where(m, rr, rough)
+        inside = np.where(m, smoothstep(0.0015 * ppm, -0.0015 * ppm, sdf), inside)
 
-    # Joints: soil, sand and a little moss.
-    soil = np.array([0.20, 0.175, 0.14], np.float32)
-    sand = np.array([0.36, 0.32, 0.26], np.float32)
-    moss = np.array([0.17, 0.22, 0.09], np.float32)
-    jn = fbm(size, size, 32, 4, r)
-    mossy = smoothstep(0.7, 0.86, fbm(size, size, 6, 3, r)) * 0.6
-    jcol = soil[None, None] * (0.8 + 0.4 * jn[..., None])
-    jcol = jcol + (sand - soil)[None, None] * smoothstep(0.75, 0.95, speck)[..., None]
-    jcol = jcol + (moss - jcol) * (mossy * 0.8)[..., None]
-    j = joint_mask[..., None]
-    alb = alb * (1 - j) + jcol * j
-    rough = rough * (1 - j[..., 0]) + 0.95 * j[..., 0]
-    height = np.clip(h, 0, 1)
+    # Joints: sandy grit, darker soil in places, a little moss.
+    sand = np.array([0.43, 0.40, 0.345], np.float32)
+    soil = np.array([0.25, 0.225, 0.19], np.float32)
+    moss = np.array([0.21, 0.25, 0.11], np.float32)
+    jn = fbm(size, size, 28, 4, r)
+    soily = smoothstep(0.5, 0.8, fbm(size, size, 9, 3, r))
+    mossy = smoothstep(0.72, 0.88, fbm(size, size, 6, 3, r)) * 0.55
+    jcol = sand[None, None] * (0.8 + 0.35 * jn[..., None]) * (0.85 + 0.3 * speck[..., None])
+    jcol = jcol + (soil - jcol) * (soily * 0.6)[..., None]
+    jcol = jcol + (moss - jcol) * mossy[..., None]
+    j = 1 - inside
+    alb = alb * (1 - j[..., None]) + jcol * j[..., None]
+    # Grit sits a little up the joints; the stones stand proud of it.
+    grit = 0.04 + 0.06 * jn
+    height = np.clip(np.maximum(h, grit), 0, 1)
+    rough = rough * (1 - j) + 0.95 * j
     save_rgb(OUT / "cj_cobble_albedo.jpg", np.clip(alb, 0, 1), 92)
-    detail_png(OUT / "cj_cobble_detail.png", height, 9.0, np.clip(rough, 0.3, 1))
+    detail_png(OUT / "cj_cobble_detail.png", height, 11.0, np.clip(rough, 0.3, 1))
 
 
 # ---------------------------------------------------------------- asphalt

@@ -70,6 +70,56 @@ struct TreeArchetype {
         }
     }
 
+    /// Tapering limb along a quadratic Bezier from `a` (radius `r0`)
+    /// towards control point `c` to `b` (radius `r1`) (bark, part 0). The
+    /// rings follow the curve, so the limb bends instead of kinking.
+    static func limb(_ m: inout MeshBuffer, _ a: SIMD3<Float>, _ c: SIMD3<Float>, _ b: SIMD3<Float>,
+                     _ r0: Float, _ r1: Float, sides: Int, segments: Int, height: Float, baseY: Float = 0) {
+        var pts: [SIMD3<Float>] = []
+        for i in 0...segments {
+            let t = Float(i) / Float(segments), u = 1 - t
+            pts.append(a * (u * u) + c * (2 * u * t) + b * (t * t))
+        }
+        let first = UInt32(m.vertexCount)
+        var side = SIMD3<Float>.zero
+        var v: Float = 0
+        for i in 0...segments {
+            let lo = pts[max(i - 1, 0)], hi = pts[min(i + 1, segments)]
+            let axis = hi - lo
+            guard simd_length(axis) > 1e-5 else { return }
+            let dir = simd_normalize(axis)
+            // Carry the ring's frame along the curve (no twist).
+            if i == 0 {
+                let ref: SIMD3<Float> = abs(dir.y) < 0.95 ? SIMD3(0, 1, 0) : SIMD3(1, 0, 0)
+                side = simd_normalize(simd_cross(ref, dir))
+            } else {
+                side = simd_normalize(side - dir * simd_dot(side, dir))
+                v += simd_length(pts[i] - pts[i - 1]) * 0.5
+            }
+            let w = simd_cross(dir, side)
+            let t = Float(i) / Float(segments)
+            let r = r0 + (r1 - r0) * t.squareRoot()
+            for k in 0...sides {
+                let ang = Float(k) / Float(sides) * 2 * .pi
+                let n = side * cos(ang) + w * sin(ang)
+                let q = pts[i] + n * r
+                m.vertex(q.x, q.y, q.z, n.x, n.y, n.z, Float(k) / Float(sides), v)
+                m.texcoord2(swayWeight(y: q.y - baseY, height: height), 0)
+                m.texcoord3(1, 0)
+                m.texcoord4(0, 0)
+            }
+        }
+        let ring = UInt32(sides + 1)
+        for i in 0..<UInt32(segments) {
+            for k in 0..<UInt32(sides) {
+                let a0 = first + i * ring + k, a1 = a0 + 1
+                let b0 = a0 + ring, b1 = b0 + 1
+                m.tri(a0, a1, b0, part: 0)
+                m.tri(a1, b1, b0, part: 0)
+            }
+        }
+    }
+
     /// Sway grows with height above the ground; roughly 1 at the top of a
     /// 14 m tree.
     @inline(__always)
@@ -139,26 +189,40 @@ struct TreeArchetype {
         var full = MeshBuffer(parts: 2)
         var light = MeshBuffer(parts: 2)
         let lean = SIMD3<Float>(r.range(-0.4, 0.4), 0, r.range(-0.4, 0.4))
-        let trunkTop = SIMD3<Float>(0, 0.44 * H, 0) + lean
-        tube(&full, SIMD3(0, -0.4, 0), SIMD3(0, 0.2 * H, 0) + lean * 0.4, 0.34, 0.27, sides: 8, height: H)
-        tube(&full, SIMD3(0, 0.2 * H, 0) + lean * 0.4, trunkTop, 0.27, 0.19, sides: 8, height: H, vStart: 1.4)
-        tube(&light, SIMD3(0, -0.4, 0), trunkTop, 0.34, 0.2, sides: 5, height: H)
+        // The trunk runs on into the crown, where the limbs leave it.
+        let trunkTop = SIMD3<Float>(0, 0.58 * H, 0) + lean
+        let trunkLow = SIMD3<Float>(0, 0.2 * H, 0) + lean * 0.4
+        tube(&full, SIMD3(0, -0.4, 0), trunkLow, 0.34, 0.27, sides: 8, height: H)
+        tube(&full, trunkLow, trunkTop, 0.27, 0.13, sides: 8, height: H, vStart: 1.4)
+        tube(&light, SIMD3(0, -0.4, 0), trunkTop, 0.34, 0.15, sides: 5, height: H)
+        func trunk(at y: Float) -> SIMD3<Float> {
+            let t = (y - trunkLow.y) / (trunkTop.y - trunkLow.y)
+            return trunkLow + (trunkTop - trunkLow) * t
+        }
+        // Primary limbs stay well inside the foliage hull: they leave the
+        // trunk at about half height, curve outwards and up, and end about
+        // half way to the crown's shell, so none shows past the leaves or
+        // reaches out as a bare beam.
         let nMain = 5
         var tips: [SIMD3<Float>] = []
         for k in 0..<nMain {
             let az = Float(k) / Float(nMain) * 2 * .pi + r.range(-0.4, 0.4)
             let el = r.range(0.35, 1.0)
             let d = SIMD3(cos(az) * cos(el), sin(el), sin(az) * cos(el))
-            let start = SIMD3<Float>(0, r.range(0.36, 0.46) * H, 0) + lean * 0.8
-            let tip = cc + d * radii * r.range(0.65, 0.82)
-            let mid = (start + tip) * 0.5 + SIMD3(0, r.range(0.2, 0.8), 0)
-            tube(&full, start, mid, 0.14, 0.09, sides: 5, height: H)
-            tube(&full, mid, tip, 0.09, 0.035, sides: 4, height: H)
-            if k < 3 { tube(&light, start, tip, 0.13, 0.05, sides: 4, height: H) }
+            let start = trunk(at: r.range(0.5, 0.55) * H)
+            let tip = cc + d * radii * r.range(0.45, 0.6)
+            let out = SIMD3(tip.x - start.x, 0, tip.z - start.z)
+            let bend = start + out * r.range(0.55, 0.7) + SIMD3(0, (tip.y - start.y) * r.range(0.15, 0.3), 0)
+            limb(&full, start, bend, tip, 0.11, 0.025, sides: 5, segments: 4, height: H)
+            if k < 3 { tube(&light, start, tip, 0.1, 0.03, sides: 4, height: H) }
             for _ in 0..<2 {
-                let sub = mid + (tip - mid) * r.range(0.1, 0.6)
+                // Twigs from the outer half of the limb, short of the shell.
+                let t = r.range(0.45, 0.8), u = 1 - t
+                let from = start * (u * u) + bend * (2 * u * t) + tip * (t * t)
                 let sd = simd_normalize(d + randomDir(&r) * 0.8)
-                tube(&full, sub, cc + sd * radii * r.range(0.75, 0.95), 0.05, 0.015, sides: 4, height: H)
+                let to = cc + sd * radii * r.range(0.5, 0.68)
+                let via = (from + to) * 0.5 + SIMD3(0, simd_length(to - from) * 0.12, 0)
+                limb(&full, from, via, to, 0.04, 0.012, sides: 4, segments: 2, height: H)
             }
             tips.append(tip)
         }
@@ -273,15 +337,18 @@ struct TreeArchetype {
         let top = SIMD3<Float>(r.range(-0.2, 0.2), 0.34 * H, r.range(-0.2, 0.2))
         tube(&full, SIMD3(0, -0.3, 0), top, 0.17, 0.13, sides: 7, height: H)
         tube(&light, SIMD3(0, -0.3, 0), top, 0.17, 0.12, sides: 4, height: H)
+        // Scaffold limbs rise from the trunk top in a curve and end inside
+        // the crown: splayed out below it, a wide tree's limbs read as bare
+        // beams (over the holle weg, at head height).
         for k in 0..<4 {
             let az = Float(k) * 1.57 + r.range(-0.4, 0.4)
             let el = r.range(0.25, 0.6)
             let d = SIMD3(cos(az) * cos(el), sin(el), sin(az) * cos(el))
-            let elbow = top + d * 1.2 + SIMD3(0, r.range(-0.2, 0.3), 0)
-            let tip = cc + simd_normalize(d + SIMD3(0, 0.3, 0)) * radii * 0.8
-            tube(&full, top, elbow, 0.1, 0.07, sides: 5, height: H)
-            tube(&full, elbow, tip, 0.07, 0.025, sides: 4, height: H)
-            if k % 2 == 0 { tube(&light, top, tip, 0.09, 0.03, sides: 4, height: H) }
+            let tip = cc + simd_normalize(d + SIMD3(0, 0.6, 0)) * radii * r.range(0.45, 0.6)
+            let out = SIMD3(tip.x - top.x, 0, tip.z - top.z)
+            let bend = top + out * r.range(0.5, 0.65) + SIMD3(0, (tip.y - top.y) * r.range(0.2, 0.35), 0)
+            limb(&full, top, bend, tip, 0.085, 0.02, sides: 5, segments: 3, height: H)
+            if k % 2 == 0 { tube(&light, top, tip, 0.08, 0.025, sides: 4, height: H) }
         }
         for _ in 0..<32 {
             let d = randomDir(&r, minY: -0.6)

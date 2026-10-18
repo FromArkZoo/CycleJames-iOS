@@ -42,6 +42,26 @@ struct CourseArt: Sendable {
     var villages: [Span] = []
     /// Stretches whose roadside buildings have a known look.
     var houseLooks: [HouseLook] = []
+    /// Colour of the setts.
+    var setts: SettLook = .mixedGrey
+
+    enum SettLook: Sendable {
+        /// The texture as baked: grey porphyry with some ochre, brown and
+        /// reddish stones among it (the Koppenberg).
+        case mixedGrey
+        /// Mostly blue-grey, the odd brownish stone (the Kwaremont and
+        /// the Paterberg).
+        case blueGrey
+
+        /// For `WorldShaders.cobbleSurface`: an rgb multiplier on the
+        /// stones' albedo and the share of its saturation kept.
+        var tint: SIMD4<Float> {
+            switch self {
+            case .mixedGrey: return SIMD4(1, 1, 1, 1)
+            case .blueGrey: return SIMD4(0.93, 0.98, 1.1, 0.4)
+            }
+        }
+    }
 
     enum LampStyle: Sendable {
         /// Black post, curved arm, lantern head (the Steengat).
@@ -251,7 +271,8 @@ struct CourseArt: Sendable {
                 HouseLook(span: 1695...1710, maxRouteDistance: 20, look: .paleRender, side: 1, kind: "other"),
                 HouseLook(span: 2030...2065, maxRouteDistance: 20, look: .redBrickPantiles, side: -1),  // Schilderstraat 3
                 HouseLook(span: 2340...2420, maxRouteDistance: 40, look: .redBrickPantiles, side: -1),  // Schilderstraat 5, 7
-            ]
+            ],
+            setts: .blueGrey
         ),
         // Middelloopstraat down the Molenbeek valley, then the cobbles east
         // up the open hillside: the concrete gutter up the left, edge stones
@@ -276,7 +297,8 @@ struct CourseArt: Sendable {
                 HouseLook(span: 505...555, maxRouteDistance: 40, look: .darkBrick, side: -1),         // Paterbergstraat 3
                 HouseLook(span: 628...648, maxRouteDistance: 10, look: .paleRender, side: 1),         // the summit cottage
                 HouseLook(span: 645...668, maxRouteDistance: 30, look: .paleRenderTiles, side: 1, kind: "house"),  // no. 4
-            ]
+            ],
+            setts: .blueGrey
         ),
     ]
 
