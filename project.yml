@@ -83,3 +83,8 @@ schemes:
         - CycleJamesTests
     run:
       config: Debug
+      # SceneKit itself trips Metal API validation on a real device ("cannot
+      # create View from Memoryless texture") on the first frame of a 3D
+      # ride with HDR and multisampling; it runs correctly without the
+      # validation layer, so leave the layer off for Xcode runs.
+      enableGPUValidationMode: disabled
