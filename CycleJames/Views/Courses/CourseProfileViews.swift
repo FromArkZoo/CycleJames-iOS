@@ -143,7 +143,7 @@ struct CourseProfileChart: View {
     private var length: Double { summary.profile.last?.s ?? summary.totalLengthM }
 
     private var cobbleSections: [CourseSummary.SurfaceSection] {
-        summary.surfaceSections.filter { $0.surface != "asphalt" }
+        summary.surfaceSections.filter { $0.surface == "cobbles" }
     }
 
     private var steepest: CourseFile.Landmark? { summary.landmarks(kind: "steepest").first }
@@ -259,7 +259,8 @@ struct CourseProfileChart: View {
                 // the first starts at the plot's edge so it isn't dropped.
                 AxisValueLabel(anchor: (v.as(Double.self) ?? 0) <= 0 ? .topLeading : .top) {
                     if let m = v.as(Double.self) {
-                        Text(length >= 2000 ? String(format: "%.0f km", m / 1000) : "\(Int(m))")
+                        // "0.5 km", "1 km", "1.5 km": ticks can be 500 m apart.
+                        Text(length >= 2000 ? String(format: "%g km", (m / 100).rounded() / 10) : "\(Int(m))")
                     }
                 }
                 .foregroundStyle(CJColors.textMuted)

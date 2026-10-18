@@ -64,13 +64,38 @@ final class WorldTextures: @unchecked Sendable {
     }
 
     /// The course's own ortho photo, preferring the baked ground-only one.
+    ///
+    /// Above the battery tier's limit it may be larger than `limit`: about
+    /// 0.75 m per pixel, up to 4096, so a long course (the 2.9 km Oude
+    /// Kwaremont) keeps the ground detail of a short one.
     func ortho(bundle: CourseBundle) -> UIImage? {
-        if let baked = image("\(bundle.id)_ortho_ground") { return baked }
-        guard let url = bundle.orthoURL, let img = UIImage(contentsOfFile: url.path) else { return nil }
-        return downscaled(img)
+        // Cached like `image(_:)`: the terrain and verge materials share one
+        // image, and so one GPU texture.
+        let key = "ortho|\(bundle.id)"
+        lock.lock()
+        if let hit = cache[key] { lock.unlock(); return hit }
+        lock.unlock()
+        var cap = limit
+        if limit > 1024, let o = bundle.course.ortho {
+            cap = max(limit, min(4096, Int((max(o.widthM, o.heightM) / 0.75).rounded(.up))))
+        }
+        let name = "\(bundle.id)_ortho_ground"
+        var source: UIImage?
+        for ext in ["jpg", "png"] where source == nil {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext)
+                ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "CourseTextures") {
+                source = UIImage(contentsOfFile: url.path)
+            }
+        }
+        if source == nil, let url = bundle.orthoURL { source = UIImage(contentsOfFile: url.path) }
+        guard let source else { return nil }
+        let img = downscaled(source, to: cap)
+        lock.lock(); cache[key] = img; lock.unlock()
+        return img
     }
 
-    private func downscaled(_ img: UIImage) -> UIImage {
+    private func downscaled(_ img: UIImage, to cap: Int? = nil) -> UIImage {
+        let limit = cap ?? self.limit
         guard let cg = img.cgImage else { return img }
         let w = cg.width, h = cg.height
         let longest = max(w, h)

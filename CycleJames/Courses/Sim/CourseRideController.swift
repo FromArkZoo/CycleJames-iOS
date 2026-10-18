@@ -133,6 +133,16 @@ final class CourseRideController: ObservableObject {
     /// asphalt, the smoother edge on cobbles.
     private static let lateralAsphaltM = 0.4
     private static let lateralRoughM = 0.6
+
+    /// Asphalt and concrete are ridden on the asphalt line, but on a road
+    /// wide enough for painted lines (6 m, see `RoadBuilder.buildMarkings`)
+    /// in the middle of the right-hand lane, inside its edge line.
+    static func ridingLine(surface: String, width: Double) -> Double {
+        guard surface == "asphalt" || surface == "concrete" else { return lateralRoughM }
+        guard surface == "asphalt", width >= 6 else { return lateralAsphaltM }
+        let half = width / 2
+        return (half - (half >= 4.5 ? 1.45 : 0.35)) / 2
+    }
     private static let lateralDriftMps = 0.15
 
     // MARK: Inputs
@@ -471,7 +481,7 @@ final class CourseRideController: ObservableObject {
                         distanceM: s1, altitudeM: e1, speedMps: physics.speedMps)
 
         // Drift towards the riding line for this surface.
-        let line = route.surfaceName(at: s1) == "asphalt" ? Self.lateralAsphaltM : Self.lateralRoughM
+        let line = Self.ridingLine(surface: route.surfaceName(at: s1), width: route.width(at: s1))
         let drift = Self.lateralDriftMps * dt
         lateralM += min(max(line - lateralM, -drift), drift)
         lateralM = min(lateralM, max(0, route.width(at: s1) / 2 - 0.5))
@@ -678,8 +688,9 @@ final class CourseRideController: ObservableObject {
         savedModel = nil
         recorder.reset()
         result = nil
-        lateralM = bundle?.route.surfaceName(at: rideStartS) == "asphalt" || bundle == nil
-            ? Self.lateralAsphaltM : Self.lateralRoughM
+        lateralM = bundle.map {
+            Self.ridingLine(surface: $0.route.surfaceName(at: rideStartS), width: $0.route.width(at: rideStartS))
+        } ?? Self.lateralAsphaltM
         publishLive(now: now)
         publishSnapshot(now: now)
     }

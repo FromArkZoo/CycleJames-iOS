@@ -1,7 +1,8 @@
 import SceneKit
 
-/// Road-aligned meshes along the corridor: the carriageway (asphalt and
-/// cobbles), the verge either side and the stone edge strips.
+/// Road-aligned meshes along the corridor: the carriageway (asphalt,
+/// cobbles and concrete), the verge either side, the stone edge strips and
+/// the concrete gutters.
 ///
 /// The verge is terrain, sampled from the same LiDAR as the grid but laid
 /// out in (distance, lateral) so its first column is exactly the road edge.
@@ -12,8 +13,16 @@ enum RoadBuilder {
     struct Output {
         var asphalt = MeshBuffer()
         var cobbles = MeshBuffer()
+        var concrete = MeshBuffer()
         var verge = MeshBuffer()
         var kerb = MeshBuffer()
+        var gutter = MeshBuffer()
+        /// Raised sett pavements (cobbles material).
+        var pavements = MeshBuffer()
+        /// White lines on two-lane asphalt roads.
+        var markings = MeshBuffer()
+        /// Red cycle lanes beside them on the widest roads.
+        var cycleLanes = MeshBuffer()
         /// Side roads near the route, draped on the 1 m terrain: part 0
         /// asphalt, part 1 cobbles.
         var sideRoads = MeshBuffer(parts: 2)
@@ -66,25 +75,24 @@ enum RoadBuilder {
             return first
         }
         var lastRow: [Int: (mesh: Int, row: UInt32)] = [:]
+        // Mesh per strip: 0 asphalt, 1 cobbles, 2 concrete.
+        var meshes = [out.asphalt, out.cobbles, out.concrete]
+        out.asphalt = MeshBuffer(); out.cobbles = MeshBuffer()  // keep the reserved buffers uniquely owned
         for k in 0..<(st.count - 1) {
-            let isCobble = st[k].surface == cobble && cobble != nil
-            let target = isCobble ? 1 : 0
-            func rows(_ mesh: inout MeshBuffer) -> (UInt32, UInt32) {
-                let a: UInt32
-                if let prev = lastRow[k], prev.mesh == target { a = prev.row } else { a = roadRow(k, into: &mesh) }
-                let b = roadRow(k + 1, into: &mesh)
-                return (a, b)
-            }
-            let (a, b): (UInt32, UInt32)
-            if isCobble { (a, b) = rows(&out.cobbles) } else { (a, b) = rows(&out.asphalt) }
+            let surface = st[k].surface
+            let target = cobble != nil && surface == cobble ? 1
+                : corridor.concreteIndex != nil && surface == corridor.concreteIndex ? 2 : 0
+            let a: UInt32
+            if let prev = lastRow[k], prev.mesh == target { a = prev.row } else { a = roadRow(k, into: &meshes[target]) }
+            let b = roadRow(k + 1, into: &meshes[target])
             lastRow[k + 1] = (target, b)
             for c in 0..<(nRoad - 1) {
                 let a0 = a + UInt32(c), a1 = a0 + 1, b0 = b + UInt32(c), b1 = b0 + 1
-                if isCobble { out.cobbles.quad(a0, a1, b1, b0) } else { out.asphalt.quad(a0, a1, b1, b0) }
+                meshes[target].quad(a0, a1, b1, b0)
             }
         }
-        out.asphalt.computeNormals()
-        out.cobbles.computeNormals()
+        for k in meshes.indices { meshes[k].computeNormals() }
+        out.asphalt = meshes[0]; out.cobbles = meshes[1]; out.concrete = meshes[2]
 
         // Verge, both sides.
         let terrain = corridor.terrain
@@ -135,7 +143,115 @@ enum RoadBuilder {
         out.verge.computeNormals()
 
         buildKerbs(corridor: corridor, into: &out.kerb)
+        buildGutters(corridor: corridor, into: &out.gutter)
+        buildPavements(corridor: corridor, into: &out.pavements)
+        buildMarkings(corridor: corridor, into: &out.markings, cycleLanes: &out.cycleLanes)
         return out
+    }
+
+    /// Raised sett pavements, 10 cm up a stone kerb from the carriageway
+    /// edge, `width` wide, dropping back to the verge at their outer edge.
+    private static func buildPavements(corridor: RoadCorridor, into mesh: inout MeshBuffer) {
+        let kerbH = 0.1
+        for (span, side, width) in corridor.art.pavements {
+            var prev: UInt32?
+            for s in corridor.stations where span.contains(s.s) && s.beyond == 0 {
+                let edge = side * s.halfWidth
+                let edgeY = corridor.roadHeight(s, lateral: edge)
+                let outer = RoadBuilder.vergePoint(corridor, s, side: side, offset: width)
+                let topY = max(edgeY, outer.y) + kerbH
+                // Kerb foot, kerb top, pavement outer edge, its foot on the verge.
+                let cols: [(lat: Double, y: Double)] = [(edge, edgeY - 0.01), (edge + side * 0.005, topY),
+                                                        (edge + side * width, topY), (edge + side * (width + 0.005), outer.y - 0.05)]
+                let first = UInt32(mesh.vertexCount)
+                for (lat, y) in cols {
+                    let p = s.point(lateral: lat)
+                    mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(s.s))
+                    mesh.texcoord2(0.9, 0)
+                }
+                if let a = prev {
+                    for c in 0..<UInt32(cols.count - 1) {
+                        // Mirrored on the left, as for the verge.
+                        if side > 0 {
+                            mesh.quad(a + c, a + c + 1, first + c + 1, first + c)
+                        } else {
+                            mesh.quad(a + c, first + c, first + c + 1, a + c + 1)
+                        }
+                    }
+                }
+                prev = first
+            }
+        }
+        mesh.computeNormals()
+    }
+
+    /// Belgian rural markings where the route is on a two-lane asphalt road
+    /// at least 6 m wide (the Oude Kwaremont's exit along the N36), the
+    /// extension past the finish included: solid edge lines and a 3 m dash
+    /// every 12 m down the middle. From 9 m wide the road has red cycle
+    /// lanes, 1.3 m, outside the edge lines. Narrower lanes and the
+    /// cobbles have none.
+    private static func buildMarkings(corridor: RoadCorridor, into mesh: inout MeshBuffer,
+                                      cycleLanes lanes: inout MeshBuffer) {
+        let lineW = 0.12, lift = 0.006
+        func painted(_ s: RoadCorridor.Station) -> Bool {
+            s.beyond < 0.95 && s.halfWidth >= 3.0 && s.surface != corridor.cobbleIndex
+                && s.surface != corridor.concreteIndex
+        }
+        func hasLanes(_ s: RoadCorridor.Station) -> Bool { s.halfWidth >= 4.5 }
+        func edgeLine(_ s: RoadCorridor.Station) -> Double { s.halfWidth - (hasLanes(s) ? 1.45 : 0.35) }
+
+        /// A strip between two lateral offsets, from station to station.
+        func strip(_ into: inout MeshBuffer, from a: (RoadCorridor.Station) -> Double,
+                   to b: (RoadCorridor.Station) -> Double, where on: (RoadCorridor.Station) -> Bool, lift: Double) {
+            var prev: UInt32?
+            for s in corridor.stations {
+                guard on(s) else { prev = nil; continue }
+                let first = UInt32(into.vertexCount)
+                for lat in [a(s), b(s)] {
+                    let p = s.point(lateral: lat)
+                    let y = corridor.roadHeight(s, lateral: lat) + lift
+                    into.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(s.s))
+                    // (edge, mud) for the paved shaders the cycle lanes use.
+                    into.texcoord2(0.5, 0)
+                }
+                if let q = prev { into.quad(q, q + 1, first + 1, first) }
+                prev = first
+            }
+        }
+        for side in [-1.0, 1.0] {
+            // Lines run from smaller to larger lateral offset, so quads face up on both sides.
+            if side < 0 {
+                strip(&mesh, from: { -edgeLine($0) - lineW / 2 }, to: { -edgeLine($0) + lineW / 2 }, where: painted, lift: lift)
+                strip(&lanes, from: { -$0.halfWidth + 0.1 }, to: { -edgeLine($0) - lineW / 2 },
+                      where: { painted($0) && hasLanes($0) }, lift: lift * 0.5)
+            } else {
+                strip(&mesh, from: { edgeLine($0) - lineW / 2 }, to: { edgeLine($0) + lineW / 2 }, where: painted, lift: lift)
+                strip(&lanes, from: { edgeLine($0) + lineW / 2 }, to: { $0.halfWidth - 0.1 },
+                      where: { painted($0) && hasLanes($0) }, lift: lift * 0.5)
+            }
+        }
+        // Centre dashes at exact positions, whatever the station spacing.
+        guard let firstS = corridor.stations.first?.s, let lastS = corridor.stations.last?.s else { return }
+        var d = (firstS / 12).rounded(.up) * 12
+        while d + 3 <= lastS {
+            let a = corridor.station(at: d), b = corridor.station(at: d + 3)
+            if painted(a) && painted(b) {
+                let first = UInt32(mesh.vertexCount)
+                for st in [a, b] {
+                    for lat in [-lineW / 2, lineW / 2] {
+                        let p = st.point(lateral: lat)
+                        let y = corridor.roadHeight(st, lateral: lat) + lift
+                        mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(st.s))
+                        mesh.texcoord2(0.5, 0)
+                    }
+                }
+                mesh.quad(first, first + 1, first + 3, first + 2)
+            }
+            d += 12
+        }
+        mesh.computeNormals()
+        lanes.computeNormals()
     }
 
     /// Side roads draped over the terrain where it is meshed at 1 m, a few
@@ -289,26 +405,77 @@ enum RoadBuilder {
         return (p.east, p.north, blendedVerge(edgeY: edgeY, dtm: dtm, offset: o), edgeY)
     }
 
-    /// Long granite edge stones flush with the cobbles, 2 cm proud.
+    /// Long granite edge stones flush with the cobbles, 2 cm proud, along
+    /// the inside of the carriageway edge on the given side.
     private static func buildKerbs(corridor: RoadCorridor, into mesh: inout MeshBuffer) {
         let width = 0.24, proud = 0.02
-        for span in corridor.art.kerbs {
+        for (span, side) in corridor.art.kerbs {
             var prev: UInt32?
             for s in corridor.stations where span.contains(s.s) && s.beyond == 0 {
-                let outer = -s.halfWidth, inner = -s.halfWidth + width
+                let outer = side * s.halfWidth, inner = side * (s.halfWidth - width)
                 let yO = corridor.roadHeight(s, lateral: outer) + proud
                 let yI = corridor.roadHeight(s, lateral: inner) + proud
                 let yBase = corridor.roadHeight(s, lateral: inner) - 0.01
-                let po = s.point(lateral: outer + 0.005), pi = s.point(lateral: inner)
+                let po = s.point(lateral: outer - side * 0.005), pi = s.point(lateral: inner)
+                // The inner face looks across the road, away from `side`.
+                let faceE = Float(-side * s.rightE), faceN = Float(-side * s.rightN)
                 let first = UInt32(mesh.vertexCount)
                 mesh.vertex(Float(po.east), Float(yO), Float(-po.north), 0, 1, 0, 0, Float(s.s))
                 mesh.vertex(Float(pi.east), Float(yI), Float(-pi.north), 0, 1, 0, Float(width), Float(s.s))
-                mesh.vertex(Float(pi.east), Float(yBase), Float(-pi.north), Float(s.rightE), 0, Float(-s.rightN), Float(width + 0.03), Float(s.s))
+                mesh.vertex(Float(pi.east), Float(yBase), Float(-pi.north), faceE, 0, -faceN, Float(width + 0.03), Float(s.s))
                 let mud = Float(corridor.art.sunkenWeight(s.s))
                 for _ in 0..<3 { mesh.texcoord2(1, mud) }
                 if let p = prev {
-                    mesh.quad(p, p + 1, first + 1, first)
-                    mesh.quad(p + 1, p + 2, first + 2, first + 1)
+                    // Mirrored on the right, so the faces stay front-facing.
+                    if side < 0 {
+                        mesh.quad(p, p + 1, first + 1, first)
+                        mesh.quad(p + 1, p + 2, first + 2, first + 1)
+                    } else {
+                        mesh.quad(p + 1, p, first, first + 1)
+                        mesh.quad(p + 2, p + 1, first + 1, first + 2)
+                    }
+                }
+                prev = first
+            }
+        }
+        mesh.computeNormals()
+    }
+
+    /// Precast concrete rainwater gutters, 0.6 m wide, along the inside of
+    /// the carriageway edge (the Paterberg's left side). The section dips
+    /// 1.2 cm to its middle; it sits just proud of the road mesh it covers.
+    private static func buildGutters(corridor: RoadCorridor, into mesh: inout MeshBuffer) {
+        let width = 0.6
+        // Across the gutter from the road edge inwards: fraction of the width, lift above the road.
+        let profile: [(f: Double, lift: Double)] = [(0, 0.018), (0.2, 0.011), (0.5, 0.006), (0.8, 0.011), (1, 0.02)]
+        let n = UInt32(profile.count)
+        for (span, side) in corridor.art.gutters {
+            var prev: UInt32?
+            for s in corridor.stations where span.contains(s.s) && s.beyond == 0 {
+                let first = UInt32(mesh.vertexCount)
+                for (f, lift) in profile {
+                    let lat = side * (s.halfWidth - f * width)
+                    let p = s.point(lateral: lat)
+                    let y = corridor.roadHeight(s, lateral: lat) + lift
+                    mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(f * width), Float(s.s))
+                    mesh.texcoord2(Float(1 - f), Float(corridor.art.sunkenWeight(s.s)))
+                }
+                // A short face down to the cobbles on the road side.
+                let lat = side * (s.halfWidth - width)
+                let p = s.point(lateral: lat)
+                let faceE = Float(-side * s.rightE), faceN = Float(-side * s.rightN)
+                mesh.vertex(Float(p.east), Float(corridor.roadHeight(s, lateral: lat) - 0.01), Float(-p.north),
+                            faceE, 0, -faceN, Float(width + 0.03), Float(s.s))
+                mesh.texcoord2(0, Float(corridor.art.sunkenWeight(s.s)))
+                if let p = prev {
+                    for c in 0..<n {
+                        // Mirrored on the right, as for the kerbs.
+                        if side < 0 {
+                            mesh.quad(p + c, p + c + 1, first + c + 1, first + c)
+                        } else {
+                            mesh.quad(p + c + 1, p + c, first + c, first + c + 1)
+                        }
+                    }
                 }
                 prev = first
             }

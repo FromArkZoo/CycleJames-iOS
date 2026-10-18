@@ -166,6 +166,55 @@ enum WorldShaders {
     _surface.normal = normalize(mix(nMapped, N0, fill * 0.7));
     """
 
+    /// `pavedSurface` with its albedo multiplied by `tint3` (linear, may
+    /// exceed 1): red cycle-lane surfacing from the asphalt textures.
+    static let tintedPavedSurface = pavedSurface
+        .replacingOccurrences(of: "float normalStrength;\n#pragma body", with: "float normalStrength;\nfloat3 tint3;\n#pragma body")
+        .replacingOccurrences(of: "_surface.diffuse = float4(alb, 1.0);", with: "alb *= tint3;\n_surface.diffuse = float4(alb, 1.0);")
+
+    /// Concrete: `pavedSurface` with joints across the road every `slabV`
+    /// texture units (texture v runs along the road), `jointV` wide.
+    static let concreteSurface = """
+    #pragma arguments
+    texture2d<float> detailTex;
+    float mudAmount;
+    float normalStrength;
+    float slabV;
+    float jointV;
+    #pragma body
+    constexpr sampler rep(filter::linear, mip_filter::linear, address::repeat, max_anisotropy(16));
+    float2 uv = _surface.diffuseTexcoord;
+    float4 d = detailTex.sample(rep, uv);
+    float2 nxy = (d.rg * 2.0 - 1.0) * normalStrength;
+    float3 nts = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
+    \(cotangentNormal)
+    float edge = in.rdat.x;
+    float mud = in.rdat.y * mudAmount;
+    float big = detailTex.sample(rep, uv * 0.113 + float2(0.37, 0.11)).a;
+    float big2 = detailTex.sample(rep, uv * 0.031 + float2(0.71, 0.29)).a;
+    float3 alb = _surface.diffuse.rgb;
+    // Concrete is much paler and less blue than the asphalt it is made
+    // from: about 0.3 linear (0.58 sRGB) where the asphalt is 0.1.
+    float lum = dot(alb, float3(0.299, 0.587, 0.114));
+    alb = mix(float3(lum), alb, 0.35) * float3(1.0, 0.985, 0.95) * 2.8;
+    alb *= 0.86 + 0.28 * big2;
+    // Weathering: darker towards the edges, where dirt and moss collect.
+    alb *= mix(1.0, 0.78, smoothstep(0.7, 1.0, edge) * (0.6 + 0.8 * big));
+    // Joints: the pixel footprint's coverage of the joint band (box
+    // filter), fading to the band's mean share before the footprint
+    // reaches the next joint, so distant slabs keep their brightness.
+    float t = abs(fract(uv.y / slabV + 0.5) - 0.5) * slabV;
+    float w = max(fwidth(uv.y), 1e-5);
+    float hw = 0.5 * w;
+    float cov = saturate((min(t + hw, jointV) - max(t - hw, -jointV)) / w);
+    float joint = mix(cov, 2.0 * jointV / slabV, smoothstep(0.25 * slabV, 0.5 * slabV, w));
+    alb *= 1.0 - 0.55 * joint;
+    alb = mix(alb, float3(0.062, 0.048, 0.03), saturate(mud * (0.4 + 0.6 * big)) * 0.6);
+    _surface.diffuse = float4(alb, 1.0);
+    _surface.roughness = mix(saturate(d.b + 0.12), 0.95, joint);
+    _surface.normal = normalize(mix(nMapped, N0, 0.3));
+    """
+
     /// Any material with a packed detail texture (normal xy, roughness,
     /// height) over its diffuse texture coordinates.
     static let detailSurface = """

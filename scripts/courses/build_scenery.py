@@ -4,7 +4,7 @@
 # ///
 """Bake scenery.json for a CycleJames course (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]
+    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg)
 
 Reads the already-baked course folder (course.json, terrain_near.u16,
 canopy_near.u16) and the raw aerial photo build_course.py keeps out of the
@@ -71,6 +71,21 @@ COURSES: dict[str, dict] = {
         # Overpass bbox (S, W, N, E); must contain the near grid (checked at run time).
         "osm_bbox": (50.8076, 3.5640, 50.8170, 3.5866),
         # Only consulted for its flight date (is a leaf-off evergreen test possible?).
+        "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    "oudekwaremont": {
+        # Candelabra-pollarded limes every ~8 m on the left of upper Kwaremontplein (photo survey;
+        # freshly pollarded, so too small for the leaf-off LiDAR crowns).
+        "tree_rows": [(1492.0, 1596.0, -1, 0.9, 8.0, 5.5, 1.8)],
+        "route_ways": [79620616, 1375368944, 1375368938, 31295044, 169091283, 660521414, 86501829,
+                       1527496580, 1472108189, 850884348, 25730689, 1472108187, 1472108188, 368750237,
+                       25730690, 1159118827, 242724612, 313601768],
+        "osm_bbox": (50.7638, 3.5181, 50.7931, 3.5391),
+        "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    "paterberg": {
+        "route_ways": [86501819, 86501826, 369071618, 31295027, 223598561, 1472505832],
+        "osm_bbox": (50.7762, 3.5377, 50.7876, 3.5552),
         "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
     },
 }
@@ -924,8 +939,16 @@ def build(course_id: str, render: bool = True) -> int:
         else:
             kind = "other"
         cap = HEIGHT_CAP[kind] if kind != "other" else (7.0 if area < 60 else 10.0 if area < 300 else 15.0)
+        # Tiny footprints under a tree pick up its crown height from the LiDAR whatever the ortho
+        # shows, and would stand as 8-27 m towers. A real cottage this small (the Paterberg's
+        # summit cottage, 22 m2) measures about 5 m.
+        small_cap = 6.5 if area < 25 else 8.0 if area < 60 else None
         if p90c < 2.0:
             why = "not in the 2015 LiDAR"
+        elif small_cap and kind in ("house", "other") and not t.get("height") and measured > small_cap:
+            why = f"LiDAR {measured:.1f} m > {small_cap} m plausible for {area:.0f} m2"
+            if area < 25:
+                kind = "other"   # a 'hoofdgebouw' this small under a crown is a shed, not a house
         elif measured > cap and green >= 0.25:   # a visible roof (little green) keeps its LiDAR height
             why = f"LiDAR {measured:.1f} m > {cap:.0f} m plausible for {kind}"
         elif green >= 0.5 and p90c - p50c > 2.5:
@@ -1144,6 +1167,21 @@ def build(course_id: str, render: bool = True) -> int:
         trees.append({"e": round(float(tr_e[k]), 1), "n": round(float(tr_n[k]), 1),
                       "heightM": round(float(max(top_h[k], top_hs[k])), 1),
                       "crownRadiusM": round(r_, 1), "kind": "deciduous"})
+    # Hand-placed rows the LiDAR misses (young or freshly pollarded trees), from the photo survey:
+    # (from s, to s, side -1 left / +1 right, metres beyond the carriageway edge, spacing, height, crown).
+    route_hw_at = lambda sv: float(np.interp(sv, rsd, rdense_hw))
+    for s0, s1, side, beyond, step, hgt, rad in cfg.get("tree_rows", []):
+        n_added = 0
+        for sv in np.arange(s0, s1 + 1e-9, step):
+            i = int(np.clip(np.searchsorted(rsd, sv), 1, len(rsd) - 2))
+            d_ = rdense[i + 1] - rdense[i - 1]
+            d_ = d_ / max(np.hypot(*d_), 1e-9)
+            right = np.array([d_[1], -d_[0]])
+            pt = rdense[i] + right * side * (route_hw_at(sv) + beyond)
+            trees.append({"e": round(float(pt[0]), 1), "n": round(float(pt[1]), 1), "heightM": float(hgt),
+                          "crownRadiusM": float(rad), "kind": "deciduous"})
+            n_added += 1
+        log(f"[trees] tree row s {s0:.0f}-{s1:.0f} side {side:+d}: {n_added} trees added (config tree_rows)")
     th = np.array([t["heightM"] for t in trees])
     tcr = np.array([t["crownRadiusM"] for t in trees])
     log(f"[trees] {len(trees)} trees; height p10/p50/p90 {np.percentile(th, 10):.1f}/{np.percentile(th, 50):.1f}/"

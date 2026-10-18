@@ -53,7 +53,8 @@ final class WorldMaterials {
         let m = pbr(UIColor(red: 0.33, green: 0.42, blue: 0.22, alpha: 1), roughness: 0.95)
         m.diffuse.clamped(textures.ortho(bundle: bundle) ?? WorldTextures.solid(UIColor(red: 0.33, green: 0.42, blue: 0.22, alpha: 1)))
         m.diffuse.contentsTransform = orthoTransform
-        let splat = textures.metal("\(bundle.id)_splat", srgb: false)
+        // Kept at 1 px per metre above the battery tier, like the ortho.
+        let splat = textures.metal("\(bundle.id)_splat", srgb: false, cap: textures.limit > 1024 ? 4096 : nil)
             ?? textures.metal(image: WorldTextures.solid(UIColor(red: 1, green: 0, blue: 0, alpha: 1)), srgb: false)
         bind(m, "splatTex", splat)
         bind(m, "detailTex", textures.metal("cj_ground_detail", srgb: false)
@@ -107,6 +108,39 @@ final class WorldMaterials {
                                        tileU: 0.7, tileV: 1.3, mud: 0.6, normal: 1,
                                        fallback: UIColor(white: 0.55, alpha: 1), brightness: 1.9)
 
+    /// Pale, weathered concrete with dark joints every `slabM` metres along
+    /// the road: concrete-plate lanes (the Stooktestraat) and precast
+    /// gutters (the Paterberg).
+    private func concrete(slabM: Float, tile: Float, mud: Double, brightness: CGFloat = 2.15) -> SCNMaterial {
+        let m = paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail", tileU: tile, tileV: tile, mud: mud,
+                      normal: 0.45, fallback: UIColor(white: 0.6, alpha: 1), brightness: brightness)
+        if m.shaderModifiers != nil {
+            m.shaderModifiers?[.surface] = WorldShaders.concreteSurface
+            m.setValue(NSNumber(value: slabM / tile), forKey: "slabV")
+            m.setValue(NSNumber(value: 0.012 / tile), forKey: "jointV")
+        }
+        return m
+    }
+
+    /// Road-marking paint, slightly worn grey-white.
+    lazy var roadPaint: SCNMaterial = pbr(UIColor(white: 0.78, alpha: 1), roughness: 0.6)
+    /// Red cycle-lane surfacing beside the white edge line.
+    lazy var cycleLane: SCNMaterial = {
+        let m = paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail", tileU: 2, tileV: 2, mud: 0.2,
+                      normal: 0.6, fallback: UIColor(red: 0.55, green: 0.2, blue: 0.16, alpha: 1), brightness: 1.0)
+        if m.shaderModifiers != nil {
+            m.shaderModifiers?[.surface] = WorldShaders.tintedPavedSurface
+            // About (0.3, 0.05, 0.035) linear: Belgian brick-red cycle lanes.
+            m.setValue(NSValue(scnVector3: SCNVector3(5.6, 1.0, 0.72)), forKey: "tint3")
+        }
+        return m
+    }()
+
+    lazy var concrete: SCNMaterial = concrete(slabM: 5, tile: 2, mud: 0.25)
+    /// Weathered and dirtier than the lanes: in photos the Paterberg's
+    /// gutter is about as light as the setts beside it.
+    lazy var gutter: SCNMaterial = concrete(slabM: 1, tile: 0.8, mud: 0.5, brightness: 1.5)
+
     // MARK: Plants
 
     private func plant(atlas: String, flutter: Double, wind: Double, translucency: Double,
@@ -132,6 +166,12 @@ final class WorldMaterials {
 
     lazy var leaves: SCNMaterial = plant(atlas: "cj_foliage", flutter: 1, wind: 1, translucency: 0.55,
                                          alphaCut: 0.42, fallback: UIColor(red: 0.2, green: 0.32, blue: 0.1, alpha: 1))
+    /// Copper-beech hedges: the leaf atlas tinted purple-red.
+    lazy var copperLeaves: SCNMaterial = {
+        let m = leaves.copy() as! SCNMaterial
+        m.multiply.contents = UIColor(red: 0.52, green: 0.25, blue: 0.3, alpha: 1)
+        return m
+    }()
     lazy var grass: SCNMaterial = {
         let m = plant(atlas: "cj_grass", flutter: 1.6, wind: 1, translucency: 0.35,
                       alphaCut: 0.4, fallback: UIColor(red: 0.25, green: 0.38, blue: 0.12, alpha: 1))
@@ -194,6 +234,20 @@ final class WorldMaterials {
         return m
     }()
     lazy var wire: SCNMaterial = pbr(UIColor(white: 0.25, alpha: 1), roughness: 0.5, metalness: 0.8)
+    lazy var whitePaint: SCNMaterial = pbr(UIColor(white: 0.86, alpha: 1), roughness: 0.75)
+    lazy var poleConcrete: SCNMaterial = pbr(UIColor(red: 0.6, green: 0.6, blue: 0.58, alpha: 1), roughness: 0.92)
+    /// Dark-stained or creosoted timber.
+    lazy var darkWood: SCNMaterial = {
+        let m = wood.copy() as! SCNMaterial
+        m.diffuse.intensity = 0.55
+        return m
+    }()
+    lazy var greyMetal: SCNMaterial = pbr(UIColor(white: 0.42, alpha: 1), roughness: 0.5, metalness: 0.6)
+
+    /// In `BuildingBuilder.PropPart` order.
+    var props: [SCNMaterial] {
+        [darkMetal, lampGlass, wood, wire, whitePaint, poleConcrete, darkWood, greyMetal]
+    }
 
     /// Ponds: still, open water.
     lazy var water: SCNMaterial = {
@@ -219,9 +273,9 @@ extension WorldTextures {
     /// textures come from `.rgbz` files (see
     /// scripts/courses/textures/texlib.py), whose channels are used as
     /// stored; colour ones from JPEG / PNG.
-    func metal(_ name: String, srgb: Bool) -> MTLTexture? {
-        gpuTexture("\(name)|\(srgb)") {
-            if let raw = rawTexture(name) { return raw }
+    func metal(_ name: String, srgb: Bool, cap: Int? = nil) -> MTLTexture? {
+        gpuTexture("\(name)|\(srgb)|\(cap ?? limit)") {
+            if let raw = rawTexture(name, cap: cap) { return raw }
             guard let img = image(name) else { return nil }
             return metal(image: img, srgb: srgb)
         }
@@ -233,7 +287,8 @@ extension WorldTextures {
     /// deflate of RGBA8 rows. Larger than the tier's `limit`, the top mip
     /// levels are dropped. Nil (and `uploadFailed` set) when the GPU work
     /// doesn't complete, e.g. because the app went to the background.
-    func rawTexture(_ name: String) -> MTLTexture? {
+    func rawTexture(_ name: String, cap: Int? = nil) -> MTLTexture? {
+        let limit = cap ?? self.limit
         guard let device = Self.device, let queue = Self.queue,
               let url = Bundle.main.url(forResource: name, withExtension: "rgbz")
                 ?? Bundle.main.url(forResource: name, withExtension: "rgbz", subdirectory: "CourseTextures"),

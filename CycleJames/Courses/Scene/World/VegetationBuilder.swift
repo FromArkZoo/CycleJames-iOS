@@ -58,6 +58,8 @@ enum VegetationBuilder {
 
     struct Output {
         var clusters: [Cluster] = []
+        /// Clipped hedges: part 1 green leaves, part 2 copper beech.
+        var hedges = MeshBuffer(parts: 3)
         var grassCells: [(s: Double, mesh: MeshBuffer)] = []
         var counts: [String: Int] = [:]
     }
@@ -346,6 +348,9 @@ enum VegetationBuilder {
         out.counts["bank plants"] = nBank
         out.clusters = Array(clusters.values).filter { !$0.light.isEmpty || !$0.full.isEmpty }
 
+        buildHedges(corridor: corridor, sideRoads: sideRoads, into: &out.hedges)
+        out.counts["hedge metres"] = Int(corridor.art.hedges.reduce(0) { $0 + $1.span.upperBound - $1.span.lowerBound })
+
         // Verge grass, in short route sections; none on side-road tarmac.
         if config.grassDensity > 0 {
             var rnd = WorldRandom(seed: 777)
@@ -371,6 +376,9 @@ enum VegetationBuilder {
                         for _ in 0..<count {
                             let o = Double(rnd.range(0.1, Float(oMax)))
                             let ss = s + Double(rnd.unit()) * 0.5
+                            // None on a pavement.
+                            let pave = corridor.art.pavementWidth(ss, side: side)
+                            if pave > 0, o < pave + 0.15 { continue }
                             let st2 = corridor.station(at: ss)
                             let p = RoadBuilder.vergePoint(corridor, st2, side: side, offset: o)
                             if (p.y - p.edgeY) / max(o, 0.1) > 1.3 { continue }
@@ -390,6 +398,73 @@ enum VegetationBuilder {
             out.counts["grass tufts"] = tufts
         }
         return out
+    }
+
+    // MARK: - Hedges
+
+    /// Clipped hedges: leaf cards on the road face, the flat top and the
+    /// back, about 0.9 m thick, broken where a side road crosses. Cards
+    /// are fixed (not billboards), so faces stay flat like a trimmed hedge.
+    static func buildHedges(corridor: RoadCorridor, sideRoads: RoadBuilder.SideRoadMask, into out: inout MeshBuffer) {
+        let thick = 0.9, step = 0.45
+        for run in corridor.art.hedges {
+            var rnd = WorldRandom(seed: UInt64(run.span.lowerBound * 17 + 11))
+            let (uv, tint, part): (SIMD4<Float>, Float, Int) = {
+                switch run.kind {
+                case .green: return (TreeArchetype.broadUV, 0.05, 1)
+                case .copperBeech: return (TreeArchetype.broadUV, 0, 2)
+                case .laurel: return (TreeArchetype.broadUV, -0.35, 1)
+                case .ivy: return (TreeArchetype.ivyUV, -0.25, 1)
+                }
+            }()
+            var s = run.span.lowerBound
+            while s <= run.span.upperBound {
+                let st = corridor.station(at: s)
+                let face = RoadBuilder.vergePoint(corridor, st, side: run.side, offset: run.offset)
+                let mid = st.point(lateral: run.side * (st.halfWidth + run.offset + thick / 2))
+                if sideRoads.covers(east: face.east, north: face.north, margin: 0.4)
+                    || sideRoads.covers(east: mid.east, north: mid.north, margin: 0.4) {
+                    s += step
+                    continue
+                }
+                let ground = Float(min(face.y, Double(corridor.terrain.height(east: mid.east, north: mid.north))))
+                let h = Float(run.height) * rnd.range(0.96, 1.04)
+                let toRoad = SIMD3<Float>(Float(-run.side * st.rightE), 0, Float(run.side * st.rightN))
+                let along = SIMD3<Float>(Float(st.dirE), 0, Float(-st.dirN))
+                let axis = SIMD3<Float>(Float(mid.east), ground + h / 2, Float(-mid.north))
+                let radii = SIMD3<Float>(Float(thick / 2), h / 2, 0.6)
+                var m = MeshBuffer(parts: 2)
+                let rows = max(1, Int((h / 0.5).rounded()))
+                for k in 0..<rows {
+                    let y = ground + 0.25 + (h - 0.35) * (Float(k) + 0.5) / Float(rows)
+                    for (normal, inset) in [(toRoad, Float(thick / 2)), (-toRoad, Float(thick / 2))] {
+                        let c = SIMD3(axis.x, y, axis.z) + normal * (inset - 0.08) + along * rnd.range(-0.1, 0.1)
+                        TreeArchetype.card(&m, centre: c, size: rnd.range(0.75, 0.95),
+                                           normal: simd_normalize(normal + along * rnd.range(-0.25, 0.25)
+                                                                  + SIMD3(0, rnd.range(-0.15, 0.25), 0)),
+                                           roll: rnd.range(0, 6.28), uv: uv, crownCentre: axis, crownRadii: radii,
+                                           height: 40, ao: 0.9, bend: 0.5, baseY: ground, billboard: false)
+                    }
+                }
+                // The clipped top.
+                let top = SIMD3(axis.x, ground + h - 0.04, axis.z)
+                TreeArchetype.card(&m, centre: top, size: Float(thick) * 1.1,
+                                   normal: simd_normalize(SIMD3(0, 1, 0) + toRoad * 0.15), roll: rnd.range(0, 6.28),
+                                   uv: uv, crownCentre: axis, crownRadii: radii, height: 40, ao: 0.95, bend: 0.4,
+                                   baseY: ground, billboard: false)
+                // Ragged leaves sticking out of the clipped surface.
+                if rnd.unit() < 0.5 {
+                    let c = SIMD3(axis.x, ground + rnd.range(0.4, h), axis.z) + toRoad * Float(thick / 2 + 0.05)
+                    TreeArchetype.card(&m, centre: c, size: 0.45, normal: simd_normalize(toRoad + SIMD3(0, 0.4, 0)),
+                                       roll: rnd.range(0, 6.28), uv: uv, crownCentre: axis, crownRadii: radii,
+                                       height: 40, ao: 1, bend: 0.5, baseY: ground, billboard: false)
+                }
+                patchPhase(&m, from: 0, phase: rnd.range(0, 6.28), tint: tint + rnd.range(-0.06, 0.06))
+                // Cards are on part 1; copper beech goes to part 2.
+                out.append(m, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0, partOffset: part - 1)
+                s += step
+            }
+        }
     }
 
     // MARK: - Pieces

@@ -103,6 +103,7 @@ final class RoadCorridor: @unchecked Sendable {
     let art: CourseArt
     let stations: [Station]
     let cobbleIndex: Int?
+    let concreteIndex: Int?
     let terrain: TerrainSampler
     let near: NearField
     let coarse: CoarseField
@@ -117,6 +118,7 @@ final class RoadCorridor: @unchecked Sendable {
         art = CourseArt.make(bundle: bundle)
         terrain = TerrainSampler(near: bundle.terrainNear, far: bundle.terrainFar)
         cobbleIndex = bundle.course.surfaces.firstIndex(of: "cobbles")
+        concreteIndex = bundle.course.surfaces.firstIndex(of: "concrete")
         stations = Self.makeStations(route: route, terrain: terrain, vergeWidth: vergeWidth, extensionM: extensionM,
                                      roads: bundle.scenery?.roads ?? [])
         near = NearField(stations: stations, raster: bundle.terrainNear, reach: vergeWidth + 4)
