@@ -14,6 +14,7 @@
 		05CD389BABE1E3CCAEC9DBD7 /* FavouritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81501E582C63A162BDD750B9 /* FavouritesStore.swift */; };
 		08A10B34857E1FA30B54855B /* cj_bark_detail.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 7B2C590500CED6AD8765CCDA /* cj_bark_detail.rgbz */; };
 		08DFD88C487013BEDF693FA4 /* CameraSweep.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F0DC515C5E08E5496C231C /* CameraSweep.swift */; };
+		0B6C58F27EF3691AC7FFCCA4 /* oudekwaremont_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 1887AD3521A7DE6BB5888637 /* oudekwaremont_splat.rgbz */; };
 		0C72BABDF2419DDC2A4FB4E7 /* cj_skyenv_py.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A9A55F98D64D0AC4768E2273 /* cj_skyenv_py.jpg */; };
 		0D89C60D87F80DBC4EB9B08F /* cj_asphalt_detail.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = D35B94DF9B48984CB1A2E613 /* cj_asphalt_detail.rgbz */; };
 		0DEBB855DAA3FD5DF69023F1 /* CoursePhysicsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D174F2B543B80F6D064A2C5F /* CoursePhysicsTests.swift */; };
@@ -105,10 +106,12 @@
 		8ECD5F17B0EF5D59F3CBDB41 /* cj_roof_slate.jpg in Resources */ = {isa = PBXBuildFile; fileRef = D9DAC257408A2D31AB590E59 /* cj_roof_slate.jpg */; };
 		90DA56E6C17FDF876B838F14 /* WorldDebugShots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F70B06A9D7977A6DAA0DB47 /* WorldDebugShots.swift */; };
 		9207BDE995C66B4523413B12 /* cj_roof_pantile.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C544C90D503324250E5ED374 /* cj_roof_pantile.jpg */; };
+		93D188F68C758B269C023B05 /* paterberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 03CDE2A6A473CCF563F37B29 /* paterberg_splat.rgbz */; };
 		9514B112188173FCC00CED4F /* FTMSEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E9D4B7E075307B78DF4546 /* FTMSEncodingTests.swift */; };
 		96D3F8205C93D4DED8505F34 /* ConnectDevicesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */; };
 		98A93A30D089CD7218E90A9D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9C7385020B3CE86C9767E793 /* Assets.xcassets */; };
 		9963BB5D8A68BB0EC0E1E26D /* Zone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A21BCD05706976595E49E1E /* Zone.swift */; };
+		9A94EDB001769331519D36FC /* paterberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = ACE8A7EEC8A6F6BE106E989F /* paterberg_ortho_ground.jpg */; };
 		A18BFED43D57977E35427BF4 /* CourseRideControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C8E0FC03E08093D233590D /* CourseRideControllerTests.swift */; };
 		A3DA50D2BDFC98DB2802C84A /* ScheduleForLaterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8572753D202928A81E22F03 /* ScheduleForLaterSheet.swift */; };
 		A49A1514DC06597A7EA19D27 /* WorkoutDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */; };
@@ -123,6 +126,7 @@
 		B219FB62D014FDA3EC24CB3E /* WholeRideIntensityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247B7303868D62A1EC8D1406 /* WholeRideIntensityTests.swift */; };
 		B46DCF3FA665029F068A895A /* CourseProfileViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B0BF55BF0000F40A9B475DF /* CourseProfileViews.swift */; };
 		B58CA93CA078FA138CF1C3D1 /* CoursePersonalBestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E50E10EAC8580D5C377C8EEE /* CoursePersonalBestTests.swift */; };
+		B7EDF88B4941F3A0B66BB0BC /* oudekwaremont_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = E438A5DD8E5C982BE46ABB39 /* oudekwaremont_ortho_ground.jpg */; };
 		B99A429F7F044A47390773C6 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = F82E9EF5F75072ED161477C6 /* Typography.swift */; };
 		B9B2A05075C659905F6078ED /* CourseBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31513E32BD6F8219B674DEF /* CourseBundle.swift */; };
 		BABED744A2BA262F9A23BC1B /* IntervalEditBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */; };
@@ -163,6 +167,7 @@
 		FBE3C6271C9633FF5466B83D /* RideSettingsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4D44C4123CD39755C9C78BF /* RideSettingsPanel.swift */; };
 		FDA6BE5FDA70CCFBA549B35D /* WorkoutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768C9304952E6E9A246A2914 /* WorkoutsView.swift */; };
 		FE55E1C2D4D33E0BAC9BD566 /* ReschedulePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */; };
+		FEFD2D65944767ECF3CBF755 /* CourseCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3A1A8637B0B1FB60C8130B /* CourseCatalogTests.swift */; };
 		FFCDA543FC7F02481025181B /* RideRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */; };
 /* End PBXBuildFile section */
 
@@ -179,6 +184,7 @@
 /* Begin PBXFileReference section */
 		003D04A8C1F205B8E291EDE6 /* cj_skyenv_nz.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_skyenv_nz.jpg; sourceTree = "<group>"; };
 		01E9D4B7E075307B78DF4546 /* FTMSEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FTMSEncodingTests.swift; sourceTree = "<group>"; };
+		03CDE2A6A473CCF563F37B29 /* paterberg_splat.rgbz */ = {isa = PBXFileReference; path = paterberg_splat.rgbz; sourceTree = "<group>"; };
 		04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReschedulePickerSheet.swift; sourceTree = "<group>"; };
 		06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LandscapeRideLayout.swift; sourceTree = "<group>"; };
 		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -193,6 +199,7 @@
 		0D3DDCB25365FED10E350227 /* RideSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSessionModel.swift; sourceTree = "<group>"; };
 		0EC6CE876C0021DBE03439B1 /* cj_asphalt_albedo.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_asphalt_albedo.jpg; sourceTree = "<group>"; };
 		13EDB42DB4BB32145BCB4DE0 /* PowerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMetrics.swift; sourceTree = "<group>"; };
+		1887AD3521A7DE6BB5888637 /* oudekwaremont_splat.rgbz */ = {isa = PBXFileReference; path = oudekwaremont_splat.rgbz; sourceTree = "<group>"; };
 		1964FA7173F4E7AF7C31578D /* CourseRideRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRideRecorder.swift; sourceTree = "<group>"; };
 		19E8D40EFFD1EC5F12211928 /* RideSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSnapshot.swift; sourceTree = "<group>"; };
 		1DA902ADA1387F13230409C6 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
@@ -248,6 +255,7 @@
 		7A21BCD05706976595E49E1E /* Zone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zone.swift; sourceTree = "<group>"; };
 		7B2C590500CED6AD8765CCDA /* cj_bark_detail.rgbz */ = {isa = PBXFileReference; path = cj_bark_detail.rgbz; sourceTree = "<group>"; };
 		7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */ = {isa = PBXFileReference; path = koppenberg_splat.rgbz; sourceTree = "<group>"; };
+		7D3A1A8637B0B1FB60C8130B /* CourseCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseCatalogTests.swift; sourceTree = "<group>"; };
 		81501E582C63A162BDD750B9 /* FavouritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavouritesStore.swift; sourceTree = "<group>"; };
 		84001CD29F43A18F56AE9830 /* CourseRideOverlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRideOverlays.swift; sourceTree = "<group>"; };
 		84017D53FDC7E40D16B71DB9 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
@@ -277,6 +285,7 @@
 		A92ACDD374C3324A8038AFB0 /* GraphicsQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphicsQuality.swift; sourceTree = "<group>"; };
 		A9A55F98D64D0AC4768E2273 /* cj_skyenv_py.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_skyenv_py.jpg; sourceTree = "<group>"; };
 		ACB6A6A2C1F666BB117740FD /* cj_roof_pantile_detail.rgbz */ = {isa = PBXFileReference; path = cj_roof_pantile_detail.rgbz; sourceTree = "<group>"; };
+		ACE8A7EEC8A6F6BE106E989F /* paterberg_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = paterberg_ortho_ground.jpg; sourceTree = "<group>"; };
 		AD196406BD617F6E58A30D60 /* cj_roof_slate_detail.rgbz */ = {isa = PBXFileReference; path = cj_roof_slate_detail.rgbz; sourceTree = "<group>"; };
 		AD6916420C79FEF783388FAD /* TCXExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCXExporterTests.swift; sourceTree = "<group>"; };
 		B0E4C63ACDA7E207ECA66FEA /* cj_bark_albedo.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_bark_albedo.jpg; sourceTree = "<group>"; };
@@ -315,6 +324,7 @@
 		E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingIntervalsSheet.swift; sourceTree = "<group>"; };
 		E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledRideModel.swift; sourceTree = "<group>"; };
 		E3F25F84525C9DCFC0ECE7BC /* TreeArchetypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreeArchetypes.swift; sourceTree = "<group>"; };
+		E438A5DD8E5C982BE46ABB39 /* oudekwaremont_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = oudekwaremont_ortho_ground.jpg; sourceTree = "<group>"; };
 		E45B34CCB8642253B879B48E /* CourseSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseSceneView.swift; sourceTree = "<group>"; };
 		E4E734E1BB9F5BA8A509A8B4 /* RiderMaterials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiderMaterials.swift; sourceTree = "<group>"; };
 		E50E10EAC8580D5C377C8EEE /* CoursePersonalBestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursePersonalBestTests.swift; sourceTree = "<group>"; };
@@ -400,6 +410,10 @@
 				A8F4E28492F55C2BA16C5677 /* cj_skyenv_pz.jpg */,
 				2319389A874329620F99A4BD /* koppenberg_ortho_ground.jpg */,
 				7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */,
+				E438A5DD8E5C982BE46ABB39 /* oudekwaremont_ortho_ground.jpg */,
+				1887AD3521A7DE6BB5888637 /* oudekwaremont_splat.rgbz */,
+				ACE8A7EEC8A6F6BE106E989F /* paterberg_ortho_ground.jpg */,
+				03CDE2A6A473CCF563F37B29 /* paterberg_splat.rgbz */,
 			);
 			path = CourseTextures;
 			sourceTree = "<group>";
@@ -618,6 +632,7 @@
 		CC9DF6BE51CDAB07325A8132 /* CycleJamesTests */ = {
 			isa = PBXGroup;
 			children = (
+				7D3A1A8637B0B1FB60C8130B /* CourseCatalogTests.swift */,
 				24A16C4D8AB7A444DC693A24 /* CourseClimbTimingTests.swift */,
 				E50E10EAC8580D5C377C8EEE /* CoursePersonalBestTests.swift */,
 				D174F2B543B80F6D064A2C5F /* CoursePhysicsTests.swift */,
@@ -848,6 +863,10 @@
 				8843A8E7EC833AFD5DD6BE5F /* cj_skyenv_pz.jpg in Resources */,
 				24F704302B1D9E83B497999D /* koppenberg_ortho_ground.jpg in Resources */,
 				C6AE3F3B74C20B7D4384C1CE /* koppenberg_splat.rgbz in Resources */,
+				B7EDF88B4941F3A0B66BB0BC /* oudekwaremont_ortho_ground.jpg in Resources */,
+				0B6C58F27EF3691AC7FFCCA4 /* oudekwaremont_splat.rgbz in Resources */,
+				9A94EDB001769331519D36FC /* paterberg_ortho_ground.jpg in Resources */,
+				93D188F68C758B269C023B05 /* paterberg_splat.rgbz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -858,6 +877,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FEFD2D65944767ECF3CBF755 /* CourseCatalogTests.swift in Sources */,
 				3D81756FFEE6007FB8DD101C /* CourseClimbTimingTests.swift in Sources */,
 				B58CA93CA078FA138CF1C3D1 /* CoursePersonalBestTests.swift in Sources */,
 				0DEBB855DAA3FD5DF69023F1 /* CoursePhysicsTests.swift in Sources */,

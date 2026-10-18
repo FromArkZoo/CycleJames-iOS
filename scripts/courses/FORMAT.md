@@ -23,7 +23,7 @@ pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
 - **Raster encoding `u16le_cm`:** little-endian `UInt16`,
   `value_m = baseM + raw / 100`; `raw == 65535` means no data.
 - **Direction of travel:** the route always runs in the direction it is raced
-  (uphill for the Koppenberg).
+  (uphill for the Koppenberg, the Oude Kwaremont and the Paterberg).
 
 ## `course.json`
 
@@ -61,11 +61,19 @@ pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
     "gradePct": [],   // d(elev)/ds × 100 from the smoothed curve
     "widthM": [],     // carriageway width
     "surface": []     // index into "surfaces"
+    // east/north follow the OSM ways, moved onto the sunken-lane floor (DTM
+    // trough fit, the Koppenberg) or onto the middle of the surveyed
+    // carriageway (GRB WGO edges, the Oude Kwaremont and the Paterberg).
+    // widthM is narrowed to the clear floor where a bank rises inside a lane
+    // of at most 5 m nominal (never below 2.5 m).
   },
+  // "concrete" is appended only when the route has some (the Paterberg's exit
+  // along the concrete-plate Stooktestraat); the app draws it as pale slabs and
+  // rides it like asphalt.
   "surfaces": ["asphalt", "cobbles"],
 
   // Rolling-resistance coefficient per surface (sent to the trainer, used by physics).
-  "surfaceCrr": { "asphalt": 0.0040, "cobbles": 0.0090 },
+  "surfaceCrr": { "asphalt": 0.0040, "cobbles": 0.0090 },   // + "concrete": 0.0045 when listed
 
   "landmarks": [{ "s": 0, "kind": "climbStart|summit|steepest|junction|village|note", "name": "…" }],
 

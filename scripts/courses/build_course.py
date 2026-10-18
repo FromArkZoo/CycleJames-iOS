@@ -4,7 +4,7 @@
 # ///
 """Bake a CycleJames climb course from open data (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_course.py koppenberg
+    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg)
 
 Sources (all fetched once and cached under scripts/courses/.cache/<id>/):
   * OpenStreetMap via Overpass  -> route centreline, surface, names
@@ -108,6 +108,9 @@ COURSES: dict[str, dict] = {
         "bank_limit_width": True,
         "bank_tol_m": 0.15,
         "min_width_m": 2.5,
+        # Only lanes this narrow are bank-limited: wider roads (the N36 at the Oude Kwaremont's
+        # top) have ditches and verges, not sunken-lane banks, inside a nominal width.
+        "bank_limit_max_nominal_m": 5.0,
         "surface_crr": {"asphalt": 0.0040, "cobbles": 0.0090},
         "near_margin_m": 250.0,
         "far_size_m": 5000.0,
@@ -137,7 +140,16 @@ COURSES: dict[str, dict] = {
             "m_per_px": 0.5,
         },
         "village": "Melden",
-        "roadbook_retrieved": "2026-10-17",
+        "climb_start_name": "Koppenberg – foot of the Steengat",
+        "summit_name": "Koppenberg – top of the cobbles",
+        # Streets of the route in race order, for the OSM source note.
+        "streets": "Meldenstraat, Rotelenberg, Steengat, Koppenberg",
+        "roadbook": {
+            "name": "Ronde van Vlaanderen 2025 roadmap (Flanders Classics)",
+            "url": "https://oudenaarde.be/sites/default/files/2025-03/rvv-2025-roadmap-elite-vrouwen-fc.pdf",
+            "retrieved": "2026-10-17",
+            "notes": "Race direction and streets: Berchemweg (N8), Meldenstraat, Rotelenberg, Steengat, Koppenberg.",
+        },
         # Data used by build_scenery.py for this course. The app shows attribution only from
         # course.json, so it is credited here. `cache_glob` dates the source by its cached download.
         "scenery_sources": [
@@ -152,6 +164,135 @@ COURSES: dict[str, dict] = {
     },
 }
 
+# Pipeline tunables the other bergs share with the Koppenberg (see the comments above).
+_SHARED = {k: COURSES["koppenberg"][k] for k in (
+    "bank_limit_width", "bank_tol_m", "min_width_m", "bank_limit_max_nominal_m", "near_margin_m", "far_size_m", "far_cell_m",
+    "smooth_sigma_m", "xy_smooth_sigma_m", "low_percentile", "despike_window_m", "despike_min_m",
+    "refine_centreline", "refine_sigma_m", "refine_max_m", "validation_ortho", "ortho", "scenery_sources")}
+_SURFACE_CRR = {"asphalt": 0.0040, "cobbles": 0.0090, "concrete": 0.0045}
+
+COURSES["oudekwaremont"] = {
+    **_SHARED,
+    "name": "Oude Kwaremont",
+    "region": "Kwaremont, Kluisbergen · Flemish Ardennes",
+    # Race order from the Ronde van Vlaanderen 2025 roadmap (Flanders Classics, women elite,
+    # version 10/03/2025): Brugzavel -> Broektestraat -> Kwaremontplein -> Schilderstraat ->
+    # left onto Ronse Baan (N36) towards Lamontstraat and the Paterberg. The 2026 men's course
+    # GPX (cyclingstage.com, from the 2026 road book) follows the same ways on the finale
+    # passages; the first 2026 passage turned right on the N36 instead.
+    "ways": [
+        79620616,    # Broektestraat, asphalt, from the Brugzavel mini-roundabout (approach)
+        1375368944,  # Broektestraat: starts at the right-left kink where the 2200 m climb begins
+        1375368938,  # Broektestraat, asphalt
+        31295044,    # Broektestraat, asphalt
+        169091283,   # Broektestraat, asphalt
+        660521414,   # Broektestraat, sett: the cobbles start, steepest part (holle weg)
+        86501829,    # Broektestraat, sett
+        1527496580,  # Broektestraat, sett
+        1472108189,  # sett; OSM name Ommegangstraat, Broektestraat in the Wegenregister
+        850884348,   # sett; Kwaremontplein (the square) in the Wegenregister
+        25730689,    # sett; Kwaremontplein, then Schilderstraat
+        1472108187,  # Schilderstraat, sett
+        1472108188,  # Schilderstraat, sett: the cobbled false flat across open fields
+        368750237,   # Schilderstraat, sett (Feelbosstraat junction)
+        25730690,    # Schilderstraat, sett: upper hollow lane; the cobbles end at its last node
+        1159118827,  # Schilderstraat, asphalt link to the N36: the race's 2200 m climb ends at its last node
+        242724612,   # Ronse Baan (N36), asphalt (exit)
+        313601768,   # Ronse Baan (N36), asphalt (exit; the trimmed route ends inside it)
+    ],
+    "climb_start": ("way_start", 1375368944),
+    "climb_end": ("way_end", 1159118827),
+    "approach_m": 300.0,
+    "exit_m": 200.0,
+    "osm_bbox": (50.762, 3.514, 50.795, 3.545),
+    # No OSM width tags and no published widths. Medians of the surveyed carriageway edges in
+    # GRB WGO ('rand van de rijbaan'), measured perpendicular to the OSM line every 5 m
+    # (scripts/courses/.cache/oudekwaremont/research/), rounded to 0.25 m.
+    "width_m": {
+        79620616: 3.0, 1375368944: 3.5, 1375368938: 3.0, 31295044: 3.0, 169091283: 3.0,
+        660521414: 3.25, 86501829: 3.25, 1527496580: 3.25, 1472108189: 3.25,
+        850884348: 5.0,   # the square
+        25730689: 5.25,   # Kwaremontplein through the village
+        1472108187: 3.25, 1472108188: 3.5, 368750237: 3.75, 25730690: 3.25,
+        1159118827: 3.75,
+        # N36: two lanes and red cycle lanes, 9.9 m between the GRB carriageway edges.
+        242724612: 9.75,
+        313601768: 9.75,
+    },
+    "way_names": {1472108189: "Broektestraat", 850884348: "Kwaremontplein", 25730689: "Kwaremontplein"},
+    # Way 25730689 turns from Kwaremontplein into Schilderstraat at the Kwaremontplein loop
+    # junction (its middle node 4771542876), ~22 m before its end (Wegenregister).
+    "name_breaks": {25730689: [(149.5, "Schilderstraat")]},
+    # The DTM trough fit chases ditches and bank toes here; centre on the surveyed edges instead.
+    "refine_centreline": False,
+    "align_to_grb": True,
+    "extra_sources": [
+        {"name": "Wegenregister (Wegsegment), Digitaal Vlaanderen",
+         "url": "https://geo.api.vlaanderen.be/Wegenregister/wfs",
+         "retrieved": "2026-10-18",
+         "notes": "Official street names for OSM ways 1472108189 (Broektestraat), 850884348 and the first "
+                  "~150 m of 25730689 (Kwaremontplein), used for the junction landmarks. "
+                  "Modellicentie Gratis Hergebruik."},
+    ],
+    "extra_attribution": ["Digitaal Vlaanderen – Wegenregister, Modellicentie Gratis Hergebruik"],
+    "default_width_m": 3.25,
+    "surface_crr": _SURFACE_CRR,
+    "village": "Berchem",
+    "climb_start_name": "Oude Kwaremont – start on the Broektestraat",
+    "summit_name": "Oude Kwaremont – top at the N36",
+    "streets": "Broektestraat, Kwaremontplein, Schilderstraat, Ronse Baan (N36)",
+    "roadbook": {
+        "name": "Ronde van Vlaanderen 2025 roadmap (Flanders Classics)",
+        "url": "https://oudenaarde.be/sites/default/files/2025-03/rvv-2025-roadmap-elite-vrouwen-fc.pdf",
+        "retrieved": "2026-10-18",
+        "notes": "Race direction and streets: Brugzavel, Broektestraat, Kwaremontplein, Schilderstraat, Ronse Baan "
+                 "(N36). Oude Kwaremont 2200 m, 4 % average, 11.6 % max, 1500 m of cobbles.",
+    },
+}
+
+COURSES["paterberg"] = {
+    **_SHARED,
+    "name": "Paterberg",
+    "region": "Kwaremont, Kluisbergen · Flemish Ardennes",
+    # Race order from the Ronde van Vlaanderen 2025 roadmaps (Flanders Classics, men and women
+    # elite, version 10/03/2025): Ronsebaan (N36) -> Lamontstraat -> Kalkhovenstraat ->
+    # Middelloopstraat -> right onto Paterbergstraat -> left into Stooktestraat.
+    "ways": [
+        86501819,    # Middelloopstraat, asphalt: only orients the chain (before the route start)
+        86501826,    # Middelloopstraat, asphalt (approach)
+        369071618,   # Middelloopstraat, asphalt (approach, slight descent to the corner)
+        31295027,    # Paterbergstraat, sett: the whole timed climb, junction to junction
+        223598561,   # Stooktestraat, concrete (exit; the race turns left at the top)
+        1472505832,  # Stooktestraat, concrete (exit; the trimmed route ends inside it)
+    ],
+    "climb_start": ("way_start", 31295027),  # Middelloopstraat corner, foot of the cobbles
+    "climb_end": ("way_end", 31295027),      # Stooktestraat/Lamontstraat T-junction, top of the cobbles
+    "approach_m": 300.0,
+    "exit_m": 200.0,
+    "osm_bbox": (50.774, 3.532, 50.792, 3.560),
+    # GRB WGO carriageway edges every 10 m: Paterbergstraat median 3.53 m (p10-p90 3.47-3.62,
+    # including the ~0.6 m concrete gutter on the left), Middelloopstraat 3.1 m, Stooktestraat 3.0 m.
+    # Stooktestraat: the pale concrete band in the 2024 summer ortho is ~3.4 m, 3.0 m in GRB (2013).
+    "width_m": {86501819: 3.0, 86501826: 3.0, 369071618: 3.25, 31295027: 3.5, 223598561: 3.25, 1472505832: 3.25},
+    # The OSM line runs up to ~1 m off the cobbles (south at the foot's junction mouth, north
+    # higher up); the DTM trough fit made the foot worse. Centre on the surveyed edges instead.
+    "refine_centreline": False,
+    "align_to_grb": True,
+    "default_width_m": 3.25,
+    "surface_crr": _SURFACE_CRR,
+    "village": "Kwaremont",
+    "climb_start_name": "Paterberg – foot of the cobbles",
+    "summit_name": "Paterberg – top of the cobbles",
+    "streets": "Middelloopstraat, Paterbergstraat, Stooktestraat",
+    "roadbook": {
+        "name": "Ronde van Vlaanderen 2025 roadmap (Flanders Classics)",
+        "url": "https://oudenaarde.be/sites/default/files/2025-03/rvv-2025-roadmap-elite-mannen-fc_0.pdf",
+        "retrieved": "2026-10-18",
+        "notes": "Race direction and streets: Ronsebaan (N36), Lamontstraat, Kalkhovenstraat, Middelloopstraat, "
+                 "Paterbergstraat, Stooktestraat. Paterberg 360 m, 12.9 % average, 20.3 % max, 360 m of cobbles.",
+    },
+}
+
 DHMV_WCS = "https://geo.api.vlaanderen.be/DHMV/wcs"
 DHMV_WMS = "https://geo.api.vlaanderen.be/DHMV/wms"
 OVERPASS_ENDPOINTS = [
@@ -160,6 +301,7 @@ OVERPASS_ENDPOINTS = [
     "https://overpass.kumi.systems/api/interpreter",
 ]
 COBBLE_SURFACES = {"sett", "cobblestone", "unhewn_cobblestone", "cobblestone:flattened", "paving_stones"}
+CONCRETE_SURFACES = {"concrete", "concrete:plates", "concrete:lanes"}
 
 # ---------------------------------------------------------------------------
 # HTTP with cache + backoff
@@ -551,6 +693,75 @@ def fetch_wms_mosaic(cache: Path, service: str, layer: str, gx0, gx1, gy0, gy1, 
     return img
 
 
+GRB_WFS = "https://geo.api.vlaanderen.be/GRB/wfs"
+
+
+def fetch_grb_road_edges(cache: Path, x0: int, x1: int, y0: int, y1: int, log) -> np.ndarray:
+    """GRB WGO 'rand van de rijbaan' lines (surveyed carriageway edges) in the box, as segments
+    (x0, y0, x1, y1) in Lambert 72, fetched page by page and cached."""
+    segs, start, page = [], 0, 5000
+    while True:
+        q = urllib.parse.urlencode({
+            "SERVICE": "WFS", "VERSION": "2.0.0", "REQUEST": "GetFeature", "TYPENAMES": "GRB:WGO",
+            "BBOX": f"{x0},{y0},{x1},{y1},urn:ogc:def:crs:EPSG::31370", "SRSNAME": "urn:ogc:def:crs:EPSG::31370",
+            "OUTPUTFORMAT": "application/json", "COUNT": page, "STARTINDEX": start})
+        body = cached_fetch(cache, f"wfs_GRB_WGO_{x0}_{x1}_{y0}_{y1}_{start}.json", f"{GRB_WFS}?{q}",
+                            validate=lambda b, h: b.lstrip().startswith(b"{"), log=log, tries=4)
+        d = json.loads(body)
+        crs = str(d.get("crs", {}).get("properties", {}).get("name", ""))
+        if crs and "31370" not in crs:
+            raise SystemExit(f"GRB WFS answered in {crs}, expected EPSG:31370")
+        feats = d.get("features", [])
+        for f_ in feats:
+            if not str(f_.get("properties", {}).get("LBLTYPE", "")).startswith("rand van de rijbaan"):
+                continue
+            g = f_.get("geometry") or {}
+            lines = [g["coordinates"]] if g.get("type") == "LineString" else (
+                g["coordinates"] if g.get("type") == "MultiLineString" else [])
+            for ln in lines:
+                a = np.asarray(ln, dtype=np.float64)[:, :2]
+                segs.extend(np.hstack([a[:-1], a[1:]]))
+        if len(feats) < page:
+            break
+        start += page
+    log(f"[grb] {len(segs)} carriageway-edge segments (GRB WGO 'rand van de rijbaan') in the near grid box")
+    return np.array(segs).reshape(-1, 4)
+
+
+def grb_carriageway(segs, e, n, ne_, nn_, width_nom, reach=1.5):
+    """Per station: the centre (m along the right-hand normal, + = right) and width of the surveyed
+    carriageway, from the pair of adjacent GRB edge crossings along the normal (within the nominal
+    half-width + `reach`) whose spacing best fits the nominal width and lies nearest the line.
+    NaN where no such pair."""
+    A = segs[:, :2]; D = segs[:, 2:] - A
+    mids = A + D / 2; half = np.hypot(D[:, 0], D[:, 1]) / 2
+    k = len(e); centre = np.full(k, np.nan); width = np.full(k, np.nan)
+    for i in range(k):
+        L = width_nom[i] / 2 + reach
+        near = np.hypot(mids[:, 0] - e[i], mids[:, 1] - n[i]) < half + L + 0.5
+        if near.sum() < 2:
+            continue
+        a, d = A[near], D[near]
+        nx, ny = ne_[i], nn_[i]
+        det = -nx * d[:, 1] + ny * d[:, 0]
+        ok = np.abs(det) > 1e-9
+        det = np.where(ok, det, 1.0)
+        rx, ry = a[:, 0] - e[i], a[:, 1] - n[i]
+        tt = (-rx * d[:, 1] + ry * d[:, 0]) / det      # along the normal
+        uu = (nx * ry - ny * rx) / det                  # along the segment
+        ts = np.sort(tt[ok & (uu >= 0) & (uu <= 1) & (np.abs(tt) <= L)])
+        best = None
+        for j in range(len(ts) - 1):
+            g = ts[j + 1] - ts[j]
+            if 0.6 * width_nom[i] <= g <= 1.6 * width_nom[i] + 0.5:
+                c = 0.5 * (ts[j] + ts[j + 1])
+                if best is None or abs(c) < abs(best[0]):
+                    best = (c, g)
+        if best:
+            centre[i], width[i] = best
+    return centre, width
+
+
 # ---------------------------------------------------------------------------
 # Encoding
 # ---------------------------------------------------------------------------
@@ -666,7 +877,8 @@ def build(course_id: str) -> int:
 
     # per-station tags
     tagsk = [w.get("tags", {}) for w in chain.ways]
-    names = [t.get("name", "") for t in tagsk]
+    # Street names, where the official road register (Wegenregister) differs from OSM's name tag.
+    names = [cfg.get("way_names", {}).get(chain.ways[k]["id"], t.get("name", "")) for k, t in enumerate(tagsk)]
 
     def width_for(k):
         t = tagsk[k]
@@ -677,8 +889,15 @@ def build(course_id: str) -> int:
                 pass
         return float(cfg["width_m"].get(chain.ways[k]["id"], cfg["default_width_m"]))
 
+    def surface_name(k):
+        v = tagsk[k].get("surface", "asphalt")
+        return "cobbles" if v in COBBLE_SURFACES else "concrete" if v in CONCRETE_SURFACES else "asphalt"
+
+    # "concrete" is listed only when the route has some, so older courses keep [asphalt, cobbles].
     surfaces = ["asphalt", "cobbles"]
-    surf_k = [1 if tagsk[k].get("surface", "asphalt") in COBBLE_SURFACES else 0 for k in range(len(tagsk))]
+    if any(surface_name(k) == "concrete" for k in range(len(tagsk))):
+        surfaces.append("concrete")
+    surf_k = [surfaces.index(surface_name(k)) for k in range(len(tagsk))]
     width = np.array([width_for(k) for k in widx])
     surf = np.array([surf_k[k] for k in widx], dtype=int)
 
@@ -738,6 +957,53 @@ def build(course_id: str) -> int:
             f"climb {startS:.1f} -> {endS:.1f}")
         te, tn = tangents(e_loc, n_loc, half=2)
         ne_, nn_ = tn, -te
+
+    # ---------------- centreline alignment to the surveyed carriageway (GRB WGO) ----------------
+    grb_off = np.zeros(n_st)
+    if cfg.get("align_to_grb"):
+        segs = fetch_grb_road_edges(cache, gx0, gx1, gy0, gy1, log) - np.array([oE, oN, oE, oN])
+        wn = np.array([width_for(k) for k in widx])
+        centre, gw = grb_carriageway(segs, e_loc, n_loc, ne_, nn_, wn)
+        ok_ = np.isfinite(centre)
+        log(f"[grb] surveyed carriageway found at {int(ok_.sum())} of {n_st} stations; centre off the line: "
+            f"median {np.median(centre[ok_]):+.2f} m, p10 {np.percentile(centre[ok_], 10):+.2f}, "
+            f"p90 {np.percentile(centre[ok_], 90):+.2f} m")
+        for k in sorted(set(int(v) for v in widx)):
+            m_ = ok_ & (widx == k)
+            if m_.sum() >= 5:
+                log(f"[grb]   way {chain.ways[k]['id']:>10} {names[k]:<15}: measured width median "
+                    f"{np.median(gw[m_]):.2f} m (p10 {np.percentile(gw[m_], 10):.2f}, p90 {np.percentile(gw[m_], 90):.2f}) "
+                    f"vs configured {width_for(k):.2f}; centre {np.median(centre[m_]):+.2f} m")
+        # Robust fill: despike, carry across short gaps, ease to no shift over long ones.
+        if ok_.sum() >= 10:
+            idx_ok = np.flatnonzero(ok_)
+            filled = np.interp(s, s[idx_ok], centre[idx_ok])
+            gap = np.abs(s[:, None] - s[idx_ok][None, :]).min(axis=1) if n_st * len(idx_ok) < 2e7 else \
+                np.minimum(np.abs(s - s[idx_ok][np.clip(np.searchsorted(s[idx_ok], s), 0, len(idx_ok) - 1)]),
+                           np.abs(s - s[idx_ok][np.clip(np.searchsorted(s[idx_ok], s) - 1, 0, len(idx_ok) - 1)]))
+            filled = filled * np.clip(1 - (gap - 15.0) / 15.0, 0, 1)
+            filled, _ = hampel(filled, 7, 0.3)
+            grb_off = np.clip(gaussian1d(filled, cfg.get("grb_sigma_m", 4.0)), -1.5, 1.5)
+            pe = e_loc + grb_off * ne_; pn = n_loc + grb_off * nn_
+            cum = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(pe), np.diff(pn)))])
+            n_new = int(math.floor(cum[-1] + 1e-9)) + 1
+            s_new = np.arange(n_new, dtype=np.float64)
+            old_at = np.interp(s_new, cum, s)
+            e_loc = np.interp(s_new, cum, pe); n_loc = np.interp(s_new, cum, pn)
+            nearest = np.clip(np.round(old_at).astype(int), 0, n_st - 1)
+            widx = widx[nearest]; refine_off = refine_off[nearest]; grb_off = grb_off[nearest]
+            osm_e = np.interp(old_at, s, osm_e); osm_n = np.interp(old_at, s, osm_n)
+            startS = float(np.interp(startS, s, cum)); endS = float(np.interp(endS, s, cum))
+            way_start_s = [float(np.interp(v, s, cum)) for v in way_start_s]
+            s = s_new; n_st = n_new
+            te, tn = tangents(e_loc, n_loc, half=2)
+            ne_, nn_ = tn, -te
+            after, _ = grb_carriageway(segs, e_loc, n_loc, ne_, nn_, np.array([width_for(k) for k in widx]))
+            fa = np.isfinite(after)
+            log(f"[grb] centreline moved by up to {np.abs(grb_off).max():.2f} m (sigma {cfg.get('grb_sigma_m', 4.0)} m); "
+                f"{int((np.abs(grb_off) > 0.3).sum())} stations > 0.3 m; residual |centre| median "
+                f"{np.median(np.abs(after[fa])):.2f} m, p90 {np.percentile(np.abs(after[fa]), 90):.2f} m; "
+                f"route now {s[-1]:.0f} m, climb {startS:.1f} -> {endS:.1f}")
     width = np.array([width_for(k) for k in widx])
     surf = np.array([surf_k[k] for k in widx], dtype=int)
     floor_mid, floor_w, lb1, rb1 = trough_analysis(dtm_f, near_oE, near_oN, e_loc, n_loc, ne_, nn_)
@@ -820,9 +1086,12 @@ def build(course_id: str) -> int:
             return bank_clear_width(dtm_f, near_oE, near_oN, e_loc, n_loc, ne_, nn_, elev, width_nom / 2, tol_)[0]
 
         cw, dl_b, dr_b = bank_clear_width(dtm_f, near_oE, near_oN, e_loc, n_loc, ne_, nn_, elev, width_nom / 2, tol_b)
-        # smooth the bank deficit (not the width, so the nominal steps between ways stay sharp)
-        deficit = gaussian1d(width_nom - np.minimum(width_nom, cw), 2.0)
-        width_out = np.where(deficit > 0.02, np.maximum(width_nom - deficit, np.minimum(wmin, width_nom)), width_nom)
+        # smooth the bank deficit (not the width, so the nominal steps between ways stay sharp);
+        # wide roads get none, before smoothing, so it doesn't spill onto the lanes next to them
+        eligible = width_nom <= cfg.get("bank_limit_max_nominal_m", np.inf)
+        deficit = gaussian1d(np.where(eligible, width_nom - np.minimum(width_nom, cw), 0.0), 2.0)
+        width_out = np.where((deficit > 0.02) & eligible,
+                             np.maximum(width_nom - deficit, np.minimum(wmin, width_nom)), width_nom)
         narrowed = width_out < width_nom - 0.01
         if narrowed.any():
             sn_ = s[narrowed]
@@ -874,20 +1143,30 @@ def build(course_id: str) -> int:
     # ---------------- landmarks ----------------
     landmarks = []
     landmarks.append({"s": 0.0, "kind": "village", "name": f"{cfg['village']} – {names[widx[0]]}"})
+    # A street that changes its name part way along an OSM way (name_breaks: metres along it).
+    end_name = list(names)
+    for k in range(len(chain.ways)):
+        for along, nm in cfg.get("name_breaks", {}).get(chain.ways[k]["id"], []):
+            sb = way_start_s[k] + along
+            if 0.0 < sb < s[-1]:
+                landmarks.append({"s": round(sb, 1), "kind": "junction", "name": f"{end_name[k]} → {nm}"})
+            end_name[k] = nm
     for k in range(1, len(chain.ways)):
         sj = way_start_s[k]
         if not (0.0 < sj < s[-1]):
             continue
         sj = round(sj, 1)
-        if names[k - 1] != names[k]:
-            landmarks.append({"s": sj, "kind": "junction", "name": f"{names[k - 1]} → {names[k]}"})
+        if end_name[k - 1] != names[k]:
+            landmarks.append({"s": sj, "kind": "junction", "name": f"{end_name[k - 1]} → {names[k]}"})
         if surf_k[k - 1] != surf_k[k]:
+            a_, b_ = surfaces[surf_k[k - 1]], surfaces[surf_k[k]]
             landmarks.append({"s": sj, "kind": "note",
-                              "name": "Cobbles begin" if surf_k[k] == 1 else "Cobbles end, asphalt"})
-    landmarks.append({"s": round(startS, 1), "kind": "climbStart", "name": "Koppenberg – foot of the Steengat"})
+                              "name": "Cobbles begin" if b_ == "cobbles" else f"Cobbles end, {b_}" if a_ == "cobbles"
+                              else f"{b_.capitalize()} begins"})
+    landmarks.append({"s": round(startS, 1), "kind": "climbStart", "name": cfg["climb_start_name"]})
     landmarks.append({"s": round(st["at25"], 1), "kind": "steepest",
                       "name": f"Steepest 25 m ({st['max25']:.1f} %)"})
-    landmarks.append({"s": round(endS, 1), "kind": "summit", "name": "Koppenberg – top of the cobbles"})
+    landmarks.append({"s": round(endS, 1), "kind": "summit", "name": cfg["summit_name"]})
     # drop junction/note landmarks that coincide with climb start/summit (keep them, but avoid exact dupes)
     landmarks.sort(key=lambda d: (d["s"], d["kind"]))
 
@@ -991,12 +1270,15 @@ def build(course_id: str) -> int:
             "© OpenStreetMap contributors (ODbL)",
             "Digitaal Vlaanderen – Digitaal Hoogtemodel Vlaanderen II (DTM/DSM 1 m), Modellicentie Gratis Hergebruik",
             f"Digitaal Vlaanderen – {oc['title']} ({oc['layer']}), Modellicentie Gratis Hergebruik",
-        ] + [x["attribution"] for x in cfg.get("scenery_sources", [])],
+        ] + [x["attribution"] for x in cfg.get("scenery_sources", [])]
+          + (["Digitaal Vlaanderen – GRB Wegopdeling (WGO), Modellicentie Gratis Hergebruik"]
+             if cfg.get("align_to_grb") else [])
+          + list(cfg.get("extra_attribution", [])),
         "sources": [
             {"name": "OpenStreetMap (Overpass API)", "url": "https://www.openstreetmap.org/",
              "retrieved": cache_date(cache, osm["_cache_file"]) or today,
              "notes": "Ways " + ", ".join(str(w) for w in route_way_ids) + " joined in race order "
-                      "(Meldenstraat, Rotelenberg, Steengat, Koppenberg) and trimmed to the route; projected "
+                      f"({cfg['streets']}) and trimmed to the route; projected "
                       "EPSG:4326->31370 with pyproj; "
                       f"OSM base {osm.get('osm3s', {}).get('timestamp_osm_base', '?')}. ODbL."},
             {"name": "DHM Vlaanderen II DTM 1 m (DHMVII_DTM_1m)", "url": DHMV_WCS,
@@ -1013,11 +1295,14 @@ def build(course_id: str) -> int:
                       f"server to {mpp} m/px. {vdc_info}. Modellicentie Gratis Hergebruik."},
         ] + [{"name": x["name"], "url": x["url"],
               "retrieved": cache_date(cache, x["cache_glob"]) or today, "notes": x["notes"]}
-             for x in cfg.get("scenery_sources", [])] + [
-            {"name": "Ronde van Vlaanderen 2025 roadmap (Flanders Classics)",
-             "url": "https://oudenaarde.be/sites/default/files/2025-03/rvv-2025-roadmap-elite-vrouwen-fc.pdf",
-             "retrieved": cfg["roadbook_retrieved"],
-             "notes": "Race direction and streets: Berchemweg (N8), Meldenstraat, Rotelenberg, Steengat, Koppenberg."},
+             for x in cfg.get("scenery_sources", [])] + ([
+            {"name": "GRB – Wegopdeling (GRB:WGO), Digitaal Vlaanderen", "url": GRB_WFS,
+             "retrieved": cache_date(cache, "wfs_GRB_WGO_*.json") or today,
+             "notes": "WFS 2.0.0 GetFeature, typeNames GRB:WGO, 'rand van de rijbaan' (surveyed carriageway edge) "
+                      "lines. The route centreline is moved onto the middle of the surveyed carriageway (Gaussian-"
+                      "smoothed); per-way widths checked against them. Modellicentie Gratis Hergebruik."}]
+            if cfg.get("align_to_grb") else []) + [dict(cfg["roadbook"])] + [
+            dict(x) for x in cfg.get("extra_sources", [])
         ],
         "climb": {"startS": round(startS, 2), "endS": round(endS, 2)},
         "stats": {
@@ -1043,7 +1328,7 @@ def build(course_id: str) -> int:
             "surface": [int(v) for v in surf],
         },
         "surfaces": surfaces,
-        "surfaceCrr": cfg["surface_crr"],
+        "surfaceCrr": {k: v for k, v in cfg["surface_crr"].items() if k in surfaces},
         "landmarks": landmarks,
         "terrain": {
             "near": hdr("terrain_near.u16", near_base, near_oE, near_oN, 1.0, dtm_f),
@@ -1124,7 +1409,8 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
     for x, lab in ((startS, "climb start"), (endS, "summit")):
         for ax in (a1, a2):
             ax.axvline(x, color="k", ls="--", lw=0.8)
-        a1.text(x + 4, 20 if lab == "climb start" else 30, lab, rotation=90, va="bottom", fontsize=8)
+        a1.text(x + 4, float(np.min(elev)) + (0.1 if lab == "climb start" else 0.3) * float(np.ptp(elev)), lab,
+                rotation=90, va="bottom", fontsize=8)
     a1.set_ylabel("elevation (m TAW)")
     a1.legend(loc="upper left", fontsize=8)
     a1.set_title(f"{cfg['name']}: climb {endS - startS:.0f} m, +{st['gain']:.1f} m ({st['z0']:.1f} → {st['z1']:.1f} m), "
@@ -1160,7 +1446,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
     fig, (m1, m2) = plt.subplots(1, 2, figsize=(19, 6.6))
     m1.imshow(hs, cmap="gray", extent=ext, interpolation="bilinear")
     xs_ = oE + 0.5 + np.arange(0, cols, 4); ys_ = oN - 0.5 - np.arange(0, rows, 4)
-    cs = m1.contour(xs_, ys_, dtm[::4, ::4], levels=np.arange(0, 140, 5), colors="#8a6d3b", linewidths=0.4, alpha=0.7)
+    cs = m1.contour(xs_, ys_, dtm[::4, ::4], levels=np.arange(0, 200, 5), colors="#8a6d3b", linewidths=0.4, alpha=0.7)
     m1.clabel(cs, cs.levels[::2], fontsize=6, fmt="%d")
     pts = np.column_stack([e, n]).reshape(-1, 1, 2)
     segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
@@ -1263,7 +1549,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
                 fh["originNorth"] - fh["rows"] * fh["cellM"], fh["originNorth"]]
         fig, ax = plt.subplots(figsize=(8, 7.5))
         ax.imshow(hillshade(far, fh["cellM"], zf=3.0), cmap="gray", extent=fext)
-        im = ax.imshow(far, cmap="terrain", extent=fext, alpha=0.45, vmin=0, vmax=110)
+        im = ax.imshow(far, cmap="terrain", extent=fext, alpha=0.45, vmin=0, vmax=max(110.0, float(np.nanmax(far))))
         fig.colorbar(im, ax=ax, fraction=0.04, label="m TAW")
         ax.add_patch(plt.Rectangle((ext[0], ext[2]), ext[1] - ext[0], ext[3] - ext[2], fill=False, ec="red", lw=1))
         ax.plot(e, n, color="k", lw=1.5)
@@ -1307,9 +1593,9 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
         fig.tight_layout(); fig.savefig(dbg / "lane_width.png", dpi=90); plt.close(fig)
 
     # ---- cross sections ----
+    L_ = endS - startS
     at = [("climb start +15 m", startS + 15), (f"steepest 25 m centre", st["at25"]),
-          ("summit −15 m", endS - 15), ("climb +100 m", startS + 100), ("climb +240 m", startS + 240),
-          ("climb +480 m", startS + 480)]
+          ("summit −15 m", endS - 15)] + [(f"climb +{f * L_:.0f} m", startS + f * L_) for f in (0.2, 0.45, 0.8)]
     fig, axs = plt.subplots(2, 3, figsize=(16, 8.5))
     offx = np.arange(-25, 25.01, 0.25)
     for ax, (lab, x) in zip(axs.ravel(), at):

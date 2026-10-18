@@ -9,8 +9,9 @@
 #       xcodegen + simulator build. Prints errors and warnings; with a filter
 #       (substring of a path, e.g. "Courses/Scene/Rider") only matching ones.
 #       Exit 0 when the build succeeds.
-#   scripts/dev/cj-build.sh test
-#       Builds and runs the unit tests on the preview simulator.
+#   scripts/dev/cj-build.sh test [TestClass[/testMethod]]
+#       Builds and runs the unit tests on the preview simulator (only the
+#       given class or test when one is named).
 #   scripts/dev/cj-build.sh shot <out.png> [wait-seconds] [-- app launch args...]
 #       Builds, installs and launches on the preview simulator, waits
 #       (default 8 s), saves a screenshot, then terminates the app.
@@ -88,9 +89,11 @@ case "$cmd" in
     acquire
     cd "$REPO" || exit 1
     xcodegen --quiet >/dev/null 2>&1 || xcodegen
+    only=()
+    [[ -n "${1:-}" ]] && only=("-only-testing:CycleJamesTests/$1")
     xcodebuild -project CycleJames.xcodeproj -scheme CycleJames \
       -destination "id=$(sim_udid)" \
-      -derivedDataPath "$DD" -jobs "$JOBS" test 2>&1 \
+      -derivedDataPath "$DD" -jobs "$JOBS" test "${only[@]}" 2>&1 \
       | grep -E "error:|Test Case .*(passed|failed)|Executed|\*\* TEST (SUCCEEDED|FAILED) \*\*" | tail -80
     exit ${pipestatus[1]} ;;
   shot)
@@ -114,5 +117,5 @@ case "$cmd" in
     udid=$(sim_udid); [[ -n "$udid" ]] && xcrun simctl shutdown "$udid" 2>/dev/null
     exit 0 ;;
   *)
-    echo "usage: $0 build [filter] | test | shot <out.png> [wait] [-- args] | shutdown" >&2; exit 64 ;;
+    echo "usage: $0 build [filter] | test [TestClass] | shot <out.png> [wait] [-- args] | shutdown" >&2; exit 64 ;;
 esac

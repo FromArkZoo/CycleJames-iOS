@@ -59,6 +59,7 @@ enum CourseWorldBuilder {
             textures = WorldTextures(limit: config.textureLimit)
             materials = WorldMaterials(config: config, textures: textures, bundle: bundle)
             for m in [materials.terrain, materials.verge, materials.cobbles, materials.asphalt, materials.kerb,
+                      materials.concrete, materials.gutter,
                       materials.leaves, materials.bark, materials.impostor, materials.grass, materials.walls,
                       materials.roofPantile, materials.roofSlate] {
                 _ = m
@@ -124,7 +125,12 @@ enum CourseWorldBuilder {
         roadRoot.name = "road"
         for (mesh, material, name) in [(road.asphalt, materials.asphalt, "asphalt"),
                                         (road.cobbles, materials.cobbles, "cobbles"),
+                                        (road.concrete, materials.concrete, "concrete"),
                                         (road.kerb, materials.kerb, "kerb"),
+                                        (road.gutter, materials.gutter, "gutter"),
+                                        (road.pavements, materials.cobbles, "pavements"),
+                                        (road.markings, materials.roadPaint, "markings"),
+                                        (road.cycleLanes, materials.cycleLane, "cycle lanes"),
                                         (road.verge, materials.verge, "verge")] {
             guard let g = mesh.geometry(materials: [material]) else { continue }
             let node = SCNNode(geometry: g)
@@ -180,6 +186,13 @@ enum CourseWorldBuilder {
         }
         scene.rootNode.addChildNode(plantRoot)
 
+        if let g = veg.hedges.geometry(materials: [materials.bark, materials.leaves, materials.copperLeaves]) {
+            let node = SCNNode(geometry: g)
+            node.name = "hedges"
+            plantRoot.addChildNode(node)
+            log.triangles["hedges", default: 0] += veg.hedges.triangleCount
+        }
+
         // Streamed verge grass.
         var grassCells: [(s: Double, node: SCNNode)] = []
         for cell in veg.grassCells {
@@ -204,13 +217,14 @@ enum CourseWorldBuilder {
             builtRoot.addChildNode(SCNNode(geometry: g))
             log.triangles["building roofs", default: 0] += town.roofs.triangleCount
         }
-        // Fence wire is a few millimetres thick: its shadow would only
-        // alias into dotted lines across the grass.
+        // Fence and power wire is a few millimetres thick: its shadow would
+        // only alias into dotted lines across the grass.
+        let wirePart = BuildingBuilder.PropPart.wire.rawValue
         var solidProps = town.props, wires = town.props
-        solidProps.parts[3] = []
-        for k in 0..<3 { wires.parts[k] = [] }
+        solidProps.parts[wirePart] = []
+        for k in wires.parts.indices where k != wirePart { wires.parts[k] = [] }
         for (mesh, casts) in [(solidProps, true), (wires, false)] {
-            guard let g = mesh.geometry(materials: [materials.darkMetal, materials.lampGlass, materials.wood, materials.wire]) else { continue }
+            guard let g = mesh.geometry(materials: materials.props) else { continue }
             let node = SCNNode(geometry: g)
             node.castsShadow = casts
             builtRoot.addChildNode(node)
