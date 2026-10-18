@@ -171,11 +171,21 @@ final class FTMSManager: NSObject, ObservableObject {
 
     /// Full simulation-mode update used by course rides: gradient (%),
     /// rolling resistance (cobbles are roughly double asphalt) and the
-    /// wind-resistance coefficient (kg/m).
-    func setSimulation(grade: Double, crr: Double = 0.0040, cw: Double = 0.51) {
-        guard hasControl, let char = controlPointChar, let p = peripheral else { return }
+    /// wind-resistance coefficient (kg/m). Returns false when nothing was
+    /// written because the app doesn't hold control of the trainer.
+    @discardableResult
+    func setSimulation(grade: Double, crr: Double = 0.0040, cw: Double = 0.51) -> Bool {
+        guard hasControl, let char = controlPointChar, let p = peripheral else { return false }
         let data = Self.simulationParametersData(grade: grade, crr: crr, cw: cw)
         p.writeValue(data, for: char, type: .withResponse)
+        return true
+    }
+
+    /// Asks for control again when connected without it, e.g. when the
+    /// first request's response was missed.
+    func requestControlIfNeeded() {
+        guard connectionState == .connected, !hasControl, controlPointChar != nil else { return }
+        requestControl()
     }
 
     func startTraining() {
@@ -204,7 +214,8 @@ final class FTMSManager: NSObject, ObservableObject {
     //                  instPower(sint16), avgPower(sint16),
     //                  expendedEnergy(5 bytes), heartRate(uint8), ...
     // Bit 0 of flags is "More Data" — when 0, instantaneous speed IS present.
-    private func parseIndoorBikeData(_ data: Data) -> TrainerData {
+    // Fields a notification doesn't carry stay nil.
+    nonisolated static func parseIndoorBikeData(_ data: Data) -> TrainerData {
         var d = TrainerData()
         guard data.count >= 2 else { return d }
 
@@ -358,7 +369,7 @@ extension FTMSManager: CBPeripheralDelegate {
         let uuid = characteristic.uuid
         Task { @MainActor in
             if uuid == Self.indoorBikeDataUUID {
-                let parsed = self.parseIndoorBikeData(data)
+                let parsed = Self.parseIndoorBikeData(data)
                 self.liveData = parsed
                 self.onData?(parsed)
             } else if uuid == Self.controlPointUUID {

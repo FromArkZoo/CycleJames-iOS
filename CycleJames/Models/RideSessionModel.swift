@@ -79,6 +79,16 @@ struct RideSamples: Codable {
     var cadence: [Int]
     var hr: [Int]
     var targets: [Int]
+    /// Course rides only, one value per sample: distance along the route
+    /// (m), altitude (m) and speed (m/s). Nil for workouts and older rides,
+    /// whose JSON has no such keys.
+    var distanceM: [Double]? = nil
+    var altitudeM: [Double]? = nil
+    var speedMps: [Double]? = nil
+    /// Course rides: true when virtual power was used before the summit,
+    /// so the climb never counts as a personal best. Nil for workouts and
+    /// older rides.
+    var climbOnVirtualPower: Bool? = nil
 }
 
 struct IntervalSummary: Codable, Hashable {

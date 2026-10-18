@@ -18,6 +18,9 @@ final class CourseWorld {
     /// Called every frame on the render thread with the camera position, for
     /// streaming detail (grass, LOD swaps, shadow re-centring).
     let onFrame: (_ cameraPosition: SIMD3<Float>, _ time: TimeInterval) -> Void
+    /// Applies a cheaper tier's live scene knobs (sun shadows, grass reach)
+    /// without rebuilding anything. Render thread.
+    let applyLiveConfig: (WorldConfig) -> Void
     let preferredFramesPerSecond: Int
 
     var route: CourseRoute { bundle.route }
@@ -30,7 +33,8 @@ final class CourseWorld {
         sun: SCNNode?,
         preferredFramesPerSecond: Int,
         configureCamera: @escaping (SCNCamera) -> Void,
-        onFrame: @escaping (SIMD3<Float>, TimeInterval) -> Void = { _, _ in }
+        onFrame: @escaping (SIMD3<Float>, TimeInterval) -> Void = { _, _ in },
+        applyLiveConfig: @escaping (WorldConfig) -> Void = { _ in }
     ) {
         self.scene = scene
         self.bundle = bundle
@@ -40,5 +44,6 @@ final class CourseWorld {
         self.preferredFramesPerSecond = preferredFramesPerSecond
         self.configureCamera = configureCamera
         self.onFrame = onFrame
+        self.applyLiveConfig = applyLiveConfig
     }
 }

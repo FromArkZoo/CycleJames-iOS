@@ -9,12 +9,21 @@ struct CourseBundle: Sendable {
     let route: CourseRoute
     let terrainNear: HeightRaster
     let terrainFar: HeightRaster?
-    let canopy: HeightRaster?
     let scenery: SceneryFile?
 
     var name: String { course.name }
     var climb: CourseFile.ClimbRange { course.climb }
 
+    /// LiDAR vegetation height above the ground, decoded from disk on each
+    /// read (about 5 MB as floats), so only what needs it pays for it, and
+    /// only while it holds it. Nil when the course has none.
+    var canopy: HeightRaster? {
+        guard let header = course.canopy else { return nil }
+        return try? HeightRaster.load(from: directory.appendingPathComponent(header.file), header: header)
+    }
+
+    /// The raw aerial photo, when the course folder has it. The app bundle
+    /// doesn't (the world drapes the baked ground photo), so this is nil.
     var orthoURL: URL? {
         guard let o = course.ortho else { return nil }
         let url = directory.appendingPathComponent(o.file)
@@ -67,7 +76,6 @@ struct CourseBundle: Sendable {
                 header: course.terrain.near
             ),
             terrainFar: try raster(course.terrain.far),
-            canopy: try raster(course.canopy),
             scenery: scenery
         )
     }
@@ -89,11 +97,50 @@ struct CourseSummary: Identifiable, Hashable, Sendable {
     let attribution: [String]
     /// Route elevation sampled every ~5 m, for profile charts.
     let profile: [ProfilePoint]
+    /// Steepest 10 m of the climb, when the course file has it.
+    let climbMaxGradePct10m: Double?
+    /// Named points along the route (climb start, steepest, summit…).
+    let landmarks: [CourseFile.Landmark]
+    /// Contiguous runs of one surface along the route, in race order.
+    let surfaceSections: [SurfaceSection]
 
     struct ProfilePoint: Hashable, Sendable {
         let s: Double
         let elev: Double
         let gradePct: Double
+    }
+
+    struct SurfaceSection: Hashable, Sendable {
+        let fromS: Double
+        let toS: Double
+        /// Name from `course.surfaces`, e.g. "cobbles".
+        let surface: String
+        var lengthM: Double { toS - fromS }
+    }
+
+    /// Total length of the route on `surface`, metres.
+    func lengthM(on surface: String) -> Double {
+        surfaceSections.filter { $0.surface == surface }.reduce(0) { $0 + $1.lengthM }
+    }
+
+    /// Landmarks of one kind ("climbStart", "steepest", "summit", …).
+    func landmarks(kind: String) -> [CourseFile.Landmark] {
+        landmarks.filter { $0.kind == kind }
+    }
+
+    /// Linearly interpolated elevation from the sampled profile.
+    func elevation(at s: Double) -> Double {
+        guard let first = profile.first, let last = profile.last else { return 0 }
+        if s <= first.s { return first.elev }
+        if s >= last.s { return last.elev }
+        var lo = 0, hi = profile.count - 1
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2
+            if profile[mid].s <= s { lo = mid } else { hi = mid }
+        }
+        let a = profile[lo], b = profile[hi]
+        let t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0
+        return a.elev + (b.elev - a.elev) * t
     }
 
     init(course: CourseFile) {
@@ -123,6 +170,26 @@ struct CourseSummary: Identifiable, Hashable, Sendable {
             pts.append(ProfilePoint(s: r.s[last], elev: r.elev[last], gradePct: r.gradePct[last]))
         }
         profile = pts
+        climbMaxGradePct10m = course.stats.climbMaxGradePct10m
+        landmarks = course.landmarks.sorted { $0.s < $1.s }
+
+        var sections: [SurfaceSection] = []
+        if !r.surface.isEmpty {
+            func name(_ idx: Int) -> String {
+                course.surfaces.indices.contains(idx) ? course.surfaces[idx] : "asphalt"
+            }
+            var runStart = 0
+            for i in 1...r.surface.count {
+                if i == r.surface.count || r.surface[i] != r.surface[runStart] {
+                    // A run ends halfway between its last station and the next.
+                    let from = runStart == 0 ? r.s[0] : (r.s[runStart - 1] + r.s[runStart]) / 2
+                    let to = i == r.surface.count ? r.s[i - 1] : (r.s[i - 1] + r.s[i]) / 2
+                    sections.append(SurfaceSection(fromS: from, toS: to, surface: name(r.surface[runStart])))
+                    runStart = i
+                }
+            }
+        }
+        surfaceSections = sections
     }
 }
 
@@ -134,5 +201,13 @@ enum CourseCatalog {
         courseIDs.compactMap { id in
             (try? CourseBundle.loadCourseFile(id: id, bundle: bundle)).map(CourseSummary.init(course:))
         }
+    }
+
+    /// `summaries()` from the main bundle, decoded once per launch so list
+    /// and detail screens can read it from `body` without re-parsing JSON.
+    static let all: [CourseSummary] = summaries()
+
+    static func summary(id: String) -> CourseSummary? {
+        all.first { $0.id == id }
     }
 }

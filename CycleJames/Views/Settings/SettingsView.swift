@@ -49,6 +49,10 @@ struct SettingsView: View {
                         }
                     }
 
+                    section("3D Climbs") {
+                        CourseRideSettingsControls()
+                    }
+
                     section("Storage") {
                         HStack {
                             Text("Saved rides").foregroundStyle(CJColors.textSecondary)

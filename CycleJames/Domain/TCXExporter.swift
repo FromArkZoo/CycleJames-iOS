@@ -28,17 +28,21 @@ enum TCXExporter {
         let powers = samples?.power ?? []
         let cads = samples?.cadence ?? []
         let hrs = samples?.hr ?? []
+        let route = samples.flatMap { RouteTrack(samples: $0, interval: interval) }
 
         var trackpoints: [String] = []
         trackpoints.reserveCapacity(powers.count)
         for i in 0..<powers.count {
-            let secondOffset = i * interval
+            // Course samples hold the position at the end of their interval,
+            // so they're stamped there; workout samples at their start.
+            let secondOffset = (route == nil ? i : i + 1) * interval
             guard let date = Calendar.current.date(byAdding: .second, value: secondOffset, to: session.date) else { continue }
             let stamp = isoDateFormatter.string(from: date)
             let power = max(0, powers[i])
             let cadence = i < cads.count ? max(0, cads[i]) : 0
             let hr = i < hrs.count ? max(0, hrs[i]) : 0
-            trackpoints.append(makeTrackpoint(time: stamp, power: power, cadence: cadence, hr: hr))
+            trackpoints.append(makeTrackpoint(time: stamp, power: power, cadence: cadence, hr: hr,
+                                              position: route?.point(i)))
         }
 
         let totalSeconds = session.durationSec
@@ -60,7 +64,7 @@ enum TCXExporter {
               <Id>\(isoStart)</Id>
               <Lap StartTime="\(isoStart)">
                 <TotalTimeSeconds>\(totalSeconds)</TotalTimeSeconds>
-                <DistanceMeters>0</DistanceMeters>
+                <DistanceMeters>\(route.map { format($0.riddenM) } ?? "0")</DistanceMeters>
                 <Calories>\(estimateCalories(durationSec: totalSeconds, avgPower: avgPower))</Calories>
         \(maxHR > 0 ? "        <MaximumHeartRateBpm><Value>\(maxHR)</Value></MaximumHeartRateBpm>\n" : "")\
         \(avgHR > 0 ? "        <AverageHeartRateBpm><Value>\(avgHR)</Value></AverageHeartRateBpm>\n" : "")\
@@ -90,10 +94,60 @@ enum TCXExporter {
         """
     }
 
-    private static func makeTrackpoint(time: String, power: Int, cadence: Int, hr: Int) -> String {
+    /// Distance, altitude and speed at one trackpoint of a course ride.
+    private struct RoutePoint {
+        var distanceM: Double
+        var altitudeM: Double?
+        var speedMps: Double?
+    }
+
+    /// The route arrays of a course ride's samples. Distances are along
+    /// the course, so they're written from where the ride began.
+    private struct RouteTrack {
+        let distanceM: [Double]
+        let altitudeM: [Double]?
+        let speedMps: [Double]?
+        /// Course distance at the start of the ride: the first sample's
+        /// position less its interval's riding, as History works it out.
+        let startM: Double
+
+        init?(samples: RideSamples, interval: Int) {
+            guard let dist = samples.distanceM, !dist.isEmpty else { return nil }
+            distanceM = dist
+            altitudeM = samples.altitudeM
+            speedMps = samples.speedMps
+            startM = max(0, dist[0] - (samples.speedMps?.first ?? 0) * Double(interval))
+        }
+
+        var riddenM: Double { max(0, (distanceM.last ?? startM) - startM) }
+
+        func point(_ i: Int) -> RoutePoint? {
+            guard distanceM.indices.contains(i) else { return nil }
+            return RoutePoint(
+                distanceM: max(0, distanceM[i] - startM),
+                altitudeM: altitudeM.flatMap { $0.indices.contains(i) ? $0[i] : nil },
+                speedMps: speedMps.flatMap { $0.indices.contains(i) ? $0[i] : nil }
+            )
+        }
+    }
+
+    /// Metres and m/s to 0.1 / 0.01, without locale separators.
+    private static func format(_ value: Double, decimals: Int = 1) -> String {
+        String(format: "%.\(decimals)f", value)
+    }
+
+    private static func makeTrackpoint(time: String, power: Int, cadence: Int, hr: Int,
+                                       position: RoutePoint? = nil) -> String {
         var lines: [String] = []
         lines.append("          <Trackpoint>")
         lines.append("            <Time>\(time)</Time>")
+        // Schema order: AltitudeMeters, DistanceMeters, then heart rate.
+        if let altitude = position?.altitudeM {
+            lines.append("            <AltitudeMeters>\(format(altitude))</AltitudeMeters>")
+        }
+        if let distance = position?.distanceM {
+            lines.append("            <DistanceMeters>\(format(distance))</DistanceMeters>")
+        }
         if hr > 0 {
             lines.append("            <HeartRateBpm><Value>\(hr)</Value></HeartRateBpm>")
         }
@@ -102,6 +156,9 @@ enum TCXExporter {
         }
         lines.append("            <Extensions>")
         lines.append("              <ns3:TPX>")
+        if let speed = position?.speedMps {
+            lines.append("                <ns3:Speed>\(format(speed, decimals: 2))</ns3:Speed>")
+        }
         lines.append("                <ns3:Watts>\(power)</ns3:Watts>")
         lines.append("              </ns3:TPX>")
         lines.append("            </Extensions>")

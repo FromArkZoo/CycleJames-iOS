@@ -4,9 +4,10 @@ import SwiftData
 struct HistoryView: View {
     @Query(sort: \RideSessionModel.date, order: .reverse) private var sessions: [RideSessionModel]
     @Environment(\.modelContext) private var modelContext
+    @State private var path: [UUID] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if sessions.isEmpty {
                     VStack(spacing: CJSpacing.l) {
@@ -49,6 +50,12 @@ struct HistoryView: View {
             .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .onAppear {
+                // Screenshot capture only: `-screenshotHistoryDetail`.
+                if CourseLaunchArgs.screenshotHistoryDetail, path.isEmpty, let first = sessions.first {
+                    path = [first.id]
+                }
+            }
         }
     }
 }
@@ -68,6 +75,15 @@ struct HistoryRow: View {
                         .foregroundStyle(CJColors.textMuted)
                 }
                 Spacer()
+                if session.category == "Climb" {
+                    Label("3D Climb", systemImage: "mountain.2.fill")
+                        .font(CJFont.small)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .foregroundStyle(CJColors.accent)
+                        .background(CJColors.accent.opacity(0.15))
+                        .clipShape(Capsule())
+                }
                 if session.partial {
                     Text("Partial")
                         .font(CJFont.small)
@@ -80,7 +96,10 @@ struct HistoryRow: View {
             }
 
             HStack(spacing: CJSpacing.l) {
-                stat(label: "Duration", value: TimeFormat.duration(session.durationSec))
+                // Climbs last minutes, so show seconds too.
+                stat(label: "Duration", value: session.category == "Climb"
+                     ? TimeFormat.mmss(session.durationSec)
+                     : TimeFormat.duration(session.durationSec))
                 stat(label: "Avg", value: "\(session.avgPower)W")
                 stat(label: "Peak", value: session.peakPower > 0 ? "\(session.peakPower)W" : "--")
                 stat(label: "NP", value: "\(session.np)W")

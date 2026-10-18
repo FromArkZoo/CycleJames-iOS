@@ -42,3 +42,5 @@ scripts/.env
 # Course data pipeline: raw downloads and debug renders
 scripts/courses/.cache/
 scripts/courses/debug/
+scripts/dev/.build.lock
+__pycache__/
