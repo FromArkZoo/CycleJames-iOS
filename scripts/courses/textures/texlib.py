@@ -99,6 +99,14 @@ def save_rgb(path: Path, rgb: np.ndarray, quality: int = 90) -> None:
     Image.fromarray(to_u8(rgb), "RGB").save(path, quality=quality, optimize=True, subsampling=0)
 
 
+def save_rgb_dithered(path: Path, rgb: np.ndarray, r: np.random.Generator, quality: int = 95) -> None:
+    """As `save_rgb`, with +-0.5 LSB triangular dither before quantising, so
+    a smooth gradient (the sky) breaks into fine noise instead of bands."""
+    n = (r.random(rgb.shape, dtype=np.float32) - r.random(rgb.shape, dtype=np.float32)) * 0.5
+    u8 = np.clip(np.clip(rgb, 0, 1) * 255 + 0.5 + n, 0, 255).astype(np.uint8)
+    Image.fromarray(u8, "RGB").save(path, quality=quality, optimize=True, subsampling=0)
+
+
 def save_rgba(path: Path, rgba: np.ndarray) -> None:
     Image.fromarray(to_u8(rgba), "RGBA").save(path, optimize=True)
 

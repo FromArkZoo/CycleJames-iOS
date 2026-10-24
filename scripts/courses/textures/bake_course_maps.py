@@ -49,8 +49,12 @@ def load_u16(path: Path, hdr: dict) -> np.ndarray:
 def normalized_blur(img: np.ndarray, valid: np.ndarray, sigma: float) -> tuple[np.ndarray, np.ndarray]:
     w = gaussian_filter(valid.astype(np.float32), sigma)
     if img.ndim == 3:
-        num = np.stack([gaussian_filter(img[..., c] * valid, sigma) for c in range(img.shape[2])], -1)
-        return num / np.maximum(w, 1e-4)[..., None], w
+        # One channel at a time, divided in place: these are full-size.
+        num = np.empty(img.shape, np.float32)
+        for c in range(img.shape[2]):
+            num[..., c] = gaussian_filter(img[..., c] * valid, sigma)
+        num /= np.maximum(w, 1e-4)[..., None]
+        return num, w
     return gaussian_filter(img * valid, sigma) / np.maximum(w, 1e-4), w
 
 
@@ -65,6 +69,7 @@ def inpaint(rgb: np.ndarray, hole: np.ndarray, sigmas=(3, 6, 12, 24, 48)) -> np.
         take = (~filled) & (w > 0.15)
         out[take] = est[take]
         filled |= take
+        del est, w, take
     est, _ = normalized_blur(rgb, valid, 96)
     out[~filled] = est[~filled]
     return out
@@ -167,32 +172,57 @@ def main(course_id: str) -> int:
     shadow = np.clip(gaussian_filter(shadow, 0.7 * ppm) * 1.3, 0, 1)
     del lum1, bm1, sh1
     ground = (can_o < 0.8) & ~bmask
-    lit = ground & (shadow < 0.2)
     dark = ground & (shadow > 0.6)
-    sig = 7 * ppm
-    lit_col, _ = normalized_blur(ortho, lit.astype(np.float32), sig)
-    dark_col, wd = normalized_blur(ortho, dark.astype(np.float32), sig)
     # Treat shadowed ground as a hole filled from the sunlit ground round
     # it, keeping the photo's own fine detail (pixel / local mean).
     dark_l, _ = normalized_blur(lum, dark.astype(np.float32), 2 * ppm)
     detail = np.clip(lum / np.maximum(dark_l, 1e-3), 0.6, 1.6)
+    # Full-size arrays are freed as soon as they are done with: the
+    # Kwaremont's photo is 13 Mpx.
+    del dark_l, dark, lum, can_o
     sun_fill = inpaint(ortho, ground & (shadow > 0.3), sigmas=(2 * ppm, 4 * ppm, 8 * ppm, 16 * ppm))
     wgt = (shadow * ground)[..., None]
-    lifted = ortho + (sun_fill * detail[..., None] - ortho) * wgt
-    del lit_col, dark_col, sun_fill, detail
+    lifted = sun_fill * detail[..., None]
+    lifted -= ortho
+    lifted *= wgt
+    lifted += ortho
+    del sun_fill, detail, wgt, ground
 
     # 2. Take out tree crowns and roofs, which the scene draws in 3D. Lone
     #    trees and roofs are filled from the ground round them; inside woods
     #    the floor is the crowns' own colour, darkened and browned.
     hole = binary_dilation(trees, iterations=int(0.8 * ppm)) | bmask
     filled = inpaint(lifted, hole)
+    del lifted, bmask
     wood = gaussian_filter(trees.astype(np.float32), 6 * ppm)
     forest = np.clip((wood - 0.45) / 0.3, 0, 1)
     floor = ortho * 0.62 + np.array([0.20, 0.17, 0.11], np.float32) * 0.38
+    del ortho
     filled = filled + (floor - filled) * (forest * trees)[..., None]
     under = gaussian_filter(binary_dilation(trees, iterations=int(0.5 * ppm)).astype(np.float32), ppm)
     litter = np.array([0.33, 0.29, 0.21], np.float32)
     filled = filled + (filled * 0.85 + litter * 0.15 - filled) * (under * 0.6)[..., None]
+    del wood, forest, floor, under
+    # 3. Fields: tramlines and mowing swaths are sharp, regular stripes in
+    #    the photo that read as painted bands from road level, magnified
+    #    about 50 times. Keep each parcel's colour and its broad patches (a
+    #    2.5 m blur) and lose the stripes; the terrain shader's detail
+    #    texture gives the texture close up. Hedgerow edges stay sharp.
+    fmask_img = Image.new("L", (W, H), 0)
+    fd = ImageDraw.Draw(fmask_img)
+    strength = {"farmland": 230, "meadow": 160, "grass": 110}
+    for l in scenery.get("landuse", []):
+        k = strength.get(l["kind"])
+        if k and len(l["ring"]) >= 3:
+            fd.polygon([to_px(p[0], p[1]) for p in l["ring"]], fill=k)
+    fmask = np.asarray(fmask_img, np.float32) / 255
+    del fmask_img, fd
+    fmask *= 1 - gaussian_filter(trees.astype(np.float32), 2 * ppm)
+    soft, _ = normalized_blur(filled, (fmask > 0).astype(np.float32), 2.5 * ppm)
+    ease = gaussian_filter(fmask, 1.5 * ppm)  # in over about 2 m from a field's edge
+    filled = filled + (soft - filled) * ease[..., None]
+    print(f"fields de-striped: {float((ease > 0.5).mean()) * 100:.1f}% of the photo")
+    del fmask, soft, ease
     # With the haze gone, a touch more saturation and contrast.
     l = (filled @ np.array([0.2126, 0.7152, 0.0722], np.float32))[..., None]
     filled = l + (filled - l) * 1.1
@@ -200,7 +230,7 @@ def main(course_id: str) -> int:
     out = np.clip(filled, 0, 1)
     Image.fromarray((out * 255 + 0.5).astype(np.uint8), "RGB").save(OUT / f"{course_id}_ortho_ground.jpg", quality=88, optimize=True)
     print("ortho:", W, "x", H, f"shadow px {float((shadow > 0.5).mean()) * 100:.1f}%, filled {float(hole.mean()) * 100:.1f}%")
-    del filled, lifted, ortho, out
+    del filled, out
 
     # ---- splat map on the near grid (1 px per cell)
     nh = course["terrain"]["near"]
