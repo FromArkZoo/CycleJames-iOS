@@ -2,18 +2,27 @@ import UIKit
 import SceneKit
 import Metal
 
-/// Texture lookup for the world. Generic material textures are baked by
-/// scripts/courses/textures/bake_materials.py into
-/// CycleJames/Resources/CourseTextures/ (flattened into the app bundle);
-/// course-specific maps (ground-only ortho, splat map) by
-/// bake_course_maps.py as `<course-id>_<name>`. Everything has a plain
-/// fallback so a missing file never stops a ride.
+/// Texture lookup for the world. The generic textures are baked into
+/// CycleJames/Resources/CourseTextures/ (flattened into the app bundle) by
+/// the scripts in scripts/courses/textures/: bake_materials.py (ground,
+/// asphalt, plants, facades, far fields, sky), bake_setts.py (the setts'
+/// grain, joint fill and wear), bake_buildings.py (the roof atlas and the
+/// walls' and roofs' grime) and bake_signs.py (the sign atlas and its map).
+/// Course-specific maps (ground-only ortho, splat map) come from
+/// bake_course_maps.py and the light raster from bake_light_maps.py, as
+/// `<course-id>_<name>`. Everything has a plain fallback so a missing file
+/// never stops a ride.
 final class WorldTextures: @unchecked Sendable {
+    /// Decoded RGBA8 pixels: width, height and rows, north first.
+    typealias Pixels = (width: Int, height: Int, rgba: Data)
+
     let limit: Int
     private var cache: [String: UIImage] = [:]
     /// GPU textures by name and colour space, so materials sharing a map
     /// (terrain and verge, asphalt and kerb) share one upload.
     private var gpuCache: [String: MTLTexture] = [:]
+    /// `.rgbz` files already decoded for this build, by name (`adopt`).
+    private var decoded: [String: Pixels] = [:]
     private var _uploadFailed = false
     private let lock = NSLock()
 
@@ -42,7 +51,7 @@ final class WorldTextures: @unchecked Sendable {
         return tex
     }
 
-    /// A bundled texture by base name (e.g. "cj_cobble_albedo"), downscaled
+    /// A bundled texture by base name (e.g. "cj_sett_fill"), downscaled
     /// to the tier's size limit. Nil when it isn't in the bundle.
     func image(_ name: String) -> UIImage? {
         lock.lock()
@@ -119,6 +128,67 @@ final class WorldTextures: @unchecked Sendable {
             c.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
     }
+
+    /// A bundled `<name>.rgbz` (the format `rawTexture` documents)
+    /// decoded: width, height and RGBA8 rows, north first, for the CPU or
+    /// for `rawTexture` to upload. Nil when it isn't in the bundle or
+    /// doesn't decode.
+    static func rawPixels(_ name: String) -> Pixels? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "rgbz")
+                ?? Bundle.main.url(forResource: name, withExtension: "rgbz", subdirectory: "CourseTextures"),
+              let file = try? Data(contentsOf: url), file.count > 8 else { return nil }
+        let w = file.withUnsafeBytes { Int($0.loadUnaligned(fromByteOffset: 0, as: UInt32.self).littleEndian) }
+        let h = file.withUnsafeBytes { Int($0.loadUnaligned(fromByteOffset: 4, as: UInt32.self).littleEndian) }
+        guard w > 0, h > 0,
+              let rgba = try? (file.subdata(in: 8..<file.count) as NSData).decompressed(using: .zlib) as Data,
+              rgba.count == w * h * 4 else { return nil }
+        #if DEBUG
+        decodeLock.lock(); decodeCounts[name, default: 0] += 1; decodeLock.unlock()
+        #endif
+        return (w, h, rgba)
+    }
+
+    /// Hands in `<name>.rgbz` already decoded (`CourseWorldBuilder` decodes
+    /// the light raster once, for the plants and the lane meter too), for
+    /// `rawTexture` to upload in place of decoding the file again.
+    func adopt(_ pixels: Pixels?, as name: String) {
+        guard let pixels else { return }
+        lock.lock(); decoded[name] = pixels; lock.unlock()
+    }
+
+    /// `<name>.rgbz` decoded: the pixels handed in (`adopt`), let go of
+    /// here so this object doesn't keep them, or else the file's.
+    func takePixels(_ name: String) -> Pixels? {
+        lock.lock()
+        let handed = decoded.removeValue(forKey: name)
+        lock.unlock()
+        return handed ?? Self.rawPixels(name)
+    }
+
+    /// Once the world is built: the materials hold the images and GPU
+    /// textures they use, and the rest go now rather than staying for the
+    /// ride (the live tier steps keep the materials, and so this object):
+    /// the images that were only uploaded (cj_facade's 2048 px among them)
+    /// and anything handed in and not taken.
+    func releaseCaches() {
+        lock.lock()
+        cache = [:]
+        gpuCache = [:]
+        decoded = [:]
+        lock.unlock()
+    }
+
+    #if DEBUG
+    nonisolated(unsafe) private static var decodeCounts: [String: Int] = [:]
+    private static let decodeLock = NSLock()
+
+    /// How often `<name>.rgbz` has been decoded in this run (the world log
+    /// counts the light raster's).
+    static func decodes(_ name: String) -> Int {
+        decodeLock.lock(); defer { decodeLock.unlock() }
+        return decodeCounts[name, default: 0]
+    }
+    #endif
 }
 
 extension SCNMaterialProperty {

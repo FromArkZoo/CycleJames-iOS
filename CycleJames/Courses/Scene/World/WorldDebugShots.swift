@@ -11,7 +11,9 @@ import Metal
 ///     -worldShots /abs/dir            enable; PNGs are written there
 ///     -worldShotList 150:chase,590:broadcast,760:back
 ///                                     distances and views (chase, broadcast,
-///                                     back, high); default covers the climb
+///                                     back, high, top, sun, plan, plan30,
+///                                     graze, strip<metres>); default
+///                                     covers the climb
 ///     -worldShotTag v3                file name suffix
 enum WorldDebugShots {
     struct Spec {
@@ -46,9 +48,13 @@ enum WorldDebugShots {
         return ""
     }
 
+    /// Views from the road are exposed as a rider settled there would see
+    /// them (`LaneExposure`, applied with `setExposure`); the calibration,
+    /// map and high views stay at exposure 0, and so does the scene after.
     static func run(scene: SCNScene, route: CourseRoute, quality: GraphicsQuality,
                     configure: (SCNCamera) -> Void, frame: FrameUpdater, dir: String,
-                    terrainHeight: (Float, Float) -> Float) {
+                    terrainHeight: (Float, Float) -> Float,
+                    light: LightProfile = .open, setExposure: (Float) -> Void = { _ in }) {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let renderer = SCNRenderer(device: device, options: nil)
         renderer.scene = scene
@@ -66,6 +72,7 @@ enum WorldDebugShots {
         var t: TimeInterval = 1
         var report = ""
         for spec in specs() {
+            setExposure(0)
             if spec.view.hasPrefix("litchart") || spec.view.hasPrefix("litgraze") {
                 // Lighting calibration: a horizontal board of patches
                 // (physically based and Lambert, two albedos), seen from
@@ -126,6 +133,49 @@ enum WorldDebugShots {
                 }
                 continue
             }
+            if spec.view.hasPrefix("strip"), let length = Double(spec.view.dropFirst(5)) {
+                // The road straight down for `length` metres from s, 6 m
+                // across, unrolled into one image (far end at the top), 40
+                // px/m: scripts/courses/debug/sett_repeat.py finds a repeat
+                // anywhere along it. Orthographic tiles 3 m long, each
+                // square to the road at its middle; the near plane cuts away
+                // anything over the road.
+                let tile = 3.0, pxm = 40.0
+                let n = Int(length / tile)
+                let size = CGSize(width: 6 * pxm, height: tile * pxm)
+                let clip = (camera.zNear, camera.zFar)
+                camera.usesOrthographicProjection = true
+                camera.orthographicScale = tile / 2
+                camera.zNear = 18.5
+                camera.zFar = 21.5
+                var tiles: [UIImage] = []
+                for i in 0..<n {
+                    let p = route.pose(at: spec.s + (Double(i) + 0.5) * tile, lateral: 0)
+                    let f = simd_normalize(SIMD3(p.forward.x, 0, p.forward.z))
+                    camNode.simdPosition = p.position + SIMD3(0, 20, 0)
+                    camNode.simdLook(at: p.position, up: f, localFront: SIMD3(0, 0, -1))
+                    frame.update(camera: camNode.simdPosition, time: t)
+                    tiles.append(renderer.snapshot(atTime: t, with: size, antialiasingMode: .multisampling4X))
+                    t += 0.1
+                }
+                configure(camera)
+                camera.fieldOfView = 62
+                camera.usesOrthographicProjection = false
+                (camera.zNear, camera.zFar) = clip
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                let strip = UIGraphicsImageRenderer(size: CGSize(width: size.width, height: size.height * CGFloat(n)),
+                                                    format: format).image { _ in
+                    for (i, img) in tiles.enumerated() {
+                        img.draw(in: CGRect(x: 0, y: size.height * CGFloat(n - 1 - i), width: size.width, height: size.height))
+                    }
+                }
+                let name = "w_\(Int(spec.s))_\(spec.view)_\(quality.rawValue)\(tag).png"
+                if let data = strip.pngData() {
+                    try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
+                }
+                continue
+            }
             let pose = route.pose(at: spec.s, lateral: 0.4)
             let fwdH = simd_normalize(SIMD3(pose.forward.x, 0, pose.forward.z))
             let right = pose.right
@@ -152,29 +202,49 @@ enum WorldDebugShots {
             case "high":
                 eye = pose.position - fwdH * 30 + SIMD3(0, 28, 0)
                 target = route.pose(at: spec.s + 40).position
+            case "plan", "plan30":
+                // Straight down on the road, which runs up the frame: from 6 m
+                // about 3.3 x 7.2 m (182 px/m: setts, joints, any tile repeat;
+                // scripts/courses/debug/sett_repeat.py); from 30 m about
+                // 17 x 36 m (the 10-100 m variation).
+                let h: Float = spec.view == "plan" ? 6 : 30
+                eye = route.pose(at: spec.s, lateral: 0).position + SIMD3(0, h, 0)
+                target = route.pose(at: spec.s, lateral: 0).position
+            case "graze":
+                // Low along the lane, 40 m of road ahead: where a repeat would
+                // show as a rhythm, and where the setts fade to their mean.
+                eye = pose.position - fwdH * 2 + SIMD3(0, 1.2, 0)
+                target = route.pose(at: spec.s + 40).position + SIMD3(0, 0.4, 0)
             default:
                 eye = pose.position - fwdH * 5.2 + SIMD3(0, 2.3, 0)
                 target = route.pose(at: spec.s + 14).position + SIMD3(0, 1.1, 0)
             }
-            // Keep the debug camera above the ground (the sunken lane).
+            // Keep the debug camera above the ground (the sunken lane); the
+            // graze view is meant to be low.
             var eyeY = eye
             let ground = Float(terrainHeight(eye.x, -eye.z))
-            if ground.isFinite { eyeY.y = max(eye.y, ground + 1.6) }
+            if ground.isFinite, spec.view != "graze" { eyeY.y = max(eye.y, ground + 1.6) }
             camNode.simdPosition = eyeY
-            let up: SIMD3<Float> = spec.view == "top" ? SIMD3(0, 0, -1) : SIMD3(0, 1, 0)
+            let up: SIMD3<Float> = spec.view == "top" ? SIMD3(0, 0, -1) : spec.view.hasPrefix("plan") ? fwdH : SIMD3(0, 1, 0)
             camNode.simdLook(at: target, up: up, localFront: SIMD3(0, 0, -1))
+            let ev = ["top", "high", "plan", "plan30"].contains(spec.view) ? 0 : LaneExposure.target(at: spec.s, profile: light)
+            setExposure(ev)
             frame.update(camera: eyeY, time: t)
             // Two frames so streamed grass and LOD settle.
             _ = renderer.snapshot(atTime: t, with: CGSize(width: 64, height: 128), antialiasingMode: .none)
             t += 0.5
             let img = renderer.snapshot(atTime: t, with: size, antialiasingMode: quality == .battery ? .none : .multisampling4X)
             t += 0.5
-            let name = "w_\(Int(spec.s))_\(spec.view)_\(quality.rawValue)\(tag).png"
+            // Whole metres; a fraction kept (330.08:chase, a step of half a
+            // course, to compare two frames for shimmer).
+            let at = spec.s == spec.s.rounded() ? "\(Int(spec.s))" : "\(spec.s)"
+            let name = "w_\(at)_\(spec.view)_\(quality.rawValue)\(tag).png"
             if let data = img.pngData() {
                 try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
             }
-            report += "\(name): ~\(visibleTriangles(scene: scene, renderer: renderer, camera: camNode)) triangles in view\n"
+            report += "\(name): ~\(visibleTriangles(scene: scene, renderer: renderer, camera: camNode)) triangles in view, exposure \(String(format: "%+.2f", ev)) EV\n"
         }
+        setExposure(0)
         camNode.removeFromParentNode()
         try? report.write(to: URL(fileURLWithPath: dir).appendingPathComponent("triangles_\(quality.rawValue)\(tag).txt"),
                           atomically: true, encoding: .utf8)

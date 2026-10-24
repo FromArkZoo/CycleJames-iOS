@@ -41,6 +41,9 @@ scripts/.env
 
 # Course data pipeline: raw downloads and debug renders
 scripts/courses/.cache/
-scripts/courses/debug/
+scripts/courses/debug/*
+# ...except the cobble acceptance checks (sett repetition, photo match).
+!scripts/courses/debug/sett_repeat.py
+!scripts/courses/debug/photo_match.py
 scripts/dev/.build.lock
 __pycache__/

@@ -41,12 +41,26 @@ enum CourseWorldBuilder {
         async let nearChunks = TerrainBuilder.buildNear(corridor: corridor, config: config)
         async let farChunks = TerrainBuilder.buildFar(corridor: corridor, config: config)
         async let roadMeshes = RoadBuilder.build(corridor: corridor, coarse: quality == .battery)
-        async let plants = VegetationBuilder.build(corridor: corridor, scenery: scenery, config: config,
-                                                   ground: config.grassDensity > 0 ? GroundColor(bundle: bundle) : nil)
         // The canopy raster is decoded for this build only (`CourseBundle.canopy`).
         async let houses = BuildingBuilder.build(corridor: corridor, scenery: scenery, canopy: bundle.canopy)
         async let sideRoads = RoadBuilder.buildSideRoads(corridor: corridor, scenery: scenery,
                                                          reach: config.terrain1mRadius - 4)
+
+        // The course's light raster, decoded once while those build: for the
+        // plants' sky (`SkyRaster`), the light along the route that meters
+        // the lane exposure (`LightProfile`) and, handed to the textures,
+        // the GPU (`WorldMaterials+Light`). Let go of once all three have it.
+        let lightName = "\(bundle.id)_light"
+        #if DEBUG
+        let lightDecodes = WorldTextures.decodes(lightName)
+        #endif
+        var lightPixels = WorldTextures.rawPixels(lightName)
+        let sky = SkyRaster(pixels: lightPixels, bundle: bundle, config: config)
+        let light = LightProfile.make(bundle: bundle, pixels: lightPixels)
+        log.mark("light raster")
+        async let plants = VegetationBuilder.build(corridor: corridor, scenery: scenery, config: config,
+                                                   ground: config.grassDensity > 0 ? GroundColor(bundle: bundle) : nil,
+                                                   sky: sky)
 
         // Textures and materials load while the meshes build. Their GPU
         // uploads need the app in the foreground; if it left part way
@@ -57,19 +71,16 @@ enum CourseWorldBuilder {
         repeat {
             try await waitForForeground()
             textures = WorldTextures(limit: config.textureLimit)
+            textures.adopt(lightPixels, as: lightName)
             materials = WorldMaterials(config: config, textures: textures, bundle: bundle, art: corridor.art)
-            for m in [materials.terrain, materials.verge, materials.cobbles, materials.asphalt, materials.kerb,
-                      materials.concrete, materials.gutter,
-                      materials.leaves, materials.bark, materials.impostor, materials.grass, materials.walls,
-                      materials.roofPantile, materials.roofSlate] {
-                _ = m
-            }
+            for m in materials.warmUp { _ = m }
             attempts += 1
             #if DEBUG
             if textures.uploadFailed { print("world textures: GPU upload failed (attempt \(attempts)), retrying") }
             #endif
             try Task.checkCancellation()
         } while textures.uploadFailed && attempts < 3
+        lightPixels = nil
         let scene = SCNScene()
         let sun = SkyLighting.install(in: scene, config: config, textures: textures)
         log.mark("sky, textures, materials")
@@ -128,7 +139,7 @@ enum CourseWorldBuilder {
                                         (road.concrete, materials.concrete, "concrete"),
                                         (road.kerb, materials.kerb, "kerb"),
                                         (road.gutter, materials.gutter, "gutter"),
-                                        (road.pavements, materials.cobbles, "pavements"),
+                                        (road.pavements, materials.pavementSetts, "pavements"),
                                         (road.markings, materials.roadPaint, "markings"),
                                         (road.cycleLanes, materials.cycleLane, "cycle lanes"),
                                         (road.verge, materials.verge, "verge")] {
@@ -186,7 +197,9 @@ enum CourseWorldBuilder {
         }
         scene.rootNode.addChildNode(plantRoot)
 
-        if let g = veg.hedges.geometry(materials: [materials.bark, materials.leaves, materials.copperLeaves]) {
+        // Part 2 (copper beech) is drawn with the plain leaves: its
+        // purple-red is a per-vertex colour (`TreeArchetype.packColour`).
+        if let g = veg.hedges.geometry(materials: [materials.bark, materials.leaves, materials.leaves]) {
             let node = SCNNode(geometry: g)
             node.name = "hedges"
             plantRoot.addChildNode(node)
@@ -213,7 +226,7 @@ enum CourseWorldBuilder {
             builtRoot.addChildNode(SCNNode(geometry: g))
             log.triangles["building walls", default: 0] += town.walls.triangleCount
         }
-        if let g = town.roofs.geometry(materials: [materials.roofPantile, materials.roofSlate]) {
+        if let g = town.roofs.geometry(materials: materials.roofParts) {
             builtRoot.addChildNode(SCNNode(geometry: g))
             log.triangles["building roofs", default: 0] += town.roofs.triangleCount
         }
@@ -241,24 +254,36 @@ enum CourseWorldBuilder {
         scene.rootNode.addChildNode(builtRoot)
         log.counts = veg.counts
         log.counts["buildings"] = town.count
+        #if DEBUG
+        log.counts["light raster decodes"] = WorldTextures.decodes(lightName) - lightDecodes
+        #endif
         log.mark("building geometry")
 
         let dynamicRoot = SCNNode()
         dynamicRoot.name = "dynamic"
         scene.rootNode.addChildNode(dynamicRoot)
 
+        // Every material is made: the ride needn't keep what they don't hold.
+        textures.releaseCaches()
+        log.mark("texture caches released")
+
         log.total = CACurrentMediaTime() - started
         log.write()
 
         let frame = FrameUpdater(sun: sun, corridor: corridor, grass: grassCells, grassMaterial: materials.grass,
                                  grassRadius: config.grassRadius)
+        // The lane exposure, metered from `light`: the lights (and the
+        // leaves' light through them) that it scales.
+        let glow = [materials.leaves, materials.grass, materials.impostor]
+        let exposure: (Float) -> Void = sun.light.map { SkyLighting.exposure(scene: scene, sun: $0, glow: glow) } ?? { _ in }
         #if DEBUG
         if let dir = WorldDebugShots.directory {
             progress(1, "Taking world shots")
             WorldDebugShots.run(scene: scene, route: bundle.route, quality: quality,
                                 configure: { SkyLighting.configure($0, config: config) },
                                 frame: frame, dir: dir,
-                                terrainHeight: { e, n in corridor.terrain.height(east: Double(e), north: Double(n)) })
+                                terrainHeight: { e, n in corridor.terrain.height(east: Double(e), north: Double(n)) },
+                                light: light, setExposure: exposure)
         }
         #endif
         progress(1, "Ready")
@@ -271,10 +296,15 @@ enum CourseWorldBuilder {
             preferredFramesPerSecond: config.fps,
             configureCamera: { camera in SkyLighting.configure(camera, config: config) },
             onFrame: { position, time in frame.update(camera: position, time: time) },
-            applyLiveConfig: { live in
+            // Keeps the materials for the ride; their textures' caches are
+            // already let go of (`releaseCaches` above).
+            applyLiveConfig: { [materials] live in
                 if let light = sun.light { SkyLighting.applyShadows(light, config: live) }
                 frame.setGrassRadius(min(live.grassRadius, config.grassRadius))
-            }
+                materials.applyLive(live)
+            },
+            light: light,
+            setExposure: exposure
         )
     }
 }
@@ -359,7 +389,8 @@ final class FrameUpdater: @unchecked Sendable {
 /// directory (cj_world_log.txt) for development.
 struct WorldBuildLog {
     let quality: GraphicsQuality
-    var steps: [(String, Double)] = []
+    /// Each step's time and the app's memory footprint at its end (MB).
+    var steps: [(String, Double, Int)] = []
     var triangles: [String: Int] = [:]
     /// Triangles once distant levels of detail have switched in.
     var distant: [String: Int] = [:]
@@ -371,13 +402,29 @@ struct WorldBuildLog {
 
     mutating func mark(_ step: String) {
         let now = CACurrentMediaTime()
-        steps.append((step, now - last))
+        steps.append((step, now - last, Self.footprintMB().now))
         last = now
+    }
+
+    /// The app's memory footprint (what iOS holds it to) now, and its peak
+    /// so far, in MB; 0 if the kernel won't say.
+    static func footprintMB() -> (now: Int, peak: Int) {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return (0, 0) }
+        return (Int(info.phys_footprint >> 20), Int(info.ledger_phys_footprint_peak >> 20))
     }
 
     func write() {
         var lines = ["world build \(quality.rawValue): \(String(format: "%.2f", total)) s"]
-        for (k, v) in steps { lines.append(String(format: "  %@ %.3f s", k, v)) }
+        for (k, v, mb) in steps { lines.append(String(format: "  %@ %.3f s, %d MB", k, v, mb)) }
+        let footprint = Self.footprintMB()
+        lines.append("memory footprint \(footprint.now) MB, peak so far \(footprint.peak) MB")
         lines.append("triangles built \(triangles.values.reduce(0, +))")
         for (k, v) in triangles.sorted(by: { $0.key < $1.key }) { lines.append("  \(k): \(v)") }
         for (k, v) in distant.sorted(by: { $0.key < $1.key }) { lines.append("  distant LOD \(k): \(v)") }
