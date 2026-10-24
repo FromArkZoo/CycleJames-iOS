@@ -93,7 +93,7 @@ enum CourseNav: Hashable {
 ///     -courseRideCamera close         chase | close | firstPerson | broadcast
 ///     -courseRideFinish               start next to the end so the finish overlay shows
 ///     -courseRideStop                 open the stop confirmation once riding
-///     -courseRideLandscape            force landscape (the Simulator can't be rotated by script)
+///     -courseRideLandscape            force landscape (the Simulator can't be rotated by script; also the -rideGearDemo ride)
 ///     -screenshotCourseScroll setup   scroll the detail page to profile / pb / setup / trainer / licences
 ///     -screenshotCoursePB 227.4       store that personal best first (`none` clears it)
 ///     -screenshotCourseResetPB        open the "Reset personal best" confirmation
@@ -101,6 +101,12 @@ enum CourseNav: Hashable {
 ///     -courseRideHold                 open the demo ride but wait on the start line
 ///     -screenshotHistoryDetail        with -screenshotTab history, open the newest ride
 ///     -screenshotSettings             open Settings from the Workouts tab
+///     -courseRideGear 14              (Debug) a Wattbike in gear 14 (0: connected, gear not yet known)
+///     -courseRideGearFlash harder     (Debug) with -courseRideGear, hold that flash: harder | easier | top | bottom
+///     -courseRideGears                (Debug) loop a scripted run of shifts through the gear badge
+///     -screenshotGearBadges           (Debug) every gear badge state over the ride
+///     -rideGearDemo [erg]             (Debug) with -screenshotWorkout <id>: open its ride in Free Ride (or ERG),
+///                                     a Wattbike's shifts looping, or held with -courseRideGear
 ///
 /// All no-ops in normal launches.
 enum CourseLaunchArgs {
@@ -131,12 +137,23 @@ enum CourseLaunchArgs {
     static var screenshotResetPB: Bool { args.contains("-screenshotCourseResetPB") }
     /// Debug builds: every trainer chip state over the ride view.
     static var screenshotTrainerChips: Bool { args.contains("-screenshotTrainerChips") }
+    /// Debug builds: a Simulator stand-in for a Wattbike's gear reports.
+    static var rideGear: Int? { value("-courseRideGear").flatMap(Int.init) }
+    static var rideGearFlash: String? { value("-courseRideGearFlash") }
+    static var rideGearDemo: Bool { args.contains("-courseRideGears") }
+    static var screenshotGearBadges: Bool { args.contains("-screenshotGearBadges") }
+    /// The mode `-rideGearDemo` rides the workout in; nil without it.
+    static var workoutRideGearDemo: RideMode? {
+        guard args.contains("-rideGearDemo") else { return nil }
+        return value("-rideGearDemo") == "erg" ? .erg : .freeRide
+    }
 
     /// The demo ride opens once per launch, not every time the detail page
     /// reappears.
     @MainActor private static var rideDemoConsumed = false
     @MainActor private static var personalBestSeedConsumed = false
     @MainActor private static var resetPBPromptConsumed = false
+    @MainActor private static var workoutRideGearDemoConsumed = false
 
     @MainActor
     static func consumeRideDemo(for courseID: String) -> Bool {
@@ -161,6 +178,14 @@ enum CourseLaunchArgs {
     static func consumeResetPBPrompt() -> Bool {
         guard !resetPBPromptConsumed, screenshotResetPB else { return false }
         resetPBPromptConsumed = true
+        return true
+    }
+
+    /// `-rideGearDemo` opens the workout's ride once per launch.
+    @MainActor
+    static func consumeWorkoutRideGearDemo() -> Bool {
+        guard !workoutRideGearDemoConsumed, workoutRideGearDemo != nil else { return false }
+        workoutRideGearDemoConsumed = true
         return true
     }
 }

@@ -49,6 +49,8 @@ final class RideController: ObservableObject {
 
     let player = WorkoutPlayer()
     let recorder = RideRecorder()
+    /// The Wattbike's gear, for the Free Ride gear card.
+    let gears = GearFeed()
 
     private var ftp: Int { AppSettings.ftp }
     private var powerBuffer: [Int] = []
@@ -87,6 +89,7 @@ final class RideController: ObservableObject {
         hr.onHR = { [weak self] bpm in
             Task { @MainActor in self?.handleHR(bpm) }
         }
+        gears.bind(trainer)
     }
 
     // MARK: Selection / state transitions
@@ -203,6 +206,13 @@ final class RideController: ObservableObject {
 
     nonisolated static func shouldSendErgTarget(mode: RideMode, connected: Bool) -> Bool {
         mode == .erg && connected
+    }
+
+    /// Free Ride hands the resistance to the bike's own gears, so a
+    /// Wattbike's gear is worth showing; in ERG the trainer holds the target
+    /// whatever the shifters do.
+    nonisolated static func showsGear(mode: RideMode, gearsAvailable: Bool) -> Bool {
+        mode == .freeRide && gearsAvailable
     }
 
     /// Switch between ERG and Free Ride mid-ride. Free Ride drops ERG and

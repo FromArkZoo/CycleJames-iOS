@@ -100,6 +100,9 @@ struct CourseRideView: View {
             if sceneReady, CourseLaunchArgs.screenshotTrainerChips {
                 TrainerChipGallery()
             }
+            if sceneReady, CourseLaunchArgs.screenshotGearBadges {
+                GearBadgeGallery()
+            }
             #endif
 
             if showStopConfirm {
@@ -156,6 +159,22 @@ struct CourseRideView: View {
                 }
             }
         }
+        #if DEBUG
+        .task(id: sceneReady) {
+            // No Wattbike in the Simulator: one stands in, holding a gear
+            // or shifting through a scripted run.
+            guard sceneReady, CourseLaunchArgs.rideGear != nil || CourseLaunchArgs.rideGearDemo else { return }
+            if let gear = CourseLaunchArgs.rideGear {
+                GearDemo.hold(controller.gears, gear: gear, flash: CourseLaunchArgs.rideGearFlash)
+                await GearDemo.connectTrainer(controller, watts: CourseLaunchArgs.rideWatts ?? 200)
+            } else {
+                let feed = controller.gears
+                async let shifts: Void = GearDemo.run(feed)
+                await GearDemo.connectTrainer(controller, watts: CourseLaunchArgs.rideWatts ?? 200)
+                await shifts
+            }
+        }
+        #endif
     }
 
     /// Points of the scene the HUD covers at the top and bottom.

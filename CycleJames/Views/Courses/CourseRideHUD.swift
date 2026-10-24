@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Everything drawn over the 3D scene during a course ride. Metrics sit along
 /// the top (portrait) or the sides (landscape) so the road in the middle of
-/// the screen stays clear.
+/// the screen stays clear. The Wattbike's gear hangs under the grade
+/// (portrait) or joins the metrics column (landscape).
 struct CourseRideHUD: View {
     @ObservedObject var controller: CourseRideController
     let summary: CourseSummary
@@ -67,10 +68,20 @@ struct CourseRideHUD: View {
                 metricsStrip
                 HStack(alignment: .top, spacing: CJSpacing.s) {
                     climbPanel.frame(maxWidth: 190, alignment: .leading)
+                        // Close behind the rider, their helmet and shoulder
+                        // fill the right-hand side: the gear hangs here then.
+                        .overlay(alignment: .bottomLeading) {
+                            hangingGear(anchor: .topLeading, shown: cameraMode == .close)
+                        }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: CJSpacing.xs) {
                         GradeBadge(pct: controller.gradePct)
                         SurfaceChip(surface: controller.surfaceName)
+                    }
+                    // The gear hangs under the grade, over the verge rather
+                    // than the road.
+                    .overlay(alignment: .bottomTrailing) {
+                        hangingGear(anchor: .topTrailing, shown: cameraMode != .close)
                     }
                 }
             }
@@ -100,6 +111,16 @@ struct CourseRideHUD: View {
         .padding(.bottom, CJSpacing.xxs)
     }
 
+    /// The portrait gear badge, hung just below the card it overlays. As an
+    /// overlay it isn't part of the measured cover, so it doesn't move the
+    /// camera's framing. (Shown or not inside the indicator: an `if` around
+    /// it in the overlay loses the hanging alignment.)
+    private func hangingGear(anchor: UnitPoint, shown: Bool) -> some View {
+        GearIndicator(feed: controller.gears, style: .badge, anchor: anchor, shown: shown)
+            .alignmentGuide(.bottom) { $0[.top] - CJSpacing.xs }
+            .allowsHitTesting(false)
+    }
+
     /// Landscape: metrics down the left, climb and controls down the right,
     /// the profile across the sky at the top. Nothing sits over the road
     /// while riding; the start row only shows before the ride.
@@ -110,6 +131,11 @@ struct CourseRideHUD: View {
                 metricTile(speedMetric)
                 metricTile(cadenceMetric)
                 metricTile(hrMetric)
+                // The virtual power control takes the column's foot instead
+                // while no trainer powers the ride (its gears don't either).
+                if !controller.usingVirtualPower {
+                    GearIndicator(feed: controller.gears, style: .tile)
+                }
                 Spacer(minLength: 0)
                 if controller.usingVirtualPower {
                     VirtualPowerControl(watts: $controller.virtualPowerW, style: .stacked)

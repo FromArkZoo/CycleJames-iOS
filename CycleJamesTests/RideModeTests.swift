@@ -11,4 +11,9 @@ final class RideModeTests: XCTestCase {
     func test_ergDisconnected_doesNotSendTarget() {
         XCTAssertFalse(RideController.shouldSendErgTarget(mode: .erg, connected: false))
     }
+    func test_gearShows_onlyInFreeRide_withAWattbike() {
+        XCTAssertTrue(RideController.showsGear(mode: .freeRide, gearsAvailable: true))
+        XCTAssertFalse(RideController.showsGear(mode: .erg, gearsAvailable: true))
+        XCTAssertFalse(RideController.showsGear(mode: .freeRide, gearsAvailable: false))
+    }
 }

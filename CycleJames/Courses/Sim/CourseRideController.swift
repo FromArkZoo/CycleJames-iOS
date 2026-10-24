@@ -95,6 +95,11 @@ final class CourseRideController: ObservableObject {
     @Published private(set) var trainerHeldByWorkout: Bool = false
     /// Average power over the ride so far (moving time).
     @Published private(set) var avgPowerW: Int = 0
+    /// The trainer's gear and its last shift (direction, run length, time),
+    /// for the HUD's gear badge. Unavailable, so hidden, unless the trainer
+    /// reports gears (a Wattbike). It belongs to the bike, not the ride, so
+    /// starting, discarding or resetting a ride leaves it alone.
+    let gears = GearFeed()
 
     /// Development only: distance along the route at which `start()`
     /// places the rider, for screenshots of later parts of the course.
@@ -229,6 +234,7 @@ final class CourseRideController: ObservableObject {
         trainer.$slopeReply
             .sink { [weak self] reply in MainActor.assumeIsolated { self?.handleSlopeReply(reply) } }
             .store(in: &cancellables)
+        gears.bind(trainer)
         hr.$heartRate
             .sink { [weak self] bpm in MainActor.assumeIsolated { self?.handleHR(bpm) } }
             .store(in: &cancellables)
