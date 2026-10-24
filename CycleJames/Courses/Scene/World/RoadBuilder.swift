@@ -17,7 +17,7 @@ enum RoadBuilder {
         var verge = MeshBuffer()
         var kerb = MeshBuffer()
         var gutter = MeshBuffer()
-        /// Raised sett pavements (cobbles material).
+        /// Raised sett pavements and flush paved verges (pavementSetts).
         var pavements = MeshBuffer()
         /// White lines on two-lane asphalt roads.
         var markings = MeshBuffer()
@@ -60,17 +60,21 @@ enum RoadBuilder {
         // Carriageway: one row of vertices per station, written into the
         // mesh for the surface of the strip that starts at that station.
         // Each mesh gets its own copy of the rows it uses.
+        let strips = pavedVergeStrips(corridor.art)
         func roadRow(_ k: Int, into mesh: inout MeshBuffer) -> UInt32 {
             let s = st[k]
             let first = UInt32(mesh.vertexCount)
             let mud = corridor.art.sunkenWeight(s.s)
+            let reachL = 1 - 0.3 * flushPaving(corridor.art, strips: strips, s: s.s, side: -1)
+            let reachR = 1 - 0.3 * flushPaving(corridor.art, strips: strips, s: s.s, side: 1)
             for f in roadColumns {
                 let lat = f * s.halfWidth
                 let p = s.point(lateral: lat)
                 let y = corridor.roadHeight(s, lateral: lat)
                 mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(s.s))
-                // (0 centre .. 1 edge, mud along the sunken lane).
-                mesh.texcoord2(Float(abs(f)), Float(mud))
+                // (0 centre .. 1 edge, mud along the sunken lane); 0.7 at
+                // an edge the flush paving carries on from.
+                mesh.texcoord2(Float(abs(f) * (f < 0 ? reachL : reachR)), Float(mud))
             }
             return first
         }
@@ -111,17 +115,8 @@ enum RoadBuilder {
                 for (c, o0) in vergeColumns.enumerated() {
                     let o = o0 * scale
                     let p = s.point(lateral: edgeLat + side * o)
-                    var y: Double
                     let dtm = Double(terrain.height(east: p.east, north: p.north))
-                    if c == 0 {
-                        y = edgeY
-                    } else if c == 1 {
-                        y = edgeY - 0.015
-                    } else if c == nVerge - 1 {
-                        y = dtm - skirt
-                    } else {
-                        y = blendedVerge(edgeY: edgeY, dtm: dtm, offset: o)
-                    }
+                    let y = vergeColumnY(c, of: nVerge, edgeY: edgeY, dtm: dtm, offset: o, skirt: skirt)
                     out.verge.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(p.east), Float(-p.north))
                     let rise = y - edgeY
                     let bank = Float(sunk * smoothstepD(0.15, 0.9, rise))
@@ -144,34 +139,215 @@ enum RoadBuilder {
 
         buildKerbs(corridor: corridor, into: &out.kerb)
         buildGutters(corridor: corridor, into: &out.gutter)
-        buildPavements(corridor: corridor, into: &out.pavements)
+        buildPavements(corridor: corridor, into: &out.pavements, kerb: &out.kerb)
+        buildPavedVerges(corridor: corridor, stations: st, columns: vergeColumns, into: &out.pavements)
         buildMarkings(corridor: corridor, into: &out.markings, cycleLanes: &out.cycleLanes)
         return out
     }
 
     /// Raised sett pavements, 10 cm up a stone kerb from the carriageway
     /// edge, `width` wide, dropping back to the verge at their outer edge.
-    private static func buildPavements(corridor: RoadCorridor, into mesh: inout MeshBuffer) {
-        let kerbH = 0.1
+    /// The kerb (its face and a 12 cm top, pale as the other kerbs) goes
+    /// into `kerb`; the setts start behind it.
+    private static func buildPavements(corridor: RoadCorridor, into mesh: inout MeshBuffer, kerb: inout MeshBuffer) {
+        let kerbH = 0.1, kerbW = 0.12
         for (span, side, width) in corridor.art.pavements {
-            var prev: UInt32?
+            var prev: (pavement: UInt32, kerb: UInt32)?
             for s in corridor.stations where span.contains(s.s) && s.beyond == 0 {
                 let edge = side * s.halfWidth
                 let edgeY = corridor.roadHeight(s, lateral: edge)
                 let outer = RoadBuilder.vergePoint(corridor, s, side: side, offset: width)
                 let topY = max(edgeY, outer.y) + kerbH
-                // Kerb foot, kerb top, pavement outer edge, its foot on the verge.
-                let cols: [(lat: Double, y: Double)] = [(edge, edgeY - 0.01), (edge + side * 0.005, topY),
-                                                        (edge + side * width, topY), (edge + side * (width + 0.005), outer.y - 0.05)]
-                let first = UInt32(mesh.vertexCount)
-                for (lat, y) in cols {
+                // Kerb: foot, top at the road, top at the setts (u across it
+                // in metres, as `buildKerbs`).
+                let mud = Float(corridor.art.sunkenWeight(s.s))
+                let kerbCols: [(lat: Double, y: Double, u: Double)] = [
+                    (edge, edgeY - 0.01, kerbW + kerbH), (edge + side * 0.005, topY, kerbW), (edge + side * kerbW, topY, 0),
+                ]
+                let firstKerb = UInt32(kerb.vertexCount)
+                for (lat, y, u) in kerbCols {
                     let p = s.point(lateral: lat)
-                    mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(s.s))
-                    mesh.texcoord2(0.9, 0)
+                    kerb.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(u), Float(s.s))
+                    kerb.texcoord2(1, mud)
+                }
+                // Pavement: its inner edge on the kerb and its outer edge,
+                // clear of the setts' edge burial and edge dirt (0.35), which
+                // would otherwise bury the whole pavement; then its foot on
+                // the verge, where the setts sink into the soil (1). The
+                // drop's texture runs back across the pavement by its
+                // height, so it shows setts, not one sett drawn out into
+                // stripes, and stays within the pavement's u.
+                let footY = outer.y - 0.05
+                let cols: [(lat: Double, y: Double, u: Double, edge: Float)] = [
+                    (edge + side * kerbW, topY, edge + side * kerbW, 0.35),
+                    (edge + side * width, topY, edge + side * width, 0.35),
+                    (edge + side * (width + 0.005), footY, edge + side * (width - min(topY - footY, 0.3)), 1),
+                ]
+                let first = UInt32(mesh.vertexCount)
+                for (lat, y, u, e) in cols {
+                    let p = s.point(lateral: lat)
+                    mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(u), Float(s.s))
+                    mesh.texcoord2(e, 0)
+                }
+                if let (a, k) = prev {
+                    // Mirrored on the left, as for the verge.
+                    for c in 0..<UInt32(cols.count - 1) {
+                        if side > 0 {
+                            mesh.quad(a + c, a + c + 1, first + c + 1, first + c)
+                        } else {
+                            mesh.quad(a + c, first + c, first + c + 1, a + c + 1)
+                        }
+                    }
+                    for c in 0..<UInt32(kerbCols.count - 1) {
+                        if side > 0 {
+                            kerb.quad(k + c, k + c + 1, firstKerb + c + 1, firstKerb + c)
+                        } else {
+                            kerb.quad(k + c, firstKerb + c, firstKerb + c + 1, k + c + 1)
+                        }
+                    }
+                }
+                prev = (first, firstKerb)
+            }
+        }
+        mesh.computeNormals()
+        kerb.computeNormals()
+    }
+
+    /// Height of verge column `c` (of `count`) at `offset` beyond the
+    /// carriageway edge: the edge, a small drop off it, the eased LiDAR
+    /// ground, and the last column sunk by `skirt` under the grid terrain.
+    @inline(__always)
+    static func vergeColumnY(_ c: Int, of count: Int, edgeY: Double, dtm: Double, offset o: Double, skirt: Double) -> Double {
+        if c == 0 { return edgeY }
+        if c == 1 { return edgeY - 0.015 }
+        if c == count - 1 { return dtm - skirt }
+        return blendedVerge(edgeY: edgeY, dtm: dtm, offset: o)
+    }
+
+    /// The flush paved verges (`CourseArt.pavedVerges`) as strips: touching
+    /// spans on one side make one strip, laid from one middle line, so its
+    /// setts run on where its width steps.
+    static func pavedVergeStrips(_ art: CourseArt) -> [(span: CourseArt.Span, side: Double, maxWidth: Double)] {
+        var out: [(span: CourseArt.Span, side: Double, maxWidth: Double)] = []
+        for side in [-1.0, 1.0] {
+            let spans = art.pavedVerges.filter { $0.side * side > 0 }.sorted { $0.span.lowerBound < $1.span.lowerBound }
+            for v in spans {
+                if let last = out.last, last.side == side, v.span.lowerBound <= last.span.upperBound + 0.01 {
+                    out[out.count - 1] = (last.span.lowerBound...max(last.span.upperBound, v.span.upperBound), side,
+                                          max(last.maxWidth, v.width))
+                } else {
+                    out.append((v.span, side, v.width))
+                }
+            }
+        }
+        return out
+    }
+
+    /// 1 where the flush paving carries the setts on from the carriageway
+    /// edge on `side` at `s` with no edge stones between them, easing to 0
+    /// over 2 m across the ends of its `strips` (`pavedVergeStrips`). There
+    /// the carriageway's texcoord 1 x runs out to 0.7 at that edge, not 1:
+    /// the setts' edge burial and edge dirt (from 0.82 and 0.6) would
+    /// otherwise sink its outer setts in soil, a stoneless seam against the
+    /// clean paving. Its wheel tracks stay put (the shader takes the half
+    /// width as |u| / edge, which only moves them under 1 m half width).
+    static func flushPaving(_ art: CourseArt, strips: [(span: CourseArt.Span, side: Double, maxWidth: Double)],
+                            s: Double, side: Double) -> Double {
+        if art.kerbs.contains(where: { $0.side * side > 0 && $0.span.contains(s) }) { return 0 }
+        var w = 0.0
+        for strip in strips where strip.side * side > 0 {
+            let a = strip.span.lowerBound, b = strip.span.upperBound
+            w = max(w, smoothstepD(a - 1, a + 1, s) * (1 - smoothstepD(b - 1, b + 1, s)))
+        }
+        return w
+    }
+
+    /// The setts' texcoord u on a paved strip `offset` metres beyond the
+    /// carriageway edge: metres from the strip's middle line (which keeps
+    /// to the edge), rising to the right as on the carriageway. It stays
+    /// within the shader's neighbour search however wide the strip and
+    /// wherever the road widens (`SettStyleTests`).
+    static func pavedVergeU(side: Double, offset: Double, maxWidth: Double) -> Double {
+        side * (offset - maxWidth / 2)
+    }
+
+    /// Courses of the far map a side's paved strips are moved on from the
+    /// raised pavements, whose setts they share: the right's land a third
+    /// and the left's two thirds of the way from the carriageway's courses
+    /// to the pavements' (`WorldMaterials.settCourseOffsets`), so no two of
+    /// the four come within about 950 courses (140-160 m of road) of each
+    /// other. (A third of the map each would bring the right's within 130
+    /// courses of the carriageway's, which keys the far map's joints and
+    /// colours the same way.)
+    static func pavedVergeCourses(side: Double) -> Int {
+        let n = SettFarMap.courses
+        let pavements = Int(WorldMaterials.settCourseOffsets[2])
+        let own = Int((Double(pavements) * (side > 0 ? 1 : 2) / 3).rounded())
+        return ((own - pavements) % n + n) % n
+    }
+
+    /// The setts' texcoord v on a paved strip at `s`: moved on by its side's
+    /// `pavedVergeCourses` of `depth`, so it lays courses of its own and
+    /// shows neither the raised pavements' stones nor the strip's across the
+    /// street (`SettStyleTests`).
+    static func pavedVergeV(side: Double, s: Double, depth: Float) -> Double {
+        s + Double(pavedVergeCourses(side: side)) * Double(depth)
+    }
+
+    /// Setts flush with the carriageway out to the house fronts, a little
+    /// over the verge mesh: at its stations, on its surface between its
+    /// columns (so nothing pokes through), and dropping to it where the
+    /// strip ends. Texcoord 0 = (`pavedVergeU`, `pavedVergeV`), texcoord 1
+    /// = (edge, mud): clean at the carriageway, grimier towards the walls,
+    /// sunk at the foot. Drawn with the pavements' setts.
+    private static func buildPavedVerges(corridor: RoadCorridor, stations st: [RoadCorridor.Station], columns: [Double],
+                                         into mesh: inout MeshBuffer) {
+        let art = corridor.art
+        let lift = 0.012
+        let depth = art.setts.style.layout.x
+        for strip in pavedVergeStrips(art) {
+            let side = strip.side
+            let n = max(4, Int((strip.maxWidth / 0.6).rounded(.up)))
+            var prev: UInt32?
+            for s in st where strip.span.contains(s.s) && s.beyond == 0 {
+                // The verge mesh's own row here, to lie on (narrower inside
+                // a bend, where wider rows would fold over each other).
+                let verge = side > 0 ? s.vergeRight : s.vergeLeft
+                let width = min(art.pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s.s) }.map(\.width).max() ?? 0,
+                                verge - 0.3)
+                guard width > 0.1 else { prev = nil; continue }
+                let scale = verge / columns.last!
+                let edgeLat = side * s.halfWidth
+                let edgeY = corridor.roadHeight(s, lateral: edgeLat)
+                let skirt = 0.35 * smoothstepD(2, 6, verge)
+                let rowY: [Double] = columns.enumerated().map { c, o0 in
+                    let p = s.point(lateral: edgeLat + side * o0 * scale)
+                    let dtm = Double(corridor.terrain.height(east: p.east, north: p.north))
+                    return vergeColumnY(c, of: columns.count, edgeY: edgeY, dtm: dtm, offset: o0 * scale, skirt: skirt)
+                }
+                func vergeY(_ o: Double) -> Double {
+                    let x = o / max(scale, 1e-6)
+                    guard let k = columns.firstIndex(where: { $0 >= x }), k > 0 else { return rowY[x <= 0 ? 0 : rowY.count - 1] }
+                    let t = (x - columns[k - 1]) / max(columns[k] - columns[k - 1], 1e-9)
+                    return rowY[k - 1] + (rowY[k] - rowY[k - 1]) * t
+                }
+                let mud = Float(art.sunkenWeight(s.s))
+                let v = Float(pavedVergeV(side: side, s: s.s, depth: depth))
+                let first = UInt32(mesh.vertexCount)
+                for k in 0...(n + 1) {
+                    // n + 1 columns across the paving, then its foot.
+                    let o = k <= n ? width * Double(k) / Double(n) : width + 0.005
+                    let y = k == 0 ? edgeY + 0.003 : k <= n ? vergeY(o) + lift : vergeY(width + 0.05) - 0.03
+                    let p = s.point(lateral: edgeLat + side * o)
+                    let f = Float(min(o, width) / width)
+                    let edge: Float = k > n ? 1 : 0.35 + 0.25 * f * f
+                    let u = pavedVergeU(side: side, offset: min(o, width), maxWidth: strip.maxWidth)
+                    mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(u), v)
+                    mesh.texcoord2(edge, mud)
                 }
                 if let a = prev {
-                    for c in 0..<UInt32(cols.count - 1) {
-                        // Mirrored on the left, as for the verge.
+                    // Mirrored on the left, as for the verge.
+                    for c in 0..<UInt32(n + 1) {
                         if side > 0 {
                             mesh.quad(a + c, a + c + 1, first + c + 1, first + c)
                         } else {
@@ -277,11 +453,13 @@ enum RoadBuilder {
             let edgeY = corridor.roadHeight(st, lateral: side * st.halfWidth)
             return blendedVerge(edgeY: edgeY, dtm: dtm, offset: o) + 0.02
         }
-        for road in sideRoadSamples(scenery: scenery) {
+        for (index, road) in sideRoadSamples(scenery: scenery).enumerated() {
             if Task.isCancelled { break }
             let part = road.part, hw = road.halfWidth, pts = road.points
-            var prev: (UInt32, UInt32)?
-            var along = 0.0
+            var prev: (UInt32, UInt32, UInt32)?
+            // The setts are keyed on this distance: each road starts its own
+            // courses, so no two show the same stones.
+            var along = (Double(index) * 211.7).truncatingRemainder(dividingBy: 2400)
             for i in pts.indices {
                 let p = pts[i]
                 if i > 0 { along += simd_distance(pts[i - 1], p) }
@@ -299,15 +477,22 @@ enum RoadBuilder {
                 let side = SIMD2(d.y, -d.x)
                 let pl = p - side * hw, pr = p + side * hw
                 let yl = ground(pl.x, pl.y) + 0.04
+                let yc = ground(p.x, p.y) + 0.04
                 let yr = ground(pr.x, pr.y) + 0.04
+                // Left edge, centre, right edge: texcoord 1 = (0 centre .. 1
+                // edge, mud), which the setts' edge burial and the wheel
+                // tracks read.
                 let il = m.vertex(Float(pl.x), Float(yl), Float(-pl.y), 0, 1, 0, Float(-hw), Float(along))
                 m.texcoord2(1, 0)
+                let ic = m.vertex(Float(p.x), Float(yc), Float(-p.y), 0, 1, 0, 0, Float(along))
+                m.texcoord2(0, 0)
                 let ir = m.vertex(Float(pr.x), Float(yr), Float(-pr.y), 0, 1, 0, Float(hw), Float(along))
                 m.texcoord2(1, 0)
-                if let (a0, b0) = prev {
-                    m.quad(a0, b0, ir, il, part: part)
+                if let (a0, c0, b0) = prev {
+                    m.quad(a0, c0, ic, il, part: part)
+                    m.quad(c0, b0, ir, ic, part: part)
                 }
-                prev = (il, ir)
+                prev = (il, ic, ir)
             }
         }
         m.computeNormals()
