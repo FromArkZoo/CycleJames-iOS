@@ -93,6 +93,23 @@ final class RiderMaterials {
     let lens: SCNMaterial
     let frameBlack: SCNMaterial
 
+    /// Every material above, each carrying `skySurface`.
+    var all: [SCNMaterial] {
+        [paint, carbon, rubber, alloy, steel, chain, glove, bottle, tyre, rim, spokes, spokeBlur,
+         jersey, bib, thigh, shank, sleeve, skin, head, shoe, helmet, lens, frameBlack]
+    }
+
+    /// The rider's share of the sky light (`RiderRig.setSkyVisibility`):
+    /// the image-based light only, so the sun and its shadows are kept.
+    /// `riderSky` is 1 in the open; an unset float would read 0 and black
+    /// out the ambient.
+    static let skySurface = """
+    #pragma arguments
+    float riderSky;
+    #pragma body
+    _surface.ambientOcclusion *= riderSky;
+    """
+
     /// Signed distance (metres) to a 7 cm "CJ" monogram centred on `p`
     /// (x right, y up as seen by the viewer).
     static func monogram(_ p: SIMD2<Float>) -> Float {
@@ -379,5 +396,11 @@ final class RiderMaterials {
         lens = pbr(lensImg as Any, metal: 0.9, rough: 0.08, name: "rider.lens")
         lens.emission.contents = lensImg
         lens.emission.intensity = 0.18
+
+        // Open sky until the ride says otherwise.
+        for m in all {
+            m.setValue(NSNumber(value: Float(1)), forKey: "riderSky")
+            m.shaderModifiers = [.surface: Self.skySurface]
+        }
     }
 }

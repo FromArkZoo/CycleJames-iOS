@@ -206,6 +206,13 @@ struct CourseSceneView: UIViewRepresentable {
         /// Frames drawn before the world counts as ready.
         private static let warmupFrames = 2
         private var governor: LiveQualityGovernor?
+        /// The camera opening up in sunken lanes. Render thread (and attach).
+        private let exposure = LaneExposure()
+        /// The road's floor on sky visibility for the tier being drawn (the
+        /// rider's sky light keeps to it). Render thread (and attach).
+        private var skyFloor: Float = 1
+        /// The lane exposure being drawn, EV (development read-outs).
+        private(set) var exposureEV: Float = 0
 
         /// Live fallback steps taken so far (development read-outs).
         var liveQualitySteps: [LiveQualityGovernor.Rung] {
@@ -259,6 +266,11 @@ struct CourseSceneView: UIViewRepresentable {
             cameraRig.update(riderPose: pose, s: snap.s, route: world.route, snapshot: snap, deltaTime: 0)
             headHidden = cameraRig.hidesRiderHead
             rider.setHeadVisible(!headHidden)
+            // The lane exposure and the rider's sky light, settled for here.
+            skyFloor = WorldMaterials.skyFloor(WorldConfig.make(world.quality))
+            exposure.reset(s: snap.s, profile: world.light, apply: world.setExposure)
+            exposureEV = exposure.ev
+            rider.setSkyVisibility(world.light.sky(at: snap.s), floor: skyFloor, deltaTime: 0)
 
             var readyOnce: (() -> Void)? = ready
             let fireReady: @MainActor () -> Void = { [weak self] in
@@ -330,6 +342,7 @@ struct CourseSceneView: UIViewRepresentable {
             case .tier(let q):
                 let config = WorldConfig.make(q)
                 world.applyLiveConfig(config)
+                skyFloor = WorldMaterials.skyFloor(config)
                 if let camera = renderer.pointOfView?.camera { SkyLighting.applyEffects(camera, config: config) }
                 DispatchQueue.main.async { [weak self] in
                     MainActor.assumeIsolated {
@@ -373,6 +386,11 @@ struct CourseSceneView: UIViewRepresentable {
             cameraRig.framingInsets = insets
             rider.update(pose: pose, snapshot: snap, deltaTime: dt)
             cameraRig.update(riderPose: pose, s: s, route: world.route, snapshot: snap, deltaTime: dt)
+            // Metered from the route's sky visibility, not the frame, so it
+            // can't pump; the rider's sky light follows the lane with it.
+            exposure.update(s: s, dt: dt, profile: world.light, apply: world.setExposure)
+            exposureEV = exposure.ev
+            rider.setSkyVisibility(world.light.sky(at: s), floor: skyFloor, deltaTime: dt)
             // Rider view: the camera is inside the head, so it goes (and comes
             // back as the camera leaves).
             if cameraRig.hidesRiderHead != headHidden {

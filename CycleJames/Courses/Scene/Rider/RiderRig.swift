@@ -27,6 +27,9 @@ final class RiderRig {
     private let crank = SCNNode()
     private let pedalRight: SCNNode, pedalLeft: SCNNode
     private let chainMaterial: SCNMaterial
+    /// Every rider and bike material, for the sky light.
+    private let skyMaterials: [SCNMaterial]
+    private var sky: Float = 1, appliedSky: Float = 1, firstSky = true
 
     // Body segments, all direct children of `node` and posed in rig space.
     private let pelvis: SCNNode, torso: SCNNode, neck: SCNNode, head: SCNNode
@@ -68,6 +71,7 @@ final class RiderRig {
         let mats = RiderMaterials(quality: quality, layout: layout)
         let bd = RiderBodyMeshes.Detail(quality), kd = RiderBikeMeshes.Detail(quality)
         chainMaterial = mats.chain
+        skyMaterials = mats.all
 
         func part(_ mesh: RiderMesh, _ materials: [SCNMaterial], _ name: String, shadow: Bool = true) -> SCNNode {
             let n = SCNNode(geometry: mesh.geometry(materials, name: name))
@@ -141,6 +145,24 @@ final class RiderRig {
     func setHeadVisible(_ visible: Bool) {
         head.isHidden = !visible
         neck.isHidden = !visible
+    }
+
+    /// The rider's share of the sky light, from the route's sky visibility
+    /// `v` (`LightProfile`, measured 0.3 m above the road): in a sunken lane
+    /// the rider loses sky light as the road does, or the lane exposure
+    /// would make him glow. The body, 1-1.5 m up, sees more of the sky than
+    /// the road (`v`^0.6), and never less than the road's floor for the
+    /// bounce light (`WorldMaterials.skyFloor`). Eased over a quarter of a
+    /// second; written only when it moves by a hundredth. Render thread.
+    func setSkyVisibility(_ v: Float, floor: Float, deltaTime: Double) {
+        let target = max(pow(min(max(v, 0), 1), 0.6), floor)
+        sky = firstSky ? target : approach(sky, target, Float(min(max(deltaTime, 0), 0.1)), 0.25)
+        if abs(target - sky) < 0.005 { sky = target }
+        firstSky = false
+        guard abs(sky - appliedSky) > 0.01 || (sky == target && sky != appliedSky) else { return }
+        appliedSky = sky
+        let value = NSNumber(value: sky)
+        for m in skyMaterials { m.setValue(value, forKey: "riderSky") }
     }
 
     // MARK: - Per frame

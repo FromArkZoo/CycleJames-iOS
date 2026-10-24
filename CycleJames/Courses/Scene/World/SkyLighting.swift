@@ -8,17 +8,24 @@ enum SkyLighting {
     /// negative offset caps the brightest white at 87 % (measured with the
     /// calibration chart in WorldDebugShots). The lights are scaled instead.
     static let exposureOffset: Double = 0
-    /// The background is drawn this much brighter than its texture, to
-    /// cancel any exposure offset so the sky shows as baked.
-    static var backgroundIntensity: Double { pow(2, -exposureOffset) }
+    /// The background faces store linear radiance / skyScale
+    /// (bake_materials.py `SKY_SCALE`), so sunlit cloud tops brighter than
+    /// 1 fit in 8 bits. The lighting environment's faces are stored at 1.
+    static let skyScale: Double = 1.6
 
-    /// All-round sky colour just above the horizon, linear, as printed by
-    /// bake_materials.py (`horizon_haze`); the far terrain fades to it.
-    static let horizonLinear = SIMD3<Double>(0.3868, 0.4342, 0.4964)
+    /// All-round sky colour just above the horizon, linear, as the bake
+    /// wrote it to scripts/courses/textures/cj_sky_horizon.json; the far
+    /// terrain fades to it. SkyBakeTests checks it against the faces.
+    static let horizonLinear = SIMD3<Double>(0.5374, 0.6032, 0.6896)
 
     /// Fog colour: the horizon haze as the background shows it.
-    static var horizon: UIColor {
-        let c = horizonLinear * backgroundIntensity
+    static var horizon: UIColor { horizon(scale: 1) }
+
+    /// The haze `scale` times brighter (the lane exposure), at most until
+    /// its brightest channel reaches 1, so it whitens without shifting hue.
+    static func horizon(scale: Double) -> UIColor {
+        let base = horizonLinear * pow(2, -exposureOffset)
+        let c = base * min(scale, 1 / max(base.x, base.y, base.z))
         func enc(_ x: Double) -> CGFloat {
             let v = min(max(x, 0), 1)
             return CGFloat(v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1 / 2.4) - 0.055)
@@ -26,26 +33,31 @@ enum SkyLighting {
         return UIColor(red: enc(c.x), green: enc(c.y), blue: enc(c.z), alpha: 1)
     }
 
-    /// The six cube faces in SceneKit's order (+x, -x, +y, -y, +z, -z),
-    /// baked or, failing that, a simple gradient. `prefix` "cj_sky" is the
-    /// background, "cj_skyenv" the lighting environment (same sky, with a
-    /// hemisphere of sunlit fields below the horizon).
-    static func skyFaces(textures: WorldTextures, prefix: String = "cj_sky") -> [UIImage] {
+    /// The six cube faces in SceneKit's order (+x, -x, +y, -y, +z, -z)
+    /// and the scale they are stored at, baked or, failing that, a simple
+    /// gradient (at 1). `prefix` "cj_sky" is the background (at
+    /// 1 / `skyScale`), "cj_skyenv" the lighting environment (at 1: the same
+    /// sky without the background's photo look and with dimmer clouds, and
+    /// a hemisphere of sunlit fields below the horizon), which falls back to
+    /// the background.
+    static func skyFaces(textures: WorldTextures, prefix: String = "cj_sky") -> (faces: [UIImage], scale: Double) {
         let names = ["px", "nx", "py", "ny", "pz", "nz"].map { "\(prefix)_\($0)" }
         let baked = names.compactMap { textures.image($0) }
-        if baked.count == 6 { return baked }
+        if baked.count == 6 { return (baked, prefix == "cj_sky" ? 1 / skyScale : 1) }
         if prefix != "cj_sky" { return skyFaces(textures: textures) }
-        return gradientFaces(size: 64)
+        return (gradientFaces(size: 64), 1)
     }
 
     static func install(in scene: SCNScene, config: WorldConfig, textures: WorldTextures) -> SCNNode {
-        scene.background.contents = skyFaces(textures: textures)
-        scene.background.intensity = CGFloat(backgroundIntensity)
+        let sky = skyFaces(textures: textures)
+        scene.background.contents = sky.faces
+        scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
         // Image-based light from the sky (the rider's metals, clear coat
-        // and lenses rely on it too).
-        scene.lightingEnvironment.contents = skyFaces(textures: textures, prefix: "cj_skyenv")
-        // As bright as the visible sky, so reflections match it.
-        scene.lightingEnvironment.intensity = CGFloat(backgroundIntensity)
+        // and lenses rely on it too), at its stored radiance: the
+        // calibrated ambient (WorldDebugShots `litchart`).
+        let env = skyFaces(textures: textures, prefix: "cj_skyenv")
+        scene.lightingEnvironment.contents = env.faces
+        scene.lightingEnvironment.intensity = CGFloat(pow(2, -exposureOffset) / env.scale)
 
         // Aerial perspective: roughly 1 - exp(-d / 21 km) out to the far
         // hills, about half-way to the haze at 2.5 km on a summer afternoon.
@@ -57,7 +69,7 @@ enum SkyLighting {
         let light = SCNLight()
         light.type = .directional
         light.temperature = 5100
-        light.intensity = 1970
+        light.intensity = sunIntensity
         light.castsShadow = true
         light.shadowMode = .forward
         light.shadowColor = UIColor(white: 0, alpha: 1)
@@ -74,6 +86,43 @@ enum SkyLighting {
         orient(sun)
         scene.rootNode.addChildNode(sun)
         return sun
+    }
+
+    /// The key light at exposure 0.
+    static let sunIntensity: CGFloat = 1970
+
+    /// The share of the lane exposure's stops that the sky and the haze
+    /// take. A phone camera opening up for a lane's shade holds its sky
+    /// back (its tone curve rolls highlights off; ours, at white point 1,
+    /// clipped the pale sky at the horizon to white at the full +0.75 EV,
+    /// and left it washed out at half): the sky pales a touch, keeps its blue.
+    static let skyExposureShare: Double = 0.25
+
+    /// Exposure as light, for the camera opening up in a sunken lane
+    /// (`LaneExposure`): the sun, the image-based light and the leaves'
+    /// light through them brighten by 2^ev before the tone curve, the sky
+    /// and the haze by `skyExposureShare` of that, so the calibrated camera
+    /// (white point, `exposureOffset`) stays as it is and nothing
+    /// recompiles. `glow` are the materials whose emission stands for
+    /// light (argument `exposureGain`). Takes the installed levels as
+    /// exposure 0. Render thread, or before the scene is shown.
+    static func exposure(scene: SCNScene, sun: SCNLight, glow: [SCNMaterial]) -> (Float) -> Void {
+        let env = scene.lightingEnvironment.intensity, sky = scene.background.intensity
+        var share = skyExposureShare
+        #if DEBUG
+        // -laneSkyShare 1: the sky exposed with everything else.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-laneSkyShare"), i + 1 < args.count, let v = Double(args[i + 1]) { share = v }
+        #endif
+        return { [share] ev in
+            let k = pow(2, Double(ev)), kSky = pow(2, Double(ev) * share)
+            sun.intensity = sunIntensity * CGFloat(k)
+            scene.lightingEnvironment.intensity = env * CGFloat(k)
+            scene.background.intensity = sky * CGFloat(kSky)
+            scene.fogColor = horizon(scale: kSky)
+            let gain = NSNumber(value: k)
+            for m in glow { m.setValue(gain, forKey: "exposureGain") }
+        }
     }
 
     /// The sun's shadow quality for a tier. Also used live, from the render
@@ -104,7 +153,8 @@ enum SkyLighting {
         camera.whitePoint = 1.0
         camera.minimumExposure = -3
         camera.maximumExposure = 3
-        camera.vignettingIntensity = 0.22
+        // Light: phone and broadcast cameras correct most vignetting.
+        camera.vignettingIntensity = 0.14
         camera.vignettingPower = 0.55
         camera.saturation = 1.06
         camera.contrast = 0.05
