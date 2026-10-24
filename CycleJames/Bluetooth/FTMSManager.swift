@@ -21,11 +21,25 @@ final class FTMSManager: NSObject, ObservableObject {
     @Published var liveData = TrainerData()
     @Published var deviceName: String?
     @Published var hasControl = false
+    /// The trainer's answer to the last gradient it was sent (Set Indoor
+    /// Bike Simulation Parameters). A trainer that refuses it stays in its
+    /// previous mode, e.g. holding an ERG wattage, where its gears do
+    /// nothing.
+    @Published private(set) var slopeReply: SlopeReply = .none
 
     /// Discovered peripherals while scanning, keyed by identifier.
     @Published var discovered: [CBPeripheral] = []
 
     var onData: ((TrainerData) -> Void)?
+
+    enum SlopeReply: Equatable, Sendable {
+        /// No gradient answered since the trainer connected.
+        case none
+        case accepted
+        /// FTMS result code: 0x02 op code not supported, 0x03 invalid
+        /// parameter, 0x04 operation failed, 0x05 control not permitted.
+        case refused(code: UInt8)
+    }
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -205,6 +219,25 @@ final class FTMSManager: NSObject, ObservableObject {
         p.writeValue(data, for: char, type: .withResponse)
     }
 
+    /// A control-point response, [0x80, request opcode, result code], or
+    /// nil for anything else. Result 0x01 is success.
+    nonisolated static func controlPointResponse(_ data: Data) -> (opcode: UInt8, result: UInt8)? {
+        let b = [UInt8](data)
+        guard b.count >= 3, b[0] == 0x80 else { return nil }
+        return (b[1], b[2])
+    }
+
+    /// A few words for a refused command's result code, for the ride HUD.
+    nonisolated static func refusalReason(code: UInt8) -> String {
+        switch code {
+        case 0x02: return "not supported"
+        case 0x03: return "invalid value"
+        case 0x04: return "failed"
+        case 0x05: return "no control"
+        default: return String(format: "code 0x%02X", code)
+        }
+    }
+
     // MARK: Indoor Bike Data parsing
     // Standard FTMS Indoor Bike Data layout:
     //   uint16 flags (LE)
@@ -326,6 +359,7 @@ extension FTMSManager: CBCentralManagerDelegate {
         Task { @MainActor in
             self.connectionState = .disconnected
             self.hasControl = false
+            self.slopeReply = .none
             self.peripheral = nil
             self.bikeDataChar = nil
             self.controlPointChar = nil
@@ -372,10 +406,15 @@ extension FTMSManager: CBPeripheralDelegate {
                 let parsed = Self.parseIndoorBikeData(data)
                 self.liveData = parsed
                 self.onData?(parsed)
-            } else if uuid == Self.controlPointUUID {
-                // Response: [0x80, opcode, result]. result 0x01 = success.
-                if data.count >= 3, data[0] == 0x80, data[1] == Self.opRequestControl, data[2] == 0x01 {
-                    self.hasControl = true
+            } else if uuid == Self.controlPointUUID, let reply = Self.controlPointResponse(data) {
+                switch reply.opcode {
+                case Self.opRequestControl:
+                    if reply.result == 0x01 { self.hasControl = true }
+                case Self.opSetSimulationParameters:
+                    let answer: SlopeReply = reply.result == 0x01 ? .accepted : .refused(code: reply.result)
+                    if self.slopeReply != answer { self.slopeReply = answer }
+                default:
+                    break
                 }
             }
         }

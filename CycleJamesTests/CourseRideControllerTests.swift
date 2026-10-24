@@ -366,6 +366,24 @@ final class CourseRideControllerTests: XCTestCase {
         c.reset()
     }
 
+    /// A trainer that refuses the gradient shows why on the HUD until it
+    /// takes one again or drops.
+    @MainActor
+    func test_refusedGradient_isReported_untilAcceptedOrDisconnected() async throws {
+        let (c, _) = try await loadedController()
+        XCTAssertNil(c.trainerSlopeRefusal)
+        c.handleSlopeReply(.refused(code: 0x05))
+        XCTAssertEqual(c.trainerSlopeRefusal, "no control")
+        c.handleSlopeReply(.refused(code: 0x02))
+        XCTAssertEqual(c.trainerSlopeRefusal, "not supported")
+        c.handleSlopeReply(.accepted)
+        XCTAssertNil(c.trainerSlopeRefusal)
+        c.handleSlopeReply(.refused(code: 0x04))
+        c.handleSlopeReply(.none)
+        XCTAssertNil(c.trainerSlopeRefusal)
+        c.reset()
+    }
+
     /// trn-6: a trainer that sends power and cadence in separate
     /// notifications keeps its power rather than halving it.
     @MainActor

@@ -414,6 +414,7 @@ struct CourseRideHUD: View {
         TrainerStatusChip(
             connected: controller.trainerConnected,
             controlGranted: controller.trainerControlGranted,
+            slopeRefusal: controller.trainerSlopeRefusal,
             reconnecting: trainer.connectionState == .connecting || trainer.connectionState == .scanning,
             coasting: controller.awaitingTrainer,
             gradePct: controller.trainerGradePct,
@@ -681,20 +682,26 @@ struct SurfaceChip: View {
 
 /// Trainer connection, plus the gradient actually sent when the difficulty
 /// setting scales it. A trainer that powers the ride without having given
-/// this app control (another app holds it) shows amber: it isn't getting
-/// the gradient, so the climb feels flat.
+/// this app control (another app holds it), or that refuses the gradient,
+/// shows amber: it isn't getting the gradient, so the climb feels flat and
+/// its gears may do nothing.
 struct TrainerStatusChip: View {
     let connected: Bool
     /// The trainer accepted control, so it gets the gradient.
     var controlGranted = true
+    /// Why the trainer refused the last gradient, if it did.
+    var slopeRefusal: String? = nil
     let reconnecting: Bool
     /// The ride's trainer dropped and the rider is coasting until it's back.
     var coasting = false
     let gradePct: Double
     let difficultyPct: Int
 
+    /// Connected, but the gradient isn't reaching the trainer.
+    private var gradientBlocked: Bool { connected && (!controlGranted || slopeRefusal != nil) }
+
     private var dotColor: Color {
-        if connected { return controlGranted ? CJColors.success : CJColors.warning }
+        if connected { return gradientBlocked ? CJColors.warning : CJColors.success }
         return reconnecting ? CJColors.warning : Color.white.opacity(0.45)
     }
 
@@ -706,6 +713,7 @@ struct TrainerStatusChip: View {
     private var detail: String? {
         if connected {
             if !controlGranted { return "gradient not sent" }
+            if let slopeRefusal { return "gradient refused: \(slopeRefusal)" }
             return difficultyPct != 100 ? "\(CourseFormat.grade(gradePct)) at \(difficultyPct)%" : nil
         }
         return coasting ? "coasting" : "virtual power"
@@ -722,7 +730,7 @@ struct TrainerStatusChip: View {
                 if let detail {
                     Text(detail)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(connected && !controlGranted ? CJColors.warning : Color.white.opacity(0.7))
+                        .foregroundStyle(gradientBlocked ? CJColors.warning : Color.white.opacity(0.7))
                         .monospacedDigit()
                 }
             }
@@ -741,6 +749,8 @@ struct TrainerChipGallery: View {
             TrainerStatusChip(connected: true, reconnecting: false, gradePct: 12.4, difficultyPct: 100)
             TrainerStatusChip(connected: true, reconnecting: false, gradePct: 6.2, difficultyPct: 50)
             TrainerStatusChip(connected: true, controlGranted: false, reconnecting: false, gradePct: 12.4, difficultyPct: 50)
+            TrainerStatusChip(connected: true, slopeRefusal: FTMSManager.refusalReason(code: 0x05), reconnecting: false,
+                              gradePct: 12.4, difficultyPct: 100)
             TrainerStatusChip(connected: false, reconnecting: true, coasting: true, gradePct: 0, difficultyPct: 100)
             TrainerStatusChip(connected: false, reconnecting: false, gradePct: 0, difficultyPct: 100)
         }
