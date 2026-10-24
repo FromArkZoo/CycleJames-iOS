@@ -26,6 +26,12 @@ import QuartzCore
 ///                                   orbit and the return from it, then show
 ///                                   a contact sheet; `part` limits it to a
 ///                                   station list ("10,590"), blend or orbit
+///     -courseRideShots 15,4         once the world shows, ride on from
+///                                   -courseStartS and save a frame every 4 s
+///                                   (15 of them; named with s and the lane
+///                                   exposure) plus the exposure ten times a
+///                                   second (ride_exposure.txt), then show a
+///                                   contact sheet
 ///     -courseCameraSweep            ride every mode over the whole route
 ///                                   without drawing and report clearance
 ///     -courseHUD                    render-loop and camera numbers on screen
@@ -50,6 +56,7 @@ struct CourseScenePreviewHost: View {
         var shotPlan = false
         /// "all", a station list like "10,590", "blend" or "orbit".
         var shotPlanPart = "all"
+        var rideShots: (count: Int, every: Double)?
         var sweep = false
         var shotDir: String?
         var hud = false
@@ -86,6 +93,10 @@ struct CourseScenePreviewHost: View {
         // Takes an optional part rather than YES/NO.
         r.shotPlan = args.contains("-courseShotPlan")
         if let part = value("-courseShotPlan"), !part.hasPrefix("-") { r.shotPlanPart = part }
+        if let parts = value("-courseRideShots")?.split(separator: ","), parts.count == 2,
+           let n = Int(parts[0]), let every = Double(parts[1]) {
+            r.rideShots = (n, every)
+        }
         r.sweep = flag("-courseCameraSweep")
         r.shotDir = value("-courseShotDir")
         r.hud = flag("-courseHUD")
@@ -214,10 +225,10 @@ struct CourseScenePreviewHost: View {
             let pose = bundle?.route.pose(at: snap.s, lateral: snap.lateralM).position ?? .zero
             let live = coordinator?.liveQualitySteps.map(\.description).joined(separator: ", ") ?? ""
             hudText = String(
-                format: "playing %@  frames %d  s %.1f  run %@  mode %@\ncam-rider %.2f m  dy %.2f m%@",
+                format: "playing %@  frames %d  s %.1f  run %@  mode %@\ncam-rider %.2f m  dy %.2f m  exposure %+.2f EV%@",
                 (scnView?.isPlaying ?? false) ? "yes" : "no", coordinator?.frameCount ?? -1, snap.s,
                 snap.isRunning ? "yes" : "no", camera.rawValue, simd_distance(cam, pose), cam.y - pose.y,
-                live.isEmpty ? "" : "\nlive: " + live
+                coordinator?.exposureEV ?? 0, live.isEmpty ? "" : "\nlive: " + live
             )
             try? await Task.sleep(for: .milliseconds(250))
         }
@@ -241,6 +252,35 @@ struct CourseScenePreviewHost: View {
         if request.shotPlan, let scnView, let driver {
             await runShotPlan(view: scnView, driver: driver)
         }
+        if let ride = request.rideShots, let scnView, let driver {
+            await runRideShots(view: scnView, driver: driver, count: ride.count, every: ride.every)
+        }
+    }
+
+    /// The lane exposure on the move: rides on from the start, saving a
+    /// frame every `every` seconds and the exposure every tenth of one.
+    @MainActor
+    private func runRideShots(view: SCNView, driver: PreviewDriver, count: Int, every: Double) async {
+        driver.place(at: request.startS, arrivingIn: 0)
+        let start = CACurrentMediaTime()
+        var trace = "t_s s_m exposure_ev\n"
+        var taken: [(String, UIImage)] = []
+        for i in 0..<count {
+            let due = start + every * Double(i + 1)
+            while CACurrentMediaTime() < due {
+                try? await Task.sleep(for: .milliseconds(100))
+                trace += String(format: "%.2f %.2f %.4f\n", CACurrentMediaTime() - start, stateBox.read().s,
+                                coordinator?.exposureEV ?? .nan)
+            }
+            let name = String(format: "ride_%02d_s%.0f_ev%+.2f", i, stateBox.read().s, coordinator?.exposureEV ?? 0)
+            if let image = await Self.capture(view) {
+                taken.append((name, image))
+                save(image, name: name)
+            }
+            planStatus = name
+        }
+        write(trace, to: "ride_exposure.txt")
+        sheet = taken
     }
 
     @MainActor

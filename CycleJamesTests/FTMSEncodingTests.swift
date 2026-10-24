@@ -63,4 +63,47 @@ final class FTMSEncodingTests: XCTestCase {
         XCTAssertEqual(powerOnly.power, 300)
         XCTAssertNil(powerOnly.cadence)
     }
+
+    // Wattbike readings (B4CC1224-…): [sequence, 0x03, sub-message, payload…].
+    func test_wattbikeMessage_readsTheGear() {
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x2A, 0x03, 0xB6, 0x0E])), .gear(14))
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0xFF, 0x03, 0xB6, 0x01, 0x00, 0x00])), .gear(1))
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x00, 0x03, 0xB6, 0x16])), .gear(22))
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x00, 0x03, 0xB6, 0x18])), .gear(24))
+    }
+
+    func test_wattbikeMessage_readsShifterPresses() {
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x07, 0x03, 0xF0, 0x02, 0x01])), .shift(up: true))
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x08, 0x03, 0xF0, 0x04, 0x01])), .shift(up: false))
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x09, 0x03, 0xF0, 0x01, 0x01])), .other)
+    }
+
+    func test_wattbikeMessage_ignoresEverythingElse() {
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x01, 0x03, 0xB6])), .other)        // too short
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x01, 0x03, 0xB6, 0x00])), .other)  // gear 0
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x01, 0x03, 0xB6, 0xFF])), .other)  // junk
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x01, 0x03, 0xC3, 0x05])), .other)
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data([0x01, 0x02, 0xB6, 0x05])), .other)  // other message type
+        XCTAssertEqual(FTMSManager.wattbikeMessage(Data()), .other)
+    }
+
+    #if DEBUG
+    /// The DEBUG Wattbike log's FTMS fallback: the resistance level (bit 5)
+    /// and the cadence in half rpm, which the ride's parser skips or rounds.
+    func test_bikeFields_readTheResistanceLevel_andTheExactCadence() {
+        // Flags 0x0064: speed, cadence (151 = 75.5 rpm), resistance 12, power 250.
+        let full = WattbikeLog.bikeFields(Data([0x64, 0x00, 0xE8, 0x03, 0x97, 0x00, 0x0C, 0x00, 0xFA, 0x00]))
+        XCTAssertEqual(full.flags, 0x0064)
+        XCTAssertEqual(full.resistance, 12)
+        XCTAssertEqual(full.cadenceRpm ?? 0, 75.5, accuracy: 1e-9)
+        // Average speed, average cadence and distance before it: resistance -3.
+        let late = WattbikeLog.bikeFields(Data([0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA, 0x00,
+                                                0x00, 0x00, 0x00, 0x00, 0x00, 0xFD, 0xFF]))
+        XCTAssertEqual(late.resistance, -3)
+        XCTAssertEqual(late.cadenceRpm ?? 0, 85, accuracy: 1e-9)
+        // No resistance flagged, and a short record.
+        XCTAssertNil(WattbikeLog.bikeFields(Data([0x44, 0x02, 0xE8, 0x03, 0xAA, 0x00, 0xFA, 0x00, 0x8C])).resistance)
+        XCTAssertNil(WattbikeLog.bikeFields(Data([0x20, 0x00, 0x0C])).resistance)
+    }
+    #endif
 }

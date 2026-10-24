@@ -105,6 +105,15 @@ struct WorkoutDetailView: View {
             RideView()
                 .navigationBarBackButtonHidden(true)
         }
+        #if DEBUG
+        .onAppear {
+            // -screenshotWorkout <id> -rideGearDemo: straight into its ride, once.
+            if CourseLaunchArgs.consumeWorkoutRideGearDemo() {
+                ride.select(edited)
+                goToRide = true
+            }
+        }
+        #endif
         .sheet(isPresented: $showSaveAsCustomSheet) {
             SaveAsCustomSheet(source: workout, edited: edited) { name, description in
                 saveAsCustom(name: name, description: description)

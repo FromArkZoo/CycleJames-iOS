@@ -18,6 +18,9 @@
 #       e.g. shot /tmp/a.png 10 -- -coursePreview koppenberg -courseStartS 450
 #   scripts/dev/cj-build.sh shutdown
 #       Shuts the preview simulator down to free memory.
+#   scripts/dev/cj-build.sh run <command> [args...]
+#       Runs any other heavy job (a texture bake, a course build) under the
+#       same lock, e.g. run uv run --script scripts/courses/textures/bake_materials.py --only sky
 set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # Inside the repo, not /tmp: sandboxed callers may each see a private /tmp.
@@ -116,6 +119,12 @@ case "$cmd" in
     acquire
     udid=$(sim_udid); [[ -n "$udid" ]] && xcrun simctl shutdown "$udid" 2>/dev/null
     exit 0 ;;
+  run)
+    [[ $# -gt 0 ]] || { echo "usage: $0 run <command> [args...]" >&2; exit 64; }
+    acquire
+    cd "$REPO" || exit 1
+    "$@"
+    exit $? ;;
   *)
-    echo "usage: $0 build [filter] | test [TestClass] | shot <out.png> [wait] [-- args] | shutdown" >&2; exit 64 ;;
+    echo "usage: $0 build [filter] | test [TestClass] | shot <out.png> [wait] [-- args] | shutdown | run <cmd>" >&2; exit 64 ;;
 esac

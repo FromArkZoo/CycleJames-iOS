@@ -9,6 +9,14 @@ final class FTMSManager: NSObject, ObservableObject {
     private static let serviceUUID = CBUUID(string: "1826")
     private static let indoorBikeDataUUID = CBUUID(string: "2AD2")
     private static let controlPointUUID = CBUUID(string: "2AD9")
+    /// Wattbike's own service (Atom, Atom Next Gen, AtomX). Its readings
+    /// characteristic carries the gear the bike's shifters select, which
+    /// FTMS has no field for. Other trainers don't have it.
+    private static let wattbikeServiceUUID = CBUUID(string: "B4CC1223-BC02-4CAE-ADB9-1217AD2860D1")
+    private static let wattbikeReadingsUUID = CBUUID(string: "B4CC1224-BC02-4CAE-ADB9-1217AD2860D1")
+    /// Highest gear a report may carry: 22 on the linear presets, 24 on the
+    /// 12-speed compact ones, with headroom; 0 and junk are dropped.
+    nonisolated static let maxWattbikeGear = 30
 
     // Control point opcodes.
     private static let opRequestControl: UInt8 = 0x00
@@ -26,6 +34,17 @@ final class FTMSManager: NSObject, ObservableObject {
     /// previous mode, e.g. holding an ERG wattage, where its gears do
     /// nothing.
     @Published private(set) var slopeReply: SlopeReply = .none
+    /// True once the trainer has shown it reports gears (notifications from
+    /// the Wattbike's readings characteristic are on, or a gear arrived), so
+    /// a ride can show the gear (a dash until the first report). False for
+    /// other trainers.
+    @Published private(set) var reportsGears = false
+    /// The gear the Wattbike last reported, 1 = easiest; nil until it sends
+    /// one, and after a disconnect.
+    @Published private(set) var gear: Int?
+    /// Each shifter press the Wattbike reports (true = up, harder), including
+    /// one past either end of the range that leaves the gear as it was.
+    let shifterPresses = PassthroughSubject<Bool, Never>()
 
     /// Discovered peripherals while scanning, keyed by identifier.
     @Published var discovered: [CBPeripheral] = []
@@ -39,6 +58,16 @@ final class FTMSManager: NSObject, ObservableObject {
         /// FTMS result code: 0x02 op code not supported, 0x03 invalid
         /// parameter, 0x04 operation failed, 0x05 control not permitted.
         case refused(code: UInt8)
+    }
+
+    /// One notification on the Wattbike readings characteristic.
+    enum WattbikeMessage: Equatable, Sendable {
+        /// Current gear (sub-message 0xB6), 1 = easiest.
+        case gear(Int)
+        /// A shifter press (sub-message 0xF0): 0x02 up (harder), 0x04 down.
+        case shift(up: Bool)
+        /// Anything else (0xC3, 0xCE, other message types): DEBUG log only.
+        case other
     }
 
     private var central: CBCentralManager!
@@ -93,6 +122,7 @@ final class FTMSManager: NSObject, ObservableObject {
         connectionState = .connecting
         deviceName = peripheral.name
         central.connect(peripheral, options: nil)
+        clearGears()
     }
 
     func disconnect() {
@@ -107,6 +137,13 @@ final class FTMSManager: NSObject, ObservableObject {
         hasControl = false
         connectionState = .disconnected
         deviceName = nil
+        clearGears()
+    }
+
+    /// Forgets the gear when the link to the trainer goes (or a new one starts).
+    private func clearGears() {
+        if gear != nil { gear = nil }
+        if reportsGears { reportsGears = false }
     }
 
     /// Try to reconnect to the most recently paired trainer. Used by the
@@ -238,6 +275,69 @@ final class FTMSManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: Wattbike gears
+
+    /// Parses a notification on the Wattbike readings characteristic:
+    /// [sequence, message type, sub-message, payload…]. Message type 0x03
+    /// carries the current gear (sub-message 0xB6, payload [gear]) and
+    /// shifter presses (0xF0, payload [0x02 up | 0x04 down, count]). Layout
+    /// as read by QZ (qdomyos-zwift) and sent by the SmartSpin2k and
+    /// ftms_emu Atom emulators for Zwift; anything else is `.other`.
+    nonisolated static func wattbikeMessage(_ data: Data) -> WattbikeMessage {
+        let b = [UInt8](data)
+        guard b.count >= 4, b[1] == 0x03 else { return .other }
+        switch b[2] {
+        case 0xB6:
+            let gear = Int(b[3])
+            return (1...maxWattbikeGear).contains(gear) ? .gear(gear) : .other
+        case 0xF0:
+            switch b[3] {
+            case 0x02: return .shift(up: true)
+            case 0x04: return .shift(up: false)
+            default: return .other
+            }
+        default:
+            return .other
+        }
+    }
+
+    /// Notifications on from every Wattbike characteristic that sends them
+    /// (as QZ does; the DEBUG log records what each sends). `reportsGears`
+    /// turns on once the readings characteristic confirms
+    /// (`didUpdateNotificationStateFor`), so a refused subscription shows no
+    /// badge rather than a dash that never fills.
+    private func subscribeWattbike(_ service: CBService, on peripheral: CBPeripheral) {
+        let chars = service.characteristics ?? []
+        #if DEBUG
+        WattbikeLog.service(chars)
+        #endif
+        for char in chars where char.properties.contains(.notify) || char.properties.contains(.indicate) {
+            peripheral.setNotifyValue(true, for: char)
+        }
+        // If the firmware answers a read with the current gear, the badge
+        // has it before the first shift; harmless if it doesn't.
+        if let readings = chars.first(where: { $0.uuid == Self.wattbikeReadingsUUID }),
+           readings.properties.contains(.read) {
+            peripheral.readValue(for: readings)
+        }
+    }
+
+    private func handleWattbikeReading(_ data: Data) {
+        let message = Self.wattbikeMessage(data)
+        #if DEBUG
+        WattbikeLog.packet(data, from: Self.wattbikeReadingsUUID, parsed: message)
+        #endif
+        switch message {
+        case .gear(let g):
+            if !reportsGears { reportsGears = true }
+            if gear != g { gear = g }
+        case .shift(let up):
+            shifterPresses.send(up)
+        case .other:
+            break
+        }
+    }
+
     // MARK: Indoor Bike Data parsing
     // Standard FTMS Indoor Bike Data layout:
     //   uint16 flags (LE)
@@ -341,7 +441,8 @@ extension FTMSManager: CBCentralManagerDelegate {
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         Task { @MainActor in
             self.connectionState = .connected
-            peripheral.discoverServices([Self.serviceUUID])
+            // FTMS, plus Wattbike's own service for the gear when the trainer has it.
+            peripheral.discoverServices([Self.serviceUUID, Self.wattbikeServiceUUID])
         }
     }
 
@@ -360,6 +461,7 @@ extension FTMSManager: CBCentralManagerDelegate {
             self.connectionState = .disconnected
             self.hasControl = false
             self.slopeReply = .none
+            self.clearGears()
             self.peripheral = nil
             self.bikeDataChar = nil
             self.controlPointChar = nil
@@ -374,8 +476,17 @@ extension FTMSManager: CBCentralManagerDelegate {
 extension FTMSManager: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         Task { @MainActor in
-            guard let svc = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else { return }
-            peripheral.discoverCharacteristics([Self.indoorBikeDataUUID, Self.controlPointUUID], for: svc)
+            let services = peripheral.services ?? []
+            #if DEBUG
+            WattbikeLog.services(services.map(\.uuid), device: peripheral.name, wattbike: Self.wattbikeServiceUUID)
+            #endif
+            if let svc = services.first(where: { $0.uuid == Self.serviceUUID }) {
+                peripheral.discoverCharacteristics([Self.indoorBikeDataUUID, Self.controlPointUUID], for: svc)
+            }
+            if let svc = services.first(where: { $0.uuid == Self.wattbikeServiceUUID }) {
+                // All of them: the DEBUG log records what each sends.
+                peripheral.discoverCharacteristics(nil, for: svc)
+            }
         }
     }
 
@@ -383,6 +494,10 @@ extension FTMSManager: CBPeripheralDelegate {
                                 didDiscoverCharacteristicsFor service: CBService,
                                 error: Error?) {
         Task { @MainActor in
+            if service.uuid == Self.wattbikeServiceUUID {
+                self.subscribeWattbike(service, on: peripheral)
+                return
+            }
             for char in service.characteristics ?? [] {
                 if char.uuid == Self.indoorBikeDataUUID {
                     self.bikeDataChar = char
@@ -397,15 +512,38 @@ extension FTMSManager: CBPeripheralDelegate {
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral,
+                                didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                                error: Error?) {
+        let uuid = characteristic.uuid
+        let notifying = characteristic.isNotifying
+        let id = peripheral.identifier
+        #if DEBUG
+        let problem = error?.localizedDescription
+        #endif
+        Task { @MainActor in
+            #if DEBUG
+            WattbikeLog.notificationState(uuid, notifying: notifying, error: problem)
+            #endif
+            // A late answer after a disconnect mustn't bring the badge back.
+            guard uuid == Self.wattbikeReadingsUUID, notifying, self.peripheral?.identifier == id else { return }
+            if !self.reportsGears { self.reportsGears = true }
+        }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral,
                                 didUpdateValueFor characteristic: CBCharacteristic,
                                 error: Error?) {
         guard let data = characteristic.value else { return }
         let uuid = characteristic.uuid
+        let serviceUUID = characteristic.service?.uuid
         Task { @MainActor in
             if uuid == Self.indoorBikeDataUUID {
                 let parsed = Self.parseIndoorBikeData(data)
                 self.liveData = parsed
                 self.onData?(parsed)
+                #if DEBUG
+                WattbikeLog.bikeData(data, parsed: parsed)
+                #endif
             } else if uuid == Self.controlPointUUID, let reply = Self.controlPointResponse(data) {
                 switch reply.opcode {
                 case Self.opRequestControl:
@@ -416,6 +554,12 @@ extension FTMSManager: CBPeripheralDelegate {
                 default:
                     break
                 }
+            } else if uuid == Self.wattbikeReadingsUUID {
+                self.handleWattbikeReading(data)
+            } else if serviceUUID == Self.wattbikeServiceUUID {
+                #if DEBUG
+                WattbikeLog.packet(data, from: uuid, parsed: nil)
+                #endif
             }
         }
     }

@@ -125,6 +125,20 @@ struct RideView: View {
             OrientationLock.shared.lock(.portrait)
             UIApplication.shared.isIdleTimerDisabled = false
         }
+        #if DEBUG
+        .task {
+            // -rideGearDemo: a Wattbike's shifts (no Wattbike in the
+            // Simulator), in Free Ride unless `erg` follows it.
+            guard let mode = CourseLaunchArgs.workoutRideGearDemo else { return }
+            if CourseLaunchArgs.rideLandscape { OrientationLock.shared.lock(.landscapeRight) }
+            ride.setMode(mode)
+            if let gear = CourseLaunchArgs.rideGear {
+                GearDemo.hold(ride.gears, gear: gear, flash: CourseLaunchArgs.rideGearFlash)
+            } else {
+                await GearDemo.run(ride.gears)
+            }
+        }
+        #endif
         .onChange(of: ride.state) { _, new in
             if new == .completed && !showCompleteOverlay {
                 // Workout finished — persist and show summary (natural or Save & Stop).

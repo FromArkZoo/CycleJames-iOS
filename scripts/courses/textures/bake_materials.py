@@ -4,13 +4,15 @@
 # ///
 """Bake the generic material textures for the CycleJames 3D courses.
 
-    uv run --script scripts/courses/textures/bake_materials.py [--only cobbles,sky,...]
+    uv run --script scripts/courses/textures/bake_materials.py [--only ground,sky,...]
 
 Everything is procedural (no photos, no downloaded assets) and tiles
 seamlessly. Output goes to CycleJames/Resources/CourseTextures/, which the
 app bundle flattens, so every file name starts with `cj_`. The Swift side
 (CycleJames/Courses/Scene/World/WorldMaterials.swift) relies on the names,
 the real-world tile sizes and the channel layouts documented per texture.
+The setts (bake_setts.py) and the roofs (bake_buildings.py) have their own
+scripts.
 
 Data textures ("*_detail.rgbz", see texlib.save_raw) pack: R, G = tangent-space normal x, y
 (+x along u, +y along v = down the image), B = roughness, A = height
@@ -19,6 +21,7 @@ Data textures ("*_detail.rgbz", see texlib.save_raw) pack: R, G = tangent-space 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 import time
@@ -28,8 +31,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from texlib import (blur, fbm, linear_to_srgb, normal_xy, rng, save_gray, save_raw, save_rgb, save_rgba,  # noqa: E402
-                    smoothstep, srgb_to_linear, stamp, to_u8, value_noise, voronoi)
+from texlib import (blur, fbm, linear_to_srgb, normal_xy, rng, save_gray, save_raw, save_rgb, save_rgb_dithered,  # noqa: E402
+                    save_rgba, smoothstep, srgb_to_linear, stamp, to_u8, value_noise, voronoi)
 
 ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "CycleJames/Resources/CourseTextures"
@@ -45,143 +48,6 @@ def detail_png(path: Path, height: np.ndarray, strength: float, rough: np.ndarra
     nx, ny, _ = normal_xy(height, strength)
     rgba = np.stack([nx * 0.5 + 0.5, ny * 0.5 + 0.5, rough, height], -1)
     save_raw(path, rgba)
-
-
-# ---------------------------------------------------------------- cobbles
-
-def bake_cobbles(size: int = 1024) -> None:
-    """cj_cobble_albedo.jpg + cj_cobble_detail.rgbz.
-
-    One tile is 1.08 m across the road (u) by 1.08 m along it (v): seven
-    rough courses of setts laid across the lane, eight setts per course,
-    each about 13 cm across by 15 cm along travel but irregular: split
-    stones with rounded, chipped outlines, domed tops worn to different
-    heights, slightly turned, in courses that wander, with sandy grit in
-    joints of uneven width. Mostly grey and blue-grey with some brown, ochre
-    and reddish stones (the Koppenberg's porphyry); the app desaturates and
-    cools them per course (CourseArt.SettLook) for the blue-grey setts of
-    the Kwaremont and the Paterberg. Values are stored as sRGB.
-    """
-    r = rng(11)
-    tile_m = 1.08
-    ppm = size / tile_m
-    n_rows, n_cols = 7, 8
-    ys = np.arange(size, dtype=np.float32)[:, None]
-    xs = np.arange(size, dtype=np.float32)
-
-    def partition(total: float, n: int, jitter: float) -> np.ndarray:
-        w = 1 + r.uniform(-jitter, jitter, n)
-        w = w / w.sum() * total
-        return np.concatenate([[0], np.cumsum(w)])
-
-    # Course boundaries wander across the road (periodic in u, so the
-    # tile still wraps); the last wraps onto the first.
-    row_edges = partition(size, n_rows, 0.16)
-    bounds = []
-    for k in range(n_rows):
-        k1, k2 = int(r.integers(1, 3)), int(r.integers(3, 7))
-        wob = (np.sin(2 * math.pi * k1 * xs / size + r.uniform(0, 6.28)) * r.uniform(0.004, 0.009)
-               + np.sin(2 * math.pi * k2 * xs / size + r.uniform(0, 6.28)) * r.uniform(0.001, 0.004)) * ppm
-        bounds.append(row_edges[k] + wob)
-    bounds.append(bounds[0] + size)
-    B = np.stack(bounds).astype(np.float32)               # (rows + 1, size)
-    Y = (ys - B[0][None, :]) % size + B[0][None, :]       # row 0 starts at its own boundary
-    row = np.zeros((size, size), np.int32)
-    for k in range(1, n_rows):
-        row += (Y >= B[k][None, :]).astype(np.int32)
-
-    # Mostly grey and blue-grey, some brown, ochre and reddish (sRGB).
-    palette = np.array([
-        [0.40, 0.405, 0.41], [0.35, 0.355, 0.36], [0.365, 0.38, 0.405], [0.315, 0.33, 0.355],
-        [0.41, 0.425, 0.45], [0.26, 0.27, 0.285], [0.345, 0.355, 0.35],
-        [0.415, 0.39, 0.355], [0.44, 0.405, 0.345], [0.42, 0.365, 0.34],
-    ], np.float32)
-    weights = np.array([0.15, 0.13, 0.15, 0.12, 0.07, 0.08, 0.06, 0.09, 0.08, 0.07])
-    grain = fbm(size, size, 64, 4, r) - 0.5
-    edge_wob = fbm(size, size, 16, 3, r) - 0.5
-    chip = value_noise(size, size, 150, 150, r) - 0.5
-    bumps = fbm(size, size, 36, 3, r) - 0.5
-    speck = value_noise(size, size, 300, 300, r)
-    mottle = fbm(size, size, 14, 3, r) - 0.5
-    h = np.zeros((size, size), np.float32)
-    alb = np.zeros((size, size, 3), np.float32)
-    rough = np.zeros((size, size), np.float32)
-    inside = np.zeros((size, size), np.float32)
-    for k in range(n_rows):
-        m = row == k
-        ly_all = Y - B[k][None, :]
-        sh_all = (B[k + 1] - B[k])[None, :]
-        col_edges = partition(size, n_cols, 0.3)
-        offset = r.uniform(0, size)
-        u = (xs[None, :] - offset) % size
-        idx = np.broadcast_to(np.clip(np.searchsorted(col_edges, u, side="right") - 1, 0, n_cols - 1), (size, size))
-        n = n_cols
-        # Per-stone shape and colour.
-        cx_jit = r.uniform(-0.005, 0.005, n) * ppm
-        cy_jit = r.uniform(-0.006, 0.006, n) * ppm
-        rot = r.uniform(-0.1, 0.1, n)
-        jw = r.uniform(0.003, 0.0055, n) * ppm            # joint half-gap
-        shrink_x = r.uniform(0.0, 0.004, n) * ppm
-        shrink_y = r.uniform(0.0, 0.006, n) * ppm
-        corner = r.uniform(0.018, 0.04, n) * ppm
-        shoulder_r = r.uniform(0.016, 0.03, n) * ppm
-        top = r.uniform(0.72, 1.0, n)
-        dome_k = r.uniform(0.2, 0.45, n)
-        tilt_x = r.uniform(-0.14, 0.14, n)
-        tilt_y = r.uniform(-0.14, 0.14, n)
-        cols = palette[r.choice(len(palette), n, p=weights / weights.sum())]
-        cols = cols * r.uniform(0.9, 1.1, (n, 1))
-        wear = r.uniform(0.0, 1.0, n)
-        sw = (col_edges[1:] - col_edges[:-1])[idx]
-        lx = u - col_edges[:-1][idx] - sw / 2 - cx_jit[idx]
-        ly = ly_all - sh_all / 2 - cy_jit[idx]
-        c, s_ = np.cos(rot[idx]), np.sin(rot[idx])
-        qx = c * lx + s_ * ly
-        qy = -s_ * lx + c * ly
-        hx = sw / 2 - jw[idx] - shrink_x[idx] - corner[idx]
-        hy = sh_all / 2 - jw[idx] - shrink_y[idx] - corner[idx]
-        dx = np.abs(qx) - hx
-        dy = np.abs(qy) - hy
-        sdf = np.sqrt(np.maximum(dx, 0) ** 2 + np.maximum(dy, 0) ** 2) + np.minimum(np.maximum(dx, dy), 0) - corner[idx]
-        # Split-stone outlines: wobbling, chipped.
-        sdf = sdf + edge_wob * 0.008 * ppm + chip * 0.004 * ppm
-        e = np.clip(-sdf / shoulder_r[idx], 0, 1)
-        shoulder = 1 - (1 - e) ** 2
-        cnx = qx / np.maximum(sw / 2, 1)
-        cny = qy / np.maximum(sh_all / 2, 1)
-        crown = 1 - dome_k[idx] * (cnx ** 2 + cny ** 2)
-        hh = shoulder * crown * top[idx] + (tilt_x[idx] * cnx + tilt_y[idx] * cny) * 0.1 * shoulder
-        hh = hh + (grain * 0.05 + bumps * 0.16) * shoulder
-        base = cols[idx]
-        tone = 1 + mottle[..., None] * 0.18 + (speck[..., None] - 0.5) * 0.18
-        # Grime towards the edges, a polish on worn tops.
-        edge_dark = 0.8 + 0.2 * smoothstep(0.0, 0.6, shoulder)
-        polish = 1 + 0.08 * wear[idx][..., None] * (np.clip(hh, 0, 1)[..., None] ** 3)
-        stone = base * tone * edge_dark[..., None] * polish
-        rr = 0.66 - 0.16 * wear[idx] * np.clip(hh, 0, 1) ** 2 + grain * 0.1
-        h = np.where(m, hh, h)
-        alb = np.where(m[..., None], stone, alb)
-        rough = np.where(m, rr, rough)
-        inside = np.where(m, smoothstep(0.0015 * ppm, -0.0015 * ppm, sdf), inside)
-
-    # Joints: sandy grit, darker soil in places, a little moss.
-    sand = np.array([0.43, 0.40, 0.345], np.float32)
-    soil = np.array([0.25, 0.225, 0.19], np.float32)
-    moss = np.array([0.21, 0.25, 0.11], np.float32)
-    jn = fbm(size, size, 28, 4, r)
-    soily = smoothstep(0.5, 0.8, fbm(size, size, 9, 3, r))
-    mossy = smoothstep(0.72, 0.88, fbm(size, size, 6, 3, r)) * 0.55
-    jcol = sand[None, None] * (0.8 + 0.35 * jn[..., None]) * (0.85 + 0.3 * speck[..., None])
-    jcol = jcol + (soil - jcol) * (soily * 0.6)[..., None]
-    jcol = jcol + (moss - jcol) * mossy[..., None]
-    j = 1 - inside
-    alb = alb * (1 - j[..., None]) + jcol * j[..., None]
-    # Grit sits a little up the joints; the stones stand proud of it.
-    grit = 0.04 + 0.06 * jn
-    height = np.clip(np.maximum(h, grit), 0, 1)
-    rough = rough * (1 - j) + 0.95 * j
-    save_rgb(OUT / "cj_cobble_albedo.jpg", np.clip(alb, 0, 1), 92)
-    detail_png(OUT / "cj_cobble_detail.png", height, 11.0, np.clip(rough, 0.3, 1))
 
 
 # ---------------------------------------------------------------- asphalt
@@ -221,10 +87,12 @@ def blade_sprite(length: int, width: int, angle: float) -> np.ndarray:
 
 
 def bake_ground(size: int = 1024) -> None:
-    """cj_ground_detail.png, 2.5 m tile. Four height patterns, one per
-    channel: R grass, G crop stubble / rows, B leaf litter and soil,
-    A gravel. Mean about 0.5; the terrain shader uses them for both
-    brightness modulation and normals."""
+    """cj_ground_detail.rgbz, 2.5 m tile. Four height patterns, one per
+    channel: R grass, G crop stubble and straw, B leaf litter and soil,
+    A gravel. The terrain shader uses them for both brightness modulation
+    and normals, and fades them to their means (printed here; keep
+    `WorldShaders.terrainSurface` in step) where a pixel spans many
+    texels."""
     r = rng(31)
     # Grass: thousands of thin blades in mostly random directions.
     grass = fbm(size, size, 32, 3, r) * 0.35
@@ -237,13 +105,30 @@ def bake_ground(size: int = 1024) -> None:
         stamp(canvas, alpha, val, sp, int(r.integers(0, size)), int(r.integers(0, size)), wrap=True)
     grass = canvas[..., 0]
 
-    # Crop stubble: rows every ~15 cm along v, with stalk stubs.
-    ppm = size / 2.5
-    yy = np.arange(size, dtype=np.float32)[:, None]
-    rows = 0.5 + 0.5 * np.cos(yy / (0.15 * ppm) * 2 * math.pi * (size / (0.15 * ppm) // 1) / (size / (0.15 * ppm)))
-    stubs = smoothstep(0.78, 0.95, value_noise(size, size, 400, 400, r))
-    crop = np.clip(0.25 + 0.35 * rows ** 3 + 0.5 * stubs * rows + 0.2 * (fbm(size, size, 16, 3, r) - 0.5), 0, 1)
-    crop = np.broadcast_to(crop, (size, size)).astype(np.float32)
+    # Crop stubble and straw seen from above: cut-stalk ends as dots, loose
+    # straw lying at random angles, soil between. Nothing periodic: rows
+    # every 15 cm along the world's z aliased into converging bands across
+    # every field seen from the road. Mean 0.37, as the rows had, so fields
+    # keep their brightness. Drawn from its own generator; the shared one is
+    # moved past the draws the old rows took, so the litter and gravel
+    # channels below keep their bytes.
+    value_noise(size, size, 400, 400, r)
+    fbm(size, size, 16, 3, r)
+    rc = rng(37)
+    soil = 0.18 + 0.22 * fbm(size, size, 20, 4, rc)
+    canvas = soil[..., None].copy()
+    alpha = np.zeros((size, size), np.float32)
+    for _ in range(14000):  # stalk ends, 5-7 mm
+        d = int(rc.uniform(2, 4))
+        yy, xx = np.mgrid[0:d * 2 + 1, 0:d * 2 + 1] - d
+        sp = np.clip(1.2 - np.hypot(yy, xx) / d, 0, 1).astype(np.float32)
+        val = np.full(sp.shape + (1,), rc.uniform(0.52, 0.85), np.float32)
+        stamp(canvas, alpha, val, sp, int(rc.integers(0, size)), int(rc.integers(0, size)), wrap=True)
+    for _ in range(2600):  # loose straw
+        sp = blade_sprite(int(rc.uniform(20, 46)), 2, rc.uniform(0, math.pi))
+        val = np.full(sp.shape + (1,), rc.uniform(0.6, 0.9), np.float32)
+        stamp(canvas, alpha, val, sp, int(rc.integers(0, size)), int(rc.integers(0, size)), wrap=True)
+    crop = np.clip(canvas[..., 0], 0, 1)
 
     # Leaf litter over soil.
     soil = fbm(size, size, 24, 4, r) * 0.4
@@ -264,6 +149,7 @@ def bake_ground(size: int = 1024) -> None:
 
     rgba = np.stack([grass, crop, litter, gravel], -1)
     save_raw(OUT / "cj_ground_detail.rgbz", rgba)
+    print("ground detail channel means", np.round(to_u8(rgba).reshape(-1, 4).mean(0) / 255, 3))
 
 
 # ---------------------------------------------------------------- foliage
@@ -418,57 +304,258 @@ def bake_foliage(size: int = 1024) -> None:
     save_rgba(OUT / "cj_foliage.png", atlas)
 
 
-def bake_grass(w: int = 512, h: int = 512) -> None:
-    """cj_grass.png: two grass-tuft cards side by side (256 x 512 each),
-    blades rooted on the bottom edge. Left: green verge grass; right: taller
-    late-summer grass with seed heads."""
+def _blade(d: ImageDraw.ImageDraw, bx: float, by: float, height: float, lean: float, width: float,
+           base_col, tip_col, r, steps: int = 10, dry_tip: bool = False) -> tuple:
+    """One grass blade from (bx, by) up, tapering and leaning; returns its tip."""
+    pts_l, pts_r = [], []
+    for k in range(steps + 1):
+        t = k / steps
+        x, y = bx + lean * t * t, by - t * height
+        wd = width * (1 - t) ** 0.9 / 2
+        pts_l.append((x - wd, y)); pts_r.append((x + wd, y))
+    for k in range(steps):
+        t = (k + 0.5) / steps
+        c = base_col + (tip_col - base_col) * t
+        if dry_tip and t > 0.75:
+            c = np.array([0.72, 0.64, 0.40])
+        c = c * r.uniform(0.88, 1.12)
+        col = tuple(int(np.clip(v, 0, 1) * 255) for v in c) + (255,)
+        d.polygon([pts_l[k], pts_r[k], pts_r[k + 1], pts_l[k + 1]], fill=col)
+    return pts_l[-1]
+
+
+def _leaf(d: ImageDraw.ImageDraw, x: float, y: float, length: float, width: float, ang: float, col, serrate: int = 0) -> None:
+    """A pointed leaf from (x, y) along `ang` (radians, 0 = right, image y down)."""
+    pts = []
+    for i in range(0, 21):
+        t = i / 20
+        w = math.sin(math.pi * t) ** 0.8 * (1 - 0.35 * t) * width / 2
+        if serrate:
+            w *= 1 + 0.18 * (math.sin(t * serrate * 2 * math.pi) > 0)
+        pts.append((t, w))
+    poly = [(x + math.cos(ang) * t * length - math.sin(ang) * w, y + math.sin(ang) * t * length + math.cos(ang) * w) for t, w in pts]
+    poly += [(x + math.cos(ang) * t * length + math.sin(ang) * w, y + math.sin(ang) * t * length - math.cos(ang) * w) for t, w in reversed(pts)]
+    d.polygon(poly, fill=tuple(int(np.clip(v, 0, 1) * 255) for v in col) + (255,))
+
+
+GREEN_BASE, GREEN_TIP = np.array([0.16, 0.26, 0.07]), np.array([0.42, 0.55, 0.20])
+DRY_BASE, DRY_TIP = np.array([0.42, 0.38, 0.18]), np.array([0.70, 0.64, 0.40])
+
+
+def _tuft_cell(d, x0, y1, cw, ch, s, r, n, dry_share, seed_heads, tall=1.0):
+    """Grass blades rooted on the bottom edge of a cell (x0, top y1 - ch)."""
+    for _ in range(n):
+        bx = x0 + r.uniform(0.15, 0.85) * cw
+        height = r.uniform(0.35, 0.95) * ch * tall
+        lean = r.normal(0, 0.25) * height
+        dry = r.random() < dry_share
+        tip = _blade(d, bx, y1, height, lean, r.uniform(3, 7) * s, DRY_BASE if dry else GREEN_BASE,
+                     DRY_TIP if dry else GREEN_TIP, r, dry_tip=not dry and r.random() < 0.35)
+        if seed_heads and r.random() < 0.35:
+            x, y = tip
+            for _ in range(9):
+                ox, oy = r.normal(0, 4 * s), r.uniform(0, 30 * s)
+                rr = 2.5 * s
+                d.ellipse([x + ox - rr, y + oy - rr, x + ox + rr, y + oy + rr], fill=(196, 182, 130, 255))
+
+
+def _stems_with_heads(d, x0, y1, cw, ch, s, r, n, head) -> None:
+    """Flower stems rising from a little grass, each ending in `head(x, y)`."""
+    _tuft_cell(d, x0, y1, cw, ch * 0.45, s, r, 40, 0.25, False)
+    for _ in range(n):
+        bx = x0 + r.uniform(0.2, 0.8) * cw
+        height = r.uniform(0.55, 0.92) * ch
+        tip = _blade(d, bx, y1, height, r.normal(0, 0.12) * height, 3 * s, np.array([0.20, 0.30, 0.10]),
+                     np.array([0.30, 0.40, 0.14]), r, steps=8)
+        for _ in range(2):   # a few stem leaves
+            t = r.uniform(0.2, 0.6)
+            _leaf(d, bx, y1 - t * height, r.uniform(14, 26) * s, r.uniform(4, 7) * s,
+                  -math.pi / 2 + r.choice([-1, 1]) * r.uniform(0.6, 1.1), np.array([0.18, 0.30, 0.09]) * r.uniform(0.85, 1.1))
+        head(*tip)
+
+
+def bake_grass(size: int = 1024) -> None:
+    """cj_grass.png, 1024 x 1024, straight alpha. Top half: four tuft cards of
+    256 x 512, blades rooted on the bottom edge: green verge grass; false
+    oat-grass with seed heads; a dry, yellowed tuft; a nettle clump. Below
+    (y 512-895): four cards of 256 x 384: wild carrot and hogweed (white
+    umbels); knapweed and yarrow; tansy (yellow); hart's-tongue and male
+    fern. Two strips across the full width, tileable in u, for the sward
+    ribbons on the verge: y 912-967 mown (short blades, clover and plantain
+    at the base), y 968-1023 rough (long, dry tips, seed heads), each with
+    a ragged foot; a ribbon's strip spans its height, 0.8 m of ribbon per u
+    (see `VegetationBuilder.swardRibbon`).
+    The layout is mirrored in `VegetationBuilder.GrassCell`."""
     s = 2
-    img = Image.new("RGBA", (w * s, h * s), (0, 0, 0, 0))
+    W = size * s
+    img = Image.new("RGBA", (W, W), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     r = rng(51)
-    for variant in range(2):
-        x_off = variant * (w // 2) * s
-        n = 150 if variant == 0 else 120
+    cw = 256 * s
+    # Tufts.
+    _tuft_cell(d, 0, 512 * s, cw, 512 * s, s, r, 150, 0.12, False)
+    _tuft_cell(d, cw, 512 * s, cw, 512 * s, s, r, 120, 0.4, True)
+    _tuft_cell(d, 2 * cw, 512 * s, cw, 512 * s, s, r, 130, 0.7, True, tall=0.9)
+    # Nettles: upright stems, opposite pairs of dark serrated leaves, each
+    # joint spaced, turned and sized its own way, and at some a thin
+    # string of green flowers hanging from one side. (Pale tassels the same
+    # at every joint stamped a column of chevrons down each clump.)
+    x0, y1, ch = 3 * cw, 512 * s, 512 * s
+    _tuft_cell(d, x0, y1, cw, ch * 0.4, s, r, 30, 0.2, False)
+    for _ in range(7):
+        bx = x0 + r.uniform(0.2, 0.8) * cw
+        height = r.uniform(0.6, 0.95) * ch
+        lean = r.normal(0, 0.06) * height
+        _blade(d, bx, y1, height, lean, 4 * s, np.array([0.17, 0.22, 0.08]), np.array([0.22, 0.30, 0.10]), r, steps=8)
+        joints = int(r.integers(5, 9))
+        t = r.uniform(0.12, 0.22)
+        while t < 0.97:
+            px, py = bx + lean * t * t, y1 - t * height
+            size_l = (1.15 - 0.6 * t) * 34 * s * r.uniform(0.8, 1.2)
+            col = np.array([0.10, 0.19, 0.06]) * r.uniform(0.8, 1.2)
+            turn = r.uniform(-0.3, 0.3)
+            for sgn in (-1, 1):
+                ln = size_l * r.uniform(0.85, 1.1)
+                _leaf(d, px, py, ln, ln * r.uniform(0.48, 0.62), -math.pi / 2 + sgn * r.uniform(0.6, 1.25) + turn,
+                      col * r.uniform(0.92, 1.08), serrate=int(r.integers(6, 9)))
+            if 0.35 < t < 0.85 and r.random() < 0.3:
+                sgn, n = r.choice([-1, 1]), int(r.integers(4, 7))
+                ang, seg = sgn * r.uniform(0.25, 0.6), r.uniform(4, 6) * s
+                pts = [(px, py)]
+                for _ in range(n):
+                    ang *= 0.75   # drooping towards straight down
+                    pts.append((pts[-1][0] + math.sin(ang) * seg, pts[-1][1] + math.cos(ang) * seg))
+                tone = r.uniform(0.85, 1.1)
+                d.line(pts, fill=(int(62 * tone), int(80 * tone), 30, 255), width=s)
+            t += 0.8 / joints * r.uniform(0.75, 1.3)
+    # Flower cells, 384 px tall, from y 512.
+    y1, ch = 896 * s, 384 * s
+
+    def umbel(x, y):
+        rad = r.uniform(14, 21) * s
+        for _ in range(40):
+            a, rr = r.uniform(0, 2 * math.pi), math.sqrt(r.uniform(0, 1)) * rad
+            q = 2.2 * s
+            d.ellipse([x + math.cos(a) * rr - q, y + math.sin(a) * rr * 0.35 - q, x + math.cos(a) * rr + q, y + math.sin(a) * rr * 0.35 + q],
+                      fill=(int(232 * r.uniform(0.92, 1)), int(228 * r.uniform(0.92, 1)), 210, 255))
+    _stems_with_heads(d, 0, y1, cw, ch, s, r, 6, umbel)
+
+    def knap_or_yarrow(x, y):
+        if r.random() < 0.55:   # knapweed: purple thistle-like head
+            q = r.uniform(5, 7) * s
+            d.ellipse([x - q * 0.8, y - q * 0.2, x + q * 0.8, y + q * 1.4], fill=(70, 60, 30, 255))
+            for _ in range(14):
+                a = r.uniform(-math.pi, 0)
+                d.line([(x, y + q * 0.3), (x + math.cos(a) * q * 1.6, y + q * 0.3 + math.sin(a) * q * 1.6)],
+                       fill=(int(150 * r.uniform(0.9, 1.1)), 72, int(160 * r.uniform(0.9, 1.1)), 255), width=2 * s)
+        else:                   # yarrow: a flat white cluster
+            for _ in range(18):
+                a, rr = r.uniform(0, 2 * math.pi), math.sqrt(r.uniform(0, 1)) * 9 * s
+                q = 2 * s
+                d.ellipse([x + math.cos(a) * rr - q, y + math.sin(a) * rr * 0.4 - q, x + math.cos(a) * rr + q, y + math.sin(a) * rr * 0.4 + q],
+                          fill=(236, 230, 214, 255))
+    _stems_with_heads(d, cw, y1, cw, ch, s, r, 8, knap_or_yarrow)
+
+    def tansy(x, y):
+        for _ in range(9):
+            a, rr = r.uniform(0, 2 * math.pi), math.sqrt(r.uniform(0, 1)) * 11 * s
+            q = r.uniform(2.6, 3.6) * s
+            d.ellipse([x + math.cos(a) * rr - q, y + math.sin(a) * rr * 0.5 - q, x + math.cos(a) * rr + q, y + math.sin(a) * rr * 0.5 + q],
+                      fill=(int(222 * r.uniform(0.92, 1.05)), int(178 * r.uniform(0.9, 1.05)), 26, 255))
+    _stems_with_heads(d, 2 * cw, y1, cw, ch, s, r, 7, tansy)
+    # Ferns: male-fern fronds arching from the base, hart's-tongue straps.
+    # Each frond's pinnae vary in angle, length and shade, and a few are
+    # missing or nibbled, so no frond is a ruled herringbone. Drawn on a
+    # layer of their own and kept to their cell, which is cleared first:
+    # fronds reached into the tansy's cell and a tansy head into theirs.
+    x0 = 3 * cw
+    layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(layer)
+    cx = x0 + cw / 2
+    for k in range(9):
+        ang = -math.pi / 2 + (k - 4) * 0.28 + r.uniform(-0.1, 0.1)
+        length = r.uniform(0.6, 0.95) * ch
+        if k % 3 == 1:   # hart's-tongue: a glossy strap
+            _leaf(fd, cx + r.uniform(-15, 15) * s, y1, length * 0.7, 30 * s, ang, np.array([0.16, 0.32, 0.08]) * r.uniform(0.9, 1.1))
+            continue
+        col = np.array([0.15, 0.30, 0.08]) * r.uniform(0.85, 1.1)
+        prev = (cx + r.uniform(-12, 12) * s, y1)
+        steps = int(r.integers(19, 27))
+        arch = r.uniform(0.7, 1.1) * (1 if ang > -math.pi / 2 else -1)
+        spread = r.uniform(1.0, 1.3)
+        for i in range(1, steps + 1):
+            t = i / steps
+            a = ang + arch * t * t + r.normal(0, 0.03)   # arching over
+            p = (prev[0] + math.cos(a) * length / steps, prev[1] + math.sin(a) * length / steps)
+            fd.line([prev, p], fill=(70, 86, 34, 255), width=2 * s)
+            pin = (1 - t) ** 0.7 * 40 * s * (0.4 + 0.6 * math.sin(math.pi * min(t * 1.4, 1)))
+            for sgn in (-1, 1):
+                if r.random() < 0.06:
+                    continue
+                ln = pin * r.uniform(0.75, 1.1)
+                _leaf(fd, p[0], p[1], ln, ln * r.uniform(0.28, 0.36), a + sgn * (spread + r.uniform(-0.15, 0.15)),
+                      col * r.uniform(0.88, 1.12))
+            prev = p
+    d.rectangle([x0, 512 * s, W - 1, y1 - 1], fill=(0, 0, 0, 0))
+    img.alpha_composite(layer.crop((x0, 512 * s, W, y1)), (x0, 512 * s))
+    # Sward strips, tileable in u: every blade drawn again a width over.
+    for (top, bottom, n, hr, dry, rough) in [(912, 968, 2600, (0.45, 1.0), 0.12, False), (968, 1024, 1500, (0.4, 1.0), 0.3, True)]:
+        strip = Image.new("RGBA", (W, (bottom - top) * s), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(strip)
+        sh = (bottom - top) * s - 2 * s
+        base_y = (bottom - top) * s
+        if not rough:   # clover and plantain at the foot of the mown sward
+            for _ in range(700):
+                x = r.uniform(0, W)
+                for off in (-W, 0, W):
+                    if r.random() < 0.5:
+                        for k in range(3):
+                            sd.ellipse([x + off + (k - 1) * 5 * s - 4 * s, base_y - 9 * s - 4 * s, x + off + (k - 1) * 5 * s + 4 * s, base_y - 9 * s + 3 * s],
+                                       fill=(34, 74, 22, 255))
+                    else:
+                        _leaf(sd, x + off, base_y, 22 * s, 8 * s, -math.pi / 2 + r.uniform(-1.1, 1.1), np.array([0.14, 0.28, 0.08]))
         for _ in range(n):
-            bx = x_off + r.uniform(0.15, 0.85) * (w // 2) * s
-            height = r.uniform(0.35, 0.95 if variant == 0 else 1.0) * h * s
-            lean = r.normal(0, 0.25) * height
-            width = r.uniform(3, 7) * s
-            dry = r.random() < (0.12 if variant == 0 else 0.4)
-            base_col = np.array([0.16, 0.26, 0.07]) if not dry else np.array([0.42, 0.38, 0.18])
-            tip_col = np.array([0.42, 0.55, 0.20]) if not dry else np.array([0.70, 0.64, 0.40])
-            steps = 10
-            pts_l, pts_r = [], []
-            for k in range(steps + 1):
-                t = k / steps
-                y = h * s - t * height
-                x = bx + lean * t * t
-                wd = width * (1 - t) ** 0.9 / 2
-                pts_l.append((x - wd, y)); pts_r.append((x + wd, y))
-            for k in range(steps):
-                t = (k + 0.5) / steps
-                c = base_col + (tip_col - base_col) * t
-                c = c * r.uniform(0.85, 1.15)
-                col = tuple(int(np.clip(v, 0, 1) * 255) for v in c) + (255,)
-                d.polygon([pts_l[k], pts_r[k], pts_r[k + 1], pts_l[k + 1]], fill=col)
-            if variant == 1 and r.random() < 0.3:
-                x, y = pts_l[-1]
-                for _ in range(8):
-                    ox, oy = r.normal(0, 4 * s), r.uniform(0, 30 * s)
-                    rr = 2.5 * s
-                    d.ellipse([x + ox - rr, y + oy - rr, x + ox + rr, y + oy + rr], fill=(196, 182, 130, 255))
-    img = img.resize((w, h), Image.LANCZOS)
+            x = r.uniform(0, W)
+            height = r.uniform(*hr) * sh
+            lean = r.normal(0, 0.18) * height
+            w_ = r.uniform(2, 4) * s
+            dry_ = r.random() < dry
+            seed = rough and r.random() < 0.12
+            dry_tip = r.random() < 0.35
+            for off in (-W, 0, W):
+                tip = _blade(sd, x + off, base_y, height, lean, w_, DRY_BASE if dry_ else GREEN_BASE,
+                             DRY_TIP if dry_ else GREEN_TIP, rng(int(x * 10) % 100000), steps=6, dry_tip=dry_tip and not dry_)
+                if seed:
+                    sd.ellipse([tip[0] - 3 * s, tip[1] - 2 * s, tip[0] + 3 * s, tip[1] + 8 * s], fill=(190, 176, 124, 255))
+        img.alpha_composite(strip, (0, top * s))
+    img = img.resize((size, size), Image.LANCZOS)
     arr = np.asarray(img, np.float32) / 255
     rgb, a = arr[..., :3], arr[..., 3:]
-    # Ragged, fading base so a tuft melts into the ground.
-    yy = np.arange(h, dtype=np.float32)[:, None] / h
-    jag = value_noise(h, w, 8, 64, r)
-    fade = smoothstep(0.0, 1.0, (1 - yy - 0.015 - jag * 0.05) / 0.06)
+    # Ragged, fading bases so tufts and fins melt into the ground. A strip's
+    # foot also rises and falls along it in clumps, by up to half its height
+    # every 3 to 16 cm of ribbon, so a ribbon's foot never reads as a ruled
+    # line on the ground (its own noise, so the rest of the atlas stays as
+    # it was).
+    jag = value_noise(size, size, 8, 64, r)
+    rr = rng(52)
+    rag = (0.45 * value_noise(1, size, 1, 13, rr)[0] + 0.3 * value_noise(1, size, 1, 5, rr)[0]
+           + 0.25 * value_noise(1, size, 1, 29, rr)[0])
+    fade = np.ones((size, size), np.float32)
+    for (top, bottom) in [(0, 512), (512, 896), (912, 968), (968, 1024)]:
+        yy = (np.arange(top, bottom, dtype=np.float32) - top)[:, None] / (bottom - top)
+        strip = bottom - top < 100
+        span = 0.18 if strip else 0.06
+        lift = (0.5 if bottom == 1024 else 0.35) * smoothstep(0.3, 0.8, rag)[None, :] if strip else 0.0
+        fade[top:bottom] = smoothstep(0.0, 1.0, (1 - yy - 0.015 - jag[top:bottom] * span * 0.8 - lift) / span)
+    # Nothing in the rows between regions (roots spill over a cell's foot).
+    fade[508:516] = 0
+    fade[892:912] = 0
     a = a * fade[..., None]
     blurred = blur(rgb * a, 4) / np.maximum(blur(a, 4), 1e-3)
     arr[..., :3] = rgb * a + blurred * (1 - a)
     arr[..., 3:] = a
     save_rgba(OUT / "cj_grass.png", arr)
+    print("grass coverage per region", [round(float(a[t:b].mean()), 3) for t, b in [(0, 512), (512, 896), (912, 968), (968, 1024)]])
 
 
 # ---------------------------------------------------------------- bark
@@ -625,116 +712,159 @@ def bake_facades(size: int = 2048) -> None:
     atlas.save(OUT / "cj_facade.jpg", quality=88, optimize=True)
 
 
-def bake_roofs(size: int = 512) -> None:
-    """cj_roof_pantile.jpg / cj_roof_slate.jpg + *_detail.png: 1 m x 1 m.
-    u runs along the eaves, v down the slope. Pantiles: S-profile courses
-    of 33 cm exposure, four tiles per metre; slate-grey flat tiles in a
-    broken bond."""
-    r = rng(101)
-    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
-    # Pantile.
-    tiles_x, courses = 4, 3
-    tw = size / tiles_x
-    ch = size / courses
-    course = np.floor(yy / ch)
-    lx = (xx % tw) / tw
-    ly = (yy % ch) / ch
-    wave = np.where(lx < 0.62, np.sin(lx / 0.62 * math.pi) * 0.9, -np.sin((lx - 0.62) / 0.38 * math.pi) * 0.25)
-    lap = smoothstep(0.0, 0.12, ly) * (1 - 0.25 * ly)
-    height = np.clip(0.45 + 0.4 * wave * (0.6 + 0.4 * ly) + 0.25 * lap - 0.2 * (ly < 0.04), 0, 1)
-    ids = (course * tiles_x + np.floor(xx / tw)).astype(int)
-    tone = r.uniform(0.85, 1.12, ids.max() + 1)[ids]
-    base = np.array([0.60, 0.29, 0.17], np.float32)
-    col = base * tone[..., None] * (0.78 + 0.3 * height[..., None])
-    moss = smoothstep(0.7, 0.85, fbm(size, size, 6, 4, r)) * (1 - ly)
-    col = col + (np.array([0.28, 0.30, 0.16]) - col) * (moss * 0.5)[..., None]
-    shadow = 1 - 0.45 * (ly > 0.94)
-    col = col * shadow[..., None]
-    save_rgb(OUT / "cj_roof_pantile.jpg", np.clip(col, 0, 1), 90)
-    detail_png(OUT / "cj_roof_pantile_detail.png", height, 7.0, np.full_like(height, 0.7))
-    # Slate / flat tile.
-    tw, courses = size / 5, 4
-    ch = size / courses
-    course = np.floor(yy / ch)
-    shift = (course % 2) * tw / 2
-    lx = ((xx + shift) % tw) / tw
-    ly = (yy % ch) / ch
-    edge = np.minimum(np.minimum(lx, 1 - lx) * tw, (1 - ly) * ch)
-    height = np.clip(0.3 + 0.7 * ly, 0, 1) * smoothstep(0, 3, edge)
-    ids = (course * 6 + np.floor(((xx + shift) % size) / tw)).astype(int)
-    tone = r.uniform(0.8, 1.15, ids.max() + 1)[ids]
-    base = np.array([0.17, 0.175, 0.19], np.float32)
-    col = base * tone[..., None] * (0.85 + 0.25 * height[..., None])
-    col = col * (0.92 + 0.12 * fbm(size, size, 24, 3, r)[..., None])
-    save_rgb(OUT / "cj_roof_slate.jpg", np.clip(col, 0, 1), 90)
-    detail_png(OUT / "cj_roof_slate_detail.png", height, 5.0, np.full_like(height, 0.55))
-
-
 # ---------------------------------------------------------------- impostors
 
-def bake_impostors(size: int = 1024) -> None:
-    """cj_impostor.png: 2 x 2 atlas of distant-tree sprites, trunk base at
-    the bottom centre of each cell. Top-left broadleaf, top-right poplar,
-    bottom-left conifer, bottom-right orchard tree."""
-    cell = size // 2
-    atlas = np.zeros((size, size, 4), np.float32)
+# Distant-tree cells, in the order of TreeArchetype.Form.impostorCell:
+# crown top and bottom (share of the cell from its top), half width, lobes,
+# lobe radius, clump radius (shares of the cell), leaf sprite, share of
+# clumps left out (gaps), trunk half width. The trunk base is at the bottom
+# centre of each cell.
+IMPOSTOR_FORMS = [
+    ("beech",        0.03, 0.72, 0.46, 9,  (0.13, 0.17), (0.05, 0.07),   "broad",  0.05, 0.030),
+    ("oak",          0.05, 0.68, 0.47, 11, (0.10, 0.14), (0.045, 0.065), "broad",  0.16, 0.032),
+    ("ash",          0.03, 0.64, 0.42, 9,  (0.09, 0.13), (0.04, 0.06),   "broad",  0.30, 0.026),
+    ("hybridPoplar", 0.02, 0.62, 0.34, 8,  (0.08, 0.12), (0.04, 0.06),   "poplar", 0.25, 0.026),
+    ("lombardy",     0.01, 0.95, 0.13, 0,  (0, 0),       (0.03, 0.045),  "poplar", 0.0,  0.022),
+    ("willow",       0.10, 0.66, 0.45, 0,  (0, 0),       (0.035, 0.05),  "broad",  0.0,  0.045),
+    ("conifer",      0.11, 0.97, 0.30, 0,  (0, 0),       (0.06, 0.09),   "needle", 0.0,  0.030),
+    ("orchard",      0.28, 0.74, 0.46, 6,  (0.12, 0.16), (0.05, 0.07),   "broad",  0.10, 0.040),
+]
+
+
+def bake_impostors(cell: int = 256) -> None:
+    """cj_impostor.png + cj_impostor_detail.rgbz: 4 x 2 atlas of distant-tree
+    sprites (TreeArchetype.Form.impostorCell order: beech, oak, ash and
+    sycamore, hybrid poplar, Lombardy poplar, pollard willow, conifer,
+    orchard), trunk base at the bottom centre of each cell. The colour is
+    the leaves' own (the shader lights it); the detail map holds the
+    crown's normal (R, G = x right, y down; a blend of the crown, its lobe
+    and each leaf clump as spheres) and its ambient occlusion (B), so a
+    distant tree has a sunlit side and a shaded one."""
+    cols, rows = 4, 2
+    W, H = cols * cell, rows * cell
+    rgb_all = np.zeros((H, W, 3), np.float32)
+    a_all = np.zeros((H, W), np.float32)
+    nrm_all = np.zeros((H, W, 3), np.float32)
+    ao_all = np.ones((H, W), np.float32)
     r = rng(111)
-    cards = [foliage_card(256, k, 200 + i) for i, k in enumerate(["broad", "poplar", "ivy", "needle"])]
-    shapes = ["broad", "poplar", "conifer", "fruit"]
-    for k, shape in enumerate(shapes):
-        oy, ox = (k // 2) * cell, (k % 2) * cell
+    sprites = {k: foliage_card(128, k, 200 + i) for i, k in enumerate(["broad", "poplar", "needle"])}
+    yy, xx = np.mgrid[0:cell, 0:cell].astype(np.float32)
+    cx = cell / 2
+    for k, (name, top, bottom, hw, n_lobes, lobe_r, clump_r, kind, gaps, trunk_w) in enumerate(IMPOSTOR_FORMS):
+        oy, ox = (k // cols) * cell, (k % cols) * cell
         rgb = np.zeros((cell, cell, 3), np.float32)
         a = np.zeros((cell, cell), np.float32)
-        yy, xx = np.mgrid[0:cell, 0:cell].astype(np.float32)
-        cx = cell / 2
-        # Trunk.
-        trunk_top = {"broad": 0.55, "poplar": 0.25, "conifer": 0.12, "fruit": 0.68}[shape]
-        tw = {"broad": 0.035, "poplar": 0.03, "conifer": 0.03, "fruit": 0.04}[shape] * cell
-        tm = (np.abs(xx - cx) < tw) & (yy > trunk_top * cell)
+        nrm = np.zeros((cell, cell, 3), np.float32)
+        nrm[..., 2] = 1
+        ao = np.ones((cell, cell), np.float32)
+        # Trunk: a cylinder up into the crown.
+        tw = trunk_w * cell
+        t_top = (top + bottom) / 2 if name not in ("willow", "lombardy") else (bottom if name == "willow" else 0.5)
+        tm = (np.abs(xx - cx) < tw) & (yy > t_top * cell)
+        tx = np.clip((xx - cx) / tw, -1, 1)
         rgb[tm] = [0.22, 0.19, 0.16]
         a[tm] = 1
-        # Crown from many shrunken leaf-clump cards, shaded top to bottom.
-        card = {"broad": cards[0], "poplar": cards[1], "conifer": cards[3], "fruit": cards[0]}[shape]
-        n = {"broad": 70, "poplar": 80, "conifer": 90, "fruit": 60}[shape]
-        for _ in range(n):
-            # Every crown stays inside its cell (a stamp crossing the edge
-            # would be cut straight, giving distant trees flat tops).
-            if shape == "broad":
-                ang = r.uniform(0, 2 * math.pi); rad = math.sqrt(r.uniform(0, 1))
-                py = cell * (0.2 + 0.36 * (0.5 + 0.5 * math.sin(ang) * rad))
-                px = cx + math.cos(ang) * rad * cell * 0.33
-                br = r.uniform(0.1, 0.14) * cell
-            elif shape == "poplar":
-                t = r.uniform(0, 1)
-                py = cell * (0.13 + 0.68 * t)
-                wid = 0.14 * math.sin(math.pi * (0.15 + 0.85 * t)) ** 0.7
-                px = cx + r.uniform(-1, 1) * wid * cell
-                br = r.uniform(0.07, 0.1) * cell
-            elif shape == "conifer":
-                t = r.uniform(0, 1) ** 0.8
-                py = cell * (0.11 + 0.74 * t)
-                wid = 0.28 * t + 0.02
-                px = cx + r.uniform(-1, 1) * wid * cell
-                br = r.uniform(0.06, 0.09) * cell
-            else:
-                ang = r.uniform(0, 2 * math.pi); rad = math.sqrt(r.uniform(0, 1))
-                py = cell * (0.34 + 0.34 * (0.5 + 0.5 * math.sin(ang) * rad))
-                px = cx + math.cos(ang) * rad * cell * 0.33
-                br = r.uniform(0.1, 0.14) * cell
-            sz = max(int(br * 2), 8)
-            spr = np.asarray(Image.fromarray(to_u8(card)).resize((sz, sz), Image.LANCZOS), np.float32) / 255
-            light = 0.62 + 0.55 * (1 - py / cell) + r.uniform(-0.08, 0.08)
-            stamp(rgb, a, spr[..., :3] * light, spr[..., 3], int(py - sz / 2), int(px - sz / 2))
-        # Ragged edges.
-        edge_noise = value_noise(cell, cell, 64, 64, r)
-        from scipy.ndimage import binary_erosion
+        nrm[tm] = np.stack([tx, np.zeros_like(tx), np.sqrt(np.clip(1 - tx * tx, 0, 1))], -1)[tm]
+        ao[tm] = 0.7
+        ccy = (top + bottom) / 2 * cell
+        crx, cry = hw * cell, (bottom - top) / 2 * cell
+        # Lobes (or, for the column, willow and conifer, a stack of them).
+        lobes = []
+        if n_lobes:
+            tries = 0
+            while len(lobes) < n_lobes and tries < 400:
+                tries += 1
+                lr = r.uniform(*lobe_r) * cell
+                ang = r.uniform(0, 2 * math.pi)
+                rad = math.sqrt(r.uniform(0.15, 1))
+                lx = cx + math.cos(ang) * rad * max(crx - lr, 1)
+                ly = ccy + math.sin(ang) * rad * max(cry - lr, 1)
+                if any(math.hypot(lx - p[0], ly - p[1]) < 0.6 * (lr + p[2]) for p in lobes):
+                    continue
+                lz = r.uniform(-1, 1) * math.sqrt(max(1 - rad * rad, 0)) * min(crx, cry) * 0.6
+                lobes.append((lx, ly, lr, lz))
+            lobes.append((cx, ccy + 0.1 * cry, 0.6 * min(crx, cry), -0.3 * min(crx, cry)))   # the core
+        elif name == "lombardy":
+            for i in range(26):
+                t = (i + 0.5) / 26
+                w = hw * cell * math.sin(math.pi * min(t * 1.05 + 0.04, 1)) ** 0.6 * (1 - 0.25 * (1 - t))
+                lobes.append((cx + r.uniform(-0.2, 0.2) * w, (bottom - (bottom - top) * t) * cell, max(w, 3), r.uniform(-1, 1) * w * 0.5))
+        elif name == "willow":
+            # Whips fanning up and out from the knot (the crown's bottom).
+            for i in range(16):
+                ang = -math.pi / 2 + r.uniform(-1.3, 1.3)
+                d = r.uniform(0.3, 1.0)
+                lobes.append((cx + math.cos(ang) * d * crx * 0.85, bottom * cell + math.sin(ang) * d * cry * 1.6,
+                              0.11 * cell, r.uniform(-1, 1) * 10))
+        else:  # conifer: tiers narrowing to the top
+            for i in range(14):
+                t = (i + 0.5) / 14
+                w = (hw * t + 0.02) * cell
+                lobes.append((cx, (top + (bottom - top) * t) * cell, max(w, 4), 0.0))
+        stamps = []
+        for (lx, ly, lr, lz) in lobes:
+            n = int(2.4 * (lr / (np.mean(clump_r) * cell)) ** 2) + 3
+            for _ in range(n):
+                if r.random() < gaps:
+                    continue
+                ang = r.uniform(0, 2 * math.pi)
+                rho = math.sqrt(r.uniform(0, 1))
+                px = lx + math.cos(ang) * rho * lr
+                py = ly + math.sin(ang) * rho * lr
+                if name == "conifer":
+                    py += r.uniform(-0.6, 0.6) * cell * 0.03
+                lsz = math.sqrt(max(1 - rho * rho, 0))
+                stamps.append((lz + lsz * lr, px, py, r.uniform(*clump_r) * cell, lx, ly, lr, lsz))
+        stamps.sort()                                   # back to front
+        for (_, px, py, br, lx, ly, lr, lsz) in stamps:
+            sz = max(int(br * 2), 6)
+            spr = np.asarray(Image.fromarray(to_u8(sprites[kind])).resize((sz, sz), Image.LANCZOS), np.float32) / 255
+            if r.random() < 0.5:
+                spr = spr[:, ::-1]
+            y0, x0 = int(py - sz / 2), int(px - sz / 2)
+            sy_, sx_ = np.mgrid[0:sz, 0:sz].astype(np.float32) + 0.5
+            sx = (sx_ - sz / 2) / (sz / 2); sy = (sy_ - sz / 2) / (sz / 2)
+            s_z = np.sqrt(np.clip(1 - sx * sx - sy * sy, 0, 1))
+            gx, gy = (x0 + sx_ - cx) / crx, (y0 + sy_ - ccy) / max(cry, 1)
+            g_z = np.sqrt(np.clip(1 - gx * gx - gy * gy, 0.05, 1))
+            lx_, ly_ = (x0 + sx_ - lx) / lr, (y0 + sy_ - ly) / lr
+            l_z = np.sqrt(np.clip(1 - lx_ * lx_ - ly_ * ly_, 0.05, 1))
+            n = (0.35 * np.stack([gx, gy, g_z], -1) + 0.35 * np.stack([lx_, ly_, l_z], -1)
+                 + 0.3 * np.stack([sx, sy, s_z], -1))
+            n /= np.linalg.norm(n, axis=-1, keepdims=True)
+            occ = (0.6 + 0.4 * s_z) * (0.72 + 0.28 * lsz) * (0.88 + 0.12 * (1 - (py - top * cell) / max(cry * 2, 1)))
+            sa = spr[..., 3] * (spr[..., 3] > 0.35)
+            stamp(rgb, a, spr[..., :3], sa, y0, x0)
+            stamp(nrm, np.zeros_like(a), n, sa, y0, x0)
+            stamp_gray(ao, occ, sa, y0, x0)
         a = np.where(a > 0.5, 1.0, 0.0).astype(np.float32)
-        atlas[oy:oy + cell, ox:ox + cell, :3] = rgb
-        atlas[oy:oy + cell, ox:ox + cell, 3] = a
-    rgb, a = atlas[..., :3], atlas[..., 3:]
-    blurred = blur(rgb * a, 8) / np.maximum(blur(a, 8), 1e-3)
-    atlas[..., :3] = rgb * a + blurred * (1 - a)
-    save_rgba(OUT / "cj_impostor.png", atlas)
+        rgb_all[oy:oy + cell, ox:ox + cell] = rgb
+        a_all[oy:oy + cell, ox:ox + cell] = a
+        nrm_all[oy:oy + cell, ox:ox + cell] = nrm
+        ao_all[oy:oy + cell, ox:ox + cell] = ao
+    # Bleed colour and normals into transparent texels so mips stay clean.
+    am = a_all[..., None]
+    rgb_all = rgb_all * am + (blur(rgb_all * am, 6) / np.maximum(blur(am, 6), 1e-3)) * (1 - am)
+    nrm_b = blur(nrm_all * am, 6) / np.maximum(blur(am, 6), 1e-3)
+    nrm_all = nrm_all * am + nrm_b * (1 - am)
+    ao_b = blur(ao_all[..., None] * am, 6)[..., 0] / np.maximum(blur(am, 6)[..., 0], 1e-3)
+    ao_all = ao_all * a_all + ao_b * (1 - a_all)
+    save_rgba(OUT / "cj_impostor.png", np.concatenate([rgb_all, am], -1))
+    nl = nrm_all / np.maximum(np.linalg.norm(nrm_all, axis=-1, keepdims=True), 1e-6)
+    detail = np.stack([nl[..., 0] * 0.5 + 0.5, nl[..., 1] * 0.5 + 0.5, np.clip(ao_all, 0, 1), np.ones_like(ao_all)], -1)
+    save_raw(OUT / "cj_impostor_detail.rgbz", detail)
+    print("impostor cells", [f[0] for f in IMPOSTOR_FORMS], "coverage", np.round([a_all[(k // cols) * cell:(k // cols + 1) * cell, (k % cols) * cell:(k % cols + 1) * cell].mean() for k in range(8)], 2))
+
+
+def stamp_gray(canvas: np.ndarray, value: np.ndarray, sprite_a: np.ndarray, y: int, x: int) -> None:
+    """Alpha-composites a single-channel sprite onto canvas at top-left (y, x)."""
+    sh, sw = sprite_a.shape
+    H, W = canvas.shape
+    y0, x0, y1, x1 = max(y, 0), max(x, 0), min(y + sh, H), min(x + sw, W)
+    if y1 <= y0 or x1 <= x0:
+        return
+    a = sprite_a[y0 - y:y1 - y, x0 - x:x1 - x]
+    canvas[y0:y1, x0:x1] = canvas[y0:y1, x0:x1] * (1 - a) + value[y0 - y:y1 - y, x0 - x:x1 - x] * a
 
 
 # ---------------------------------------------------------------- far fields
@@ -868,51 +998,155 @@ def preetham_rgb(d: np.ndarray, T: float = SKY_TURBIDITY) -> np.ndarray:
     return sky_chroma(d) * Y[..., None]
 
 
-def horizon_haze() -> np.ndarray:
+# Stored sky = linear radiance / scale, in sRGB encoding. The background's
+# scale lets sunlit cloud tops brighter than 1 fit in 8 bits; the lighting
+# environment stays at 1, where the ambient was calibrated (the
+# `litchart` in WorldDebugShots). Keep SkyLighting.skyScale in step.
+SKY_SCALE = 1.6
+SKY_ENV_SCALE = 1.0
+# The lighting environment sees the clouds from below, by their shaded
+# bases more than their sunlit sides; at 0.7 of the background's cloud light
+# the ambient stays where it was calibrated (ENV_IRRADIANCE).
+ENV_CLOUD_GAIN = 0.7
+# Up-facing irradiance / pi (luminance) of the calibrated environment: the
+# 0.18 board in `litchart` reads 3.9 : 1 sunlit to shaded. bake_sky prints
+# the baked value; keep it within a few per cent.
+ENV_IRRADIANCE = 0.454
+CLOUD_KM = 1.6        # height of the cumulus layer
+CLOUD_TILE_KM = 9.0   # one tile of the cloud fields on that layer
+
+
+def low_sky_gain(up: np.ndarray) -> np.ndarray:
+    """Aerosol brightening of the low sky that the Preetham fit leaves out
+    at this turbidity: +45 % at the horizon, +11 % at 10 degrees."""
+    return 1 + 0.45 * np.exp(-np.maximum(up, 0) / 0.12)
+
+
+def clear_sky(d: np.ndarray, background: bool = True) -> np.ndarray:
+    """Linear clear-sky radiance (`preetham_rgb`). For the background, as a
+    photo shows it: brighter and whiter low down, and a touch more cyan
+    above 15 degrees (photo G/B 0.80 against 0.73). The lighting
+    environment keeps the plain model it was calibrated with."""
+    sky = preetham_rgb(d)
+    if background:
+        up = d[..., 1]
+        sky = sky * low_sky_gain(up)[..., None]
+        sky = sky * (1 + np.array([0.0, 0.05, 0.0], np.float32) * smoothstep(0.25, 0.6, up)[..., None])
+    return sky
+
+
+def horizon_haze(background: bool = True) -> np.ndarray:
     """Mean linear sky colour just above the horizon, all round: the fog
-    colour the far terrain fades to. Keep SkyLighting.horizon in step."""
+    colour the far terrain fades to. Keep SkyLighting.horizonLinear in step
+    (bake_sky writes it to cj_sky_horizon.json; SkyBakeTests checks it)."""
     az = np.linspace(0, 2 * math.pi, 256, endpoint=False)
     el = math.radians(1.0)
     d = np.stack([np.sin(az) * math.cos(el), np.full_like(az, math.sin(el)), -np.cos(az) * math.cos(el)], -1)
-    return preetham_rgb(d.astype(np.float32)).mean(0)
+    return clear_sky(d.astype(np.float32), background).mean(0)
 
 
-def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None) -> np.ndarray:
+def cloud_fields(r: np.random.Generator) -> tuple:
+    """The cloud density fields, 1024 px per tile: two octaves of cloud
+    and a finer field that erodes their rims (drawn last, so the first two
+    keep the sequence they have always had)."""
+    cn = fbm(1024, 1024, 5, 6, r, gain=0.52)
+    cn2 = fbm(1024, 1024, 14, 4, r)
+    cn3 = fbm(1024, 1024, 48, 3, r)
+    return cn, cn2, cn3
+
+
+def sample_wrap(tex: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Bilinear lookup in a wrapping square field, (u, v) in tiles. A nearest
+    lookup would alias the crisp cloud rims."""
+    n = tex.shape[0]
+    x = (u % 1) * n
+    y = (v % 1) * n
+    x0 = np.floor(x).astype(int)
+    y0 = np.floor(y).astype(int)
+    fx = x - x0
+    fy = y - y0
+    x0 %= n
+    y0 %= n
+    x1 = (x0 + 1) % n
+    y1 = (y0 + 1) % n
+    return (tex[y0, x0] * (1 - fx) + tex[y0, x1] * fx) * (1 - fy) + (tex[y1, x0] * (1 - fx) + tex[y1, x1] * fx) * fy
+
+
+def cloud_density(f: tuple, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Fair-weather cumulus density: the two-octave field with its rims
+    eroded by the finer one (cauliflower edges, solid cores)."""
+    cn, cn2, cn3 = f
+    base = sample_wrap(cn, u, v) * 0.8 + sample_wrap(cn2, u, v) * 0.2
+    edge = 1 - np.abs(smoothstep(0.52, 0.72, base) * 2 - 1)
+    return base + (sample_wrap(cn3, u, v) - 0.5) * 0.12 * edge
+
+
+def cloud_layer(d: np.ndarray, f: tuple) -> tuple:
+    """Where directions d meet the cloud layer, in tiles (u, v), the density
+    there and the cloud cover. The threshold rises near the horizon, where
+    clouds are small on screen, so there are fewer specks; the rims are soft
+    enough not to stair-step on a cube face magnified about 2.5 times."""
+    up = d[..., 1]
+    tt = CLOUD_KM / np.maximum(up, 0.02)
+    u = d[..., 0] * tt / CLOUD_TILE_KM
+    v = d[..., 2] * tt / CLOUD_TILE_KM
+    dens = cloud_density(f, u, v) - 0.035 * (1 - smoothstep(0.05, 0.25, up))
+    return u, v, dens, smoothstep(0.575, 0.665, dens)
+
+
+def cloud_cover(f: tuple, lo_deg: float = 5, hi_deg: float = 35) -> float:
+    """Share of the sky between lo_deg and hi_deg of elevation (by solid
+    angle) under cloud: what a chase camera sees. Fair weather is 25-35 %."""
+    az = (np.arange(1440, dtype=np.float32) + 0.5) / 1440 * 2 * math.pi
+    s = np.linspace(math.sin(math.radians(lo_deg)), math.sin(math.radians(hi_deg)), 256, dtype=np.float32)
+    az, s = np.meshgrid(az, s)
+    c = np.sqrt(1 - s * s)
+    d = np.stack([np.sin(az) * c, s, -np.cos(az) * c], -1)
+    return float(cloud_layer(d, f)[3].mean())
+
+
+def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None, background: bool = True,
+                 cloud_gain: float = 1.0) -> np.ndarray:
     """Linear radiance of the late-summer sky for directions d (..., 3):
-    Preetham sky, fair-weather cumulus on a 1.6 km layer, sun disc and a
-    haze band at the horizon. Below the horizon: the haze colour (for the
-    background, so the fogged far terrain meets it without a seam) or, with
-    `ground`, light bounced off sunlit fields (for the lighting
-    environment)."""
+    the clear sky (`clear_sky`), crisp self-shadowed fair-weather cumulus
+    on a 1.6 km layer, sun disc and a haze band at the horizon. Seen from
+    the sun's side a cloud shows its lit faces, sunlit tops brighter than
+    1; towards the sun, its shaded core with a bright rim. Below the
+    horizon: the haze colour (for the background, so the fogged far terrain
+    meets it without a seam) or, with `ground`, light bounced off sunlit
+    fields (for the lighting environment). `cloud_gain` scales the clouds'
+    own light."""
     sun = sun_vector()
     up = d[..., 1]
     cosg = np.clip((d * sun).sum(-1), -1, 1)
-    haze = horizon_haze()
-    sky = preetham_rgb(d)
-    # The lowest few degrees settle on the all-round haze colour.
+    haze = horizon_haze(background)
+    sky = clear_sky(d, background)
+    # The lowest few degrees settle on the all-round haze colour, all of
+    # the way at the horizon itself, so the sky meets the haze below it
+    # (and the fogged far terrain) without a line.
     band = 1 - smoothstep(0.0, 0.07, up)
-    sky = sky + (haze - sky) * (band * 0.75)[..., None]
+    sky = sky + (haze - sky) * (band * (0.75 + 0.25 * band))[..., None]
     if clouds and cloud_tex is not None:
-        cn, cn2 = cloud_tex
-        cn_n = cn.shape[0]
-        hgt = 1.6  # km
-        tt = hgt / np.maximum(up, 0.02)
-        cx = d[..., 0] * tt / 9.0
-        cz = d[..., 2] * tt / 9.0
-        ix = ((cx % 1) * cn_n).astype(int) % cn_n
-        iz = ((cz % 1) * cn_n).astype(int) % cn_n
-        dens = cn[iz, ix] * 0.8 + cn2[iz, ix] * 0.2
-        cover = smoothstep(0.6, 0.8, dens)
-        thick = smoothstep(0.62, 0.95, dens)
-        mie = np.clip(cosg, 0, 1)
+        u, v, dens, cover = cloud_layer(d, cloud_tex)
+        # Light reaching the cloud: density marched towards the sun's
+        # ground track over 0.15-0.9 km.
+        sh = np.array([sun[0], sun[2]]) / math.hypot(sun[0], sun[2])
+        tau = sum(np.maximum(cloud_density(cloud_tex, u + sh[0] * km / CLOUD_TILE_KM,
+                                           v + sh[1] * km / CLOUD_TILE_KM) - 0.6, 0)
+                  for km in (0.15, 0.35, 0.6, 0.9))
+        lit = np.exp(-tau * 7.0 * (0.25 + 0.75 * smoothstep(-0.3, 0.9, cosg)))
         lum = float(preetham_rgb(np.array([[0, 1, 0]], np.float32)).mean()) / SKY_ZENITH_LINEAR
-        lit = np.array([1.0, 0.975, 0.94], np.float32) * (0.95 + 0.35 * mie[..., None] ** 4) * 0.78 * lum
-        base = np.array([0.50, 0.53, 0.60], np.float32) * 0.62 * lum
-        cloud = lit + (base - lit) * (thick * 0.7)[..., None]
+        sunlit = np.array([1.0, 0.97, 0.93], np.float32) * 1.25 * lum
+        # Shaded sides and bases: a fair-weather grey, not a shower's.
+        shade = np.array([0.56, 0.59, 0.66], np.float32) * 0.70 * lum
+        silver = (np.clip(cosg, 0, 1) ** 8 * (1 - smoothstep(0.6, 0.75, dens)))[..., None] * 0.9
+        cloud = shade + (sunlit - shade) * lit[..., None] + silver * sunlit
+        # Thick cores show flatter, greyer bases overhead.
+        core = smoothstep(0.66, 0.85, dens) * smoothstep(0.25, 0.8, up)
+        cloud = cloud * (1 - 0.20 * core[..., None]) * cloud_gain
         # Distant clouds dissolve into the haze.
-        fade = smoothstep(0.02, 0.3, up)
         cloud = cloud + (haze - cloud) * (1 - smoothstep(0.04, 0.35, up))[..., None] * 0.6
-        a = (cover * fade * 0.92)[..., None]
+        a = (cover * smoothstep(0.02, 0.3, up) * 0.97)[..., None]
         sky = sky * (1 - a) + cloud * a
     # Sun disc and a tight aureole (the disc clips in 8-bit; the key light
     # carries the sun's energy).
@@ -937,61 +1171,85 @@ def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None) -> n
     return sky
 
 
-def bake_sky(n: int = 768, env_n: int = 96) -> None:
+def up_irradiance(faces: list) -> float:
+    """Irradiance / pi (luminance) on an up-facing surface from six cube
+    faces of linear radiance (`cube_dirs` order)."""
+    e = 0.0
+    for k, face in enumerate(faces):
+        n = face.shape[0]
+        v, u = np.mgrid[0:n, 0:n].astype(np.float32)
+        u = (u + 0.5) / n * 2 - 1
+        v = (v + 0.5) / n * 2 - 1
+        dw = (2 / n) ** 2 / (1 + u * u + v * v) ** 1.5
+        cos_up = np.clip(cube_dirs(k, n)[..., 1], 0, None)
+        e += float(((face @ np.array([0.2126, 0.7152, 0.0722], np.float32)) * cos_up * dw).sum())
+    return e / math.pi
+
+
+def bake_sky(n: int = 1024, env_n: int = 96) -> None:
     """cj_sky_{px,nx,py,ny,pz,nz}.jpg: the background, a late-summer
     afternoon sky (Preetham daylight model, turbidity SKY_TURBIDITY) with
     scattered fair-weather cumulus, sun in the south-west. Scene axes: x =
     east, y = up, z = south. Below the horizon the faces carry the haze
-    colour so the fogged far terrain meets them without a seam.
+    colour so the fogged far terrain meets them without a seam. Stored as
+    linear / SKY_SCALE, with a little dither and at JPEG quality 95 so the
+    smooth blue doesn't band.
 
-    cj_skyenv_*.jpg: the same sky, small and with a ground hemisphere of
-    sunlit fields, for image-based lighting (shadows and undersides pick up
-    green-brown bounce light instead of blue).
+    cj_skyenv_*.jpg: the same sky, small, without the background's photo
+    look, and with a ground hemisphere of sunlit fields, for image-based
+    lighting (shadows and undersides pick up green-brown bounce light
+    instead of blue). Stored as linear / SKY_ENV_SCALE.
 
-    Both are stored as linear / SKY_SCALE in sRGB encoding, so 8 bits hold
-    the bright horizon; the Swift side sets the background and lighting
-    environment intensities to SKY_SCALE."""
+    The Swift side draws the background at SkyLighting.skyScale and fades
+    the far terrain to SkyLighting.horizonLinear: the haze printed here and
+    written to cj_sky_horizon.json (beside this script, out of the app)."""
     r = rng(131)
-    cloud_tex_n = 1024
-    cn = fbm(cloud_tex_n, cloud_tex_n, 5, 6, r, gain=0.52)
-    cn2 = fbm(cloud_tex_n, cloud_tex_n, 14, 4, r)
+    f = cloud_fields(r)
+    f_env = tuple(blur(c, 6) for c in f)
+    dither = rng(137)
     names = ["px", "nx", "py", "ny", "pz", "nz"]
-    for f in range(6):
-        d = cube_dirs(f, n)
-        sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=(cn, cn2))
-        save_rgb(OUT / f"cj_sky_{names[f]}.jpg", np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), 92)
-        de = cube_dirs(f, env_n)
-        env = sky_radiance(de, clouds=True, ground=True, cloud_tex=(blur(cn, 6), blur(cn2, 6)))
-        save_rgb(OUT / f"cj_skyenv_{names[f]}.jpg", np.clip(linear_to_srgb(env / SKY_SCALE), 0, 1), 90)
+    envs = []
+    for k in range(6):
+        d = cube_dirs(k, n)
+        sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=f)
+        save_rgb_dithered(OUT / f"cj_sky_{names[k]}.jpg", np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), dither, 95)
+        del d, sky
+        de = cube_dirs(k, env_n)
+        env = np.clip(sky_radiance(de, clouds=True, ground=True, cloud_tex=f_env, background=False,
+                                   cloud_gain=ENV_CLOUD_GAIN) / SKY_ENV_SCALE, 0, 1)
+        save_rgb(OUT / f"cj_skyenv_{names[k]}.jpg", linear_to_srgb(env), 90)
+        envs.append(env * SKY_ENV_SCALE)
     haze = horizon_haze()
+    cover = cloud_cover(f)
     print("horizon haze, linear", np.round(haze, 4), "stored sRGB", np.round(linear_to_srgb(haze / SKY_SCALE), 4))
-
-
-# Stored sky = linear radiance / SKY_SCALE (see bake_sky).
-SKY_SCALE = 1.0
+    print(f"cloud cover 5-35 degrees: {cover * 100:.1f} %")
+    print(f"lighting environment: up-facing irradiance {up_irradiance(envs):.3f} (calibrated {ENV_IRRADIANCE})")
+    record = {"horizonLinear": [round(float(x), 4) for x in haze], "skyScale": SKY_SCALE,
+              "cloudCover5to35Deg": round(cover, 3)}
+    (Path(__file__).resolve().parent / "cj_sky_horizon.json").write_text(json.dumps(record, indent=2) + "\n")
+    print("Keep SkyLighting.horizonLinear and skyScale in step with cj_sky_horizon.json.")
 
 
 def preview_sky(path: Path, w: int = 1024, h: int = 384) -> None:
     """Equirectangular preview of the background sky from 10 degrees below
     the horizon to the zenith, north at the left edge, for checking the look
-    without a build."""
-    r = rng(131)
-    cn = fbm(1024, 1024, 5, 6, r, gain=0.52)
-    cn2 = fbm(1024, 1024, 14, 4, r)
+    without a build (linear / SKY_SCALE, as stored)."""
+    f = cloud_fields(rng(131))
     az = (np.arange(w, dtype=np.float32) + 0.5) / w * 2 * math.pi
     el = np.radians(90 - (np.arange(h, dtype=np.float32) + 0.5) / h * 100)
     az, el = np.meshgrid(az, el)
     d = np.stack([np.sin(az) * np.cos(el), np.sin(el), -np.cos(az) * np.cos(el)], -1).astype(np.float32)
-    sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=(cn, cn2))
-    save_rgb(path, np.clip(linear_to_srgb(sky), 0, 1), 90)
+    sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=f)
+    save_rgb(path, np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), 90)
+    print(f"cloud cover 5-35 degrees: {cloud_cover(f) * 100:.1f} %")
 
 
 # ---------------------------------------------------------------- main
 
 BAKERS = {
-    "cobbles": bake_cobbles, "asphalt": bake_asphalt, "ground": bake_ground,
+    "asphalt": bake_asphalt, "ground": bake_ground,
     "foliage": bake_foliage, "grass": bake_grass, "bark": bake_bark,
-    "brick": bake_brick, "facades": bake_facades, "roofs": bake_roofs,
+    "brick": bake_brick, "facades": bake_facades,
     "impostors": bake_impostors, "farfields": bake_far_fields, "sky": bake_sky,
 }
 

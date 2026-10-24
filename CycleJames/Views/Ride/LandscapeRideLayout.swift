@@ -53,12 +53,15 @@ struct LandscapeRideLayout: View {
                 tint: ride.rolling3sPower > 0 ? ride.currentZone.color : nil,
                 valueColor: powerTextColor
             )
-            MetricCard(
-                label: "Target",
-                value: ride.currentTarget > 0 ? "\(ride.currentTarget)" : "--",
-                unit: "W",
-                emphasis: true
-            )
+            // Free Ride only ghosts the target: a Wattbike's gear shows there.
+            GearSlot(feed: ride.gears, mode: ride.mode) {
+                MetricCard(
+                    label: "Target",
+                    value: ride.currentTarget > 0 ? "\(ride.currentTarget)" : "--",
+                    unit: "W",
+                    emphasis: true
+                )
+            }
             MetricCard(
                 label: "Heart Rate",
                 value: valueOrDash(ride.currentHR),

@@ -38,29 +38,107 @@ struct CourseArt: Sendable {
     /// Raised sett pavements from the carriageway edge towards the house
     /// fronts (the Kwaremont square): section, side and width.
     var pavements: [(span: Span, side: Double, width: Double)] = []
+    /// Setts flush with the carriageway from its edge to the house fronts
+    /// (the Steengat, the Kwaremont square): section, side and width beyond
+    /// the edge, erring wide (the walls stand on them). Spans on one side
+    /// don't overlap.
+    var pavedVerges: [(span: Span, side: Double, width: Double)] = []
+    /// Round cast-iron gully grates down a village street: section, lateral
+    /// offset from the centre line (+ right) and spacing.
+    var streetGrates: [(span: Span, lateral: Double, spacing: Double)] = []
+    /// Spacing of the rectangular cast-iron grates in the `gutters`; 0 for
+    /// none.
+    var gutterGrateSpacing: Double = 0
     /// Village stretches, where the verge grass keeps to a thin strip.
     var villages: [Span] = []
     /// Stretches whose roadside buildings have a known look.
     var houseLooks: [HouseLook] = []
-    /// Colour of the setts.
+    /// The setts' size, joints, shape, colour and wear (`SettStyle`).
     var setts: SettLook = .mixedGrey
+    /// Road signs, street plates and traffic mirrors.
+    var signs: [SignPost] = []
+    /// Benches, tables, posts, cabinets and the like.
+    var furniture: [Furniture] = []
+    /// Trees standing in recent photos that the leaf-off LiDAR (2013-15)
+    /// misses: route distance, side, offset beyond the carriageway edge,
+    /// height and crown radius.
+    var extraTrees: [(s: Double, side: Double, offset: Double, height: Double, radius: Double)] = []
+    /// Pollard willows (knotwilgen): the LiDAR trees of a section, on a
+    /// side, up to `maxHeight` and within 15 m of the road.
+    var pollards: [(span: Span, side: Double, maxHeight: Double)] = []
 
-    enum SettLook: Sendable {
-        /// The texture as baked: grey porphyry with some ochre, brown and
-        /// reddish stones among it (the Koppenberg).
-        case mixedGrey
-        /// Mostly blue-grey, the odd brownish stone (the Kwaremont and
-        /// the Paterberg).
-        case blueGrey
+    /// Plates on one galvanised pole (or a wall bracket), top to bottom:
+    /// keys of the sign atlas (cj_signs_map.json, baked by
+    /// scripts/courses/textures/bake_signs.py).
+    struct SignPost: Sendable {
+        enum Mount: Sendable { case pole, wall }
+        var s: Double
+        var side: Double
+        /// Beyond the carriageway edge, metres.
+        var offset: Double
+        var plates: [String]
+        /// Faces traffic coming down: riders going up see the backs.
+        var facesDownhill = false
+        /// Extra turn towards the road, degrees (negative turns the face
+        /// away from it, as a junction mirror looks into the side road). On
+        /// a wall it must leave the face looking out of the wall.
+        var turn: Double = 8
+        /// `.wall`: on a bracket from the nearest footprint wall within a few
+        /// metres (`BuildingBuilder.wallMount`), on a pole without one.
+        var mount: Mount = .pole
+    }
 
-        /// For `WorldShaders.cobbleSurface`: an rgb multiplier on the
-        /// stones' albedo and the share of its saturation kept.
-        var tint: SIMD4<Float> {
-            switch self {
-            case .mixedGrey: return SIMD4(1, 1, 1, 1)
-            case .blueGrey: return SIMD4(0.93, 0.98, 1.1, 0.4)
-            }
+    struct Furniture: Sendable {
+        enum Kind: Sendable {
+            /// Slatted bench with a backrest: timber or dark recycled plastic.
+            case bench(wood: Bool)
+            case picnicTable
+            /// Hoop stands in a row.
+            case bikeStands(Int)
+            /// Dark-green electricity kiosk with a pyramid roof.
+            case electricityKiosk
+            /// Rough old granite marker post.
+            case granitePost
+            case wasteBasket
+            /// Small timber wayside cross.
+            case waysideCross
+            /// Yellow pipeline marker post, no operator logo.
+            case markerPost
+            /// Square brick gate pillar, its cap white or stone.
+            case gatePillar(whiteCap: Bool)
+            /// Grey utility cabinet.
+            case cabinet
+            /// The blue door and cross of the chapel standing within a few
+            /// metres (its walls and roof are the footprint's).
+            case chapelFront
         }
+
+        var kind: Kind
+        var s: Double
+        var side: Double
+        /// Beyond the carriageway edge, metres.
+        var offset: Double
+        /// Turn from facing the road, degrees.
+        var turn: Double = 0
+    }
+
+    /// From the photo survey (scripts/courses/debug/<id>/research_summary.json),
+    /// photos of each climb and Belgian reclaimed-sett sizes (Opalis: old
+    /// porphyry 13-17 cm square, 11x17 to 14x20 rectangular; joints 3-15 mm
+    /// on sand). Laid in arcs or diagonally nowhere yet: the Kwaremont
+    /// square's pattern is unconfirmed.
+    enum SettLook: Sendable {
+        /// The Koppenberg: old porphyry "kinderkoppen", warm and dark greys
+        /// with a quarter rust and ochre, near square and strongly domed,
+        /// on wide gritty joints.
+        case mixedGrey
+        /// The Oude Kwaremont: pale grey, buff and bluish split stones,
+        /// roughly cubic 14-15 cm but uneven, with fractured, chipped tops,
+        /// on sandy joints that gape here and there.
+        case paleSplit
+        /// The Paterberg: darker, regular, domed setts, roughly square
+        /// 13-14 cm, "closer together than the Koppenberg".
+        case darkRegular
     }
 
     enum LampStyle: Sendable {
@@ -149,6 +227,20 @@ struct CourseArt: Sendable {
         pavements.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0
     }
 
+    /// Width paved on a side of the road at `s`, raised or flush; 0 where
+    /// none.
+    func pavedWidth(_ s: Double, side: Double) -> Double {
+        max(pavementWidth(s, side: side),
+            pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0)
+    }
+
+    /// Whether a LiDAR tree is grown as a pollard willow: `side` is the side
+    /// of the road it stands on, `routeDistance` its distance from the
+    /// centre line.
+    func isPollard(s: Double, side: Double, routeDistance: Double, height: Double) -> Bool {
+        routeDistance < 15 && pollards.contains { $0.span.contains(s) && $0.side * side > 0 && height <= $0.maxHeight }
+    }
+
     /// 1 in a village stretch, easing to 0 over about 20 m across its ends
     /// (none where it starts at the route start), so the verge grass
     /// thickens gradually as the houses end.
@@ -193,17 +285,46 @@ struct CourseArt: Sendable {
     /// s ≈ 300, so a feature x metres up the climb in the survey sits at
     /// s ≈ x + 300.
     private static let byCourseID: [String: CourseArt] = [
+        // The Steengat (photos of 2009): cottages on the road edge, setts up
+        // to their fronts on the right, a narrow paved strip and small front
+        // gardens behind a low hedge on the left, round gully grates down
+        // the middle. Widths reach the house fronts in the GRB footprints.
         "koppenberg": CourseArt(
             sunkenLane: [535...648, 765...812],
             kerbs: [(302...430, -1), (688...866, -1)],
             lamps: [(312...432, 29, -1, .curvedBlack)],
             walls: [(842...868, 1)],
             fences: [(700...836, 1), (884...1060, 1), (905...1050, -1)],
+            hedges: [(360...395, -1, 1.0, 0.6, .green)],
+            pavedVerges: [
+                (302...316, 1, 1.0), (316...335, 1, 4.0), (335...346, 1, 1.5), (346...352, 1, 4.2),
+                (352...368, 1, 1.5), (394...428, 1, 1.5),
+                (302...324, -1, 0.6), (324...334, -1, 2.6), (334...340, -1, 0.6), (340...358, -1, 1.2),
+                (358...414, -1, 0.6), (414...424, -1, 4.9), (424...432, -1, 0.6),
+            ],
+            streetGrates: [(306...432, 0.3, 26)],
             villages: [0...440],
             houseLooks: [
                 HouseLook(span: 295...450, maxRouteDistance: 45, look: .whitewashedCottages),
                 HouseLook(span: 790...900, maxRouteDistance: 70, look: .hilltopFarms),
-            ]
+            ],
+            signs: [
+                // The Rotelenberg's setts: closed to all vehicles, cyclists excepted (OSM).
+                SignPost(s: 247, side: 1, offset: 4.8, plates: ["c3", "plate.m11"]),
+                // The fork's pole in the gore (2009, plates as of 2021).
+                SignPost(s: 298, side: 1, offset: 1.2,
+                         plates: ["cycle.route.left", "street.steengat", "tourist.koppenberg.left"]),
+                SignPost(s: 440, side: 1, offset: 1.0, plates: ["c3"]),          // by the last house (2009)
+                SignPost(s: 870, side: 1, offset: 1.2, plates: ["e3.noparking"]),  // past the farm wall (2017)
+            ],
+            furniture: [
+                Furniture(kind: .cabinet, s: 334, side: -1, offset: 0.4),
+                Furniture(kind: .bench(wood: false), s: 708, side: -1, offset: 1.5, turn: 160),  // faces the view back
+                Furniture(kind: .wasteBasket, s: 855, side: -1, offset: 3.8),
+                Furniture(kind: .waysideCross, s: 1055, side: -1, offset: 1.5),
+            ],
+            // Knotwilgen on the right of the open ramp (LiDAR trees of 3.9-4.9 m).
+            pollards: [(680...730, 1, 6.5)]
         ),
         // Broektestraat across the Scheldt valley, the steep holle weg, the
         // Kwaremont village square and upper Kwaremontplein, the cobbled false
@@ -241,6 +362,11 @@ struct CourseArt: Sendable {
                 (2036...2058, -1, 2.2, 1.0, .green),      // Schilderstraat 3
             ],
             pavements: [(1427...1472, 1, 1.4), (1473...1500, 1, 1.0)],  // In 't Palet, the parish hall
+            // The square (2017, 2020 photos): setts from the carriageway to
+            // the closed farm's hedge, then to its walls and forecourt, a
+            // round manhole in the middle.
+            pavedVerges: [(1425...1470, -1, 0.7), (1470...1495, -1, 5.4)],
+            streetGrates: [(1436...1492, -0.2, 27)],
             villages: [0...30, 615...700, 1400...1714],
             houseLooks: [
                 // Sint-Amandus, about 100 m off the square, is white-washed.
@@ -249,9 +375,10 @@ struct CourseArt: Sendable {
                 // Broektestraat 7: red-brick barn gable on the road and the house; a pale building behind.
                 HouseLook(span: 340...415, maxRouteDistance: 27, look: .redBrickPantiles, side: -1),
                 HouseLook(span: 340...415, maxRouteDistance: 32, look: .paleRender, side: -1),
-                // The chapel of Our Lady of the Cyclists, a red-brick barn under a
-                // grey roof, then café 't Juiste Verzet and the farmhouse.
-                HouseLook(span: 626...641, maxRouteDistance: 12, look: .whitewashedCottages, side: -1),
+                // The chapel of Our Lady of the Cyclists (white under a dark roof:
+                // a look that never draws orange pantiles), a red-brick barn under
+                // a grey roof, then café 't Juiste Verzet and the farmhouse.
+                HouseLook(span: 626...641, maxRouteDistance: 12, look: .paleRender, side: -1, kind: "chapel"),
                 HouseLook(span: 645...660, maxRouteDistance: 16, look: .redBrickSlate, side: -1, kind: "other"),
                 HouseLook(span: 662...692, maxRouteDistance: 25, look: .whitewashedPantiles, side: -1),
                 HouseLook(span: 825...850, maxRouteDistance: 20, look: .redBrickPantiles, side: 1),  // Broektestraat 20
@@ -272,7 +399,37 @@ struct CourseArt: Sendable {
                 HouseLook(span: 2030...2065, maxRouteDistance: 20, look: .redBrickPantiles, side: -1),  // Schilderstraat 3
                 HouseLook(span: 2340...2420, maxRouteDistance: 40, look: .redBrickPantiles, side: -1),  // Schilderstraat 5, 7
             ],
-            setts: .blueGrey
+            setts: .paleSplit,
+            signs: [
+                SignPost(s: 338, side: 1, offset: 1.2, plates: ["node.24"]),            // Paddestraat junction
+                SignPost(s: 341, side: 1, offset: 1.5, plates: ["mirror"], turn: -35),
+                SignPost(s: 798, side: -1, offset: 1.5, plates: ["node.65"]),           // where the route turns right
+                SignPost(s: 1251, side: 1, offset: 1.0, plates: ["f1.kwaremont"]),
+                // On the gable at the bend, looking back to the side street;
+                // as close to its corner (where riders coming up see it) as
+                // the gable's verge leaves it head room.
+                SignPost(s: 1479, side: 1, offset: 1.9, plates: ["mirror"], turn: 60, mount: .wall),
+                SignPost(s: 1484, side: -1, offset: 2.0, plates: ["node.69"]),
+                SignPost(s: 1664, side: 1, offset: 1.0, plates: ["f4a.zone30"]),
+                SignPost(s: 1672, side: 1, offset: 1.0, plates: ["a23.children"]),
+                SignPost(s: 2275, side: 1, offset: 1.5, plates: ["node.19"]),           // the fork
+                SignPost(s: 2385, side: 1, offset: 1.0, plates: ["b1.giveway", "plate.100m"]),
+                SignPost(s: 2410, side: 1, offset: 1.5, plates: ["mirror"], turn: -45),  // a farm entrance
+            ],
+            furniture: [
+                // Our Lady of the Cyclists: the blue door and the bench beside it.
+                Furniture(kind: .chapelFront, s: 635, side: -1, offset: 3),
+                Furniture(kind: .bench(wood: true), s: 640.8, side: -1, offset: 2.2),
+                // Not the three benches facing café 't Juiste Verzet (OSM,
+                // 10 m across the road): with no terrace under them they
+                // stood alone in the meadow, dark blocks against the light.
+                Furniture(kind: .markerPost, s: 929, side: -1, offset: 1.0),
+                // In front of the parish hall (OSM).
+                Furniture(kind: .bench(wood: true), s: 1462, side: 1, offset: 12.8, turn: 20),
+                Furniture(kind: .bench(wood: true), s: 1465, side: 1, offset: 20.7, turn: 20),
+            ],
+            // Knotwilgen on the bank tops of the valley drag (LiDAR trees of 4.2-5.5 m).
+            pollards: [(828...862, 1, 6.5), (893...917, -1, 6.5)]
         ),
         // Middelloopstraat down the Molenbeek valley, then the cobbles east
         // up the open hillside: the concrete gutter up the left, edge stones
@@ -284,13 +441,18 @@ struct CourseArt: Sendable {
             kerbs: [(300...664, 1)],
             gutters: [(300...664, -1)],
             fences: [(305...385, -1)],  // stock fence on the north bank at the foot
-            rails: [(505...635, 1, .darkStain)],
+            rails: [
+                (505...635, 1, .darkStain),
+                (518...550, -1, .white),  // no. 3's frontage (2011, 2017)
+            ],
             poles: [(306...505, 38, 1, .concrete)],  // they stop at the tree gate below no. 3
             hedges: [
                 (304...345, 1, 1.7, 1.0, .green),   // clipped hedge on the south bank at the foot
                 (509...545, -1, 1.6, 2.5, .green),  // no. 3's garden, on raised ground
                 (643...664, 1, 2.8, 0.4, .ivy),     // the ivy-grown hedge in front of no. 4
             ],
+            // Gully grates in the gutter (2011: about s 410-430 and 500-515).
+            gutterGrateSpacing: 28,
             houseLooks: [
                 HouseLook(span: 270...305, maxRouteDistance: 30, look: .redBrickPantiles, side: -1),  // Middelloopstraat 4
                 HouseLook(span: 380...425, maxRouteDistance: 45, look: .redBrickPantiles, side: -1),  // Paterbergstraat 1
@@ -298,7 +460,31 @@ struct CourseArt: Sendable {
                 HouseLook(span: 628...648, maxRouteDistance: 10, look: .paleRender, side: 1),         // the summit cottage
                 HouseLook(span: 645...668, maxRouteDistance: 30, look: .paleRenderTiles, side: 1, kind: "house"),  // no. 4
             ],
-            setts: .blueGrey
+            setts: .darkRegular,
+            signs: [
+                SignPost(s: 298, side: -1, offset: 1.0, plates: ["street.paterbergstraat"]),  // at the corner
+                SignPost(s: 306, side: -1, offset: 1.2, plates: ["board.paterberg"]),         // in front of the stock fence
+                // Facing the traffic coming down: riders see the backs, then
+                // the faces once round the turn.
+                SignPost(s: 652, side: -1, offset: 1.0, plates: ["a.steep20"], facesDownhill: true),
+                SignPost(s: 658, side: -1, offset: 1.0, plates: ["c21.3_5t", "plate.landbouw"], facesDownhill: true),
+                SignPost(s: 666, side: 1, offset: 1.5, plates: ["mirror"], turn: -50),       // the T-junction
+            ],
+            furniture: [
+                Furniture(kind: .gatePillar(whiteCap: true), s: 533, side: -1, offset: 1.2),  // no. 3's gate
+                Furniture(kind: .granitePost, s: 615, side: -1, offset: 0.8),
+                Furniture(kind: .electricityKiosk, s: 641.8, side: 1, offset: 0.45),
+                Furniture(kind: .gatePillar(whiteCap: true), s: 650, side: 1, offset: 0.3),   // in no. 4's hedge
+                // The rest area on the Stooktestraat (OSM): benches facing the view, a table, bike stands.
+                Furniture(kind: .bench(wood: true), s: 683.7, side: -1, offset: 11.4, turn: 180),
+                Furniture(kind: .picnicTable, s: 688.2, side: -1, offset: 7.0),
+                Furniture(kind: .bench(wood: true), s: 692.6, side: -1, offset: 4.6, turn: 180),
+                Furniture(kind: .bikeStands(6), s: 694.4, side: -1, offset: 3.8),
+            ],
+            // The summit clump in the corner on the left, with its two LiDAR
+            // trees: the 2024 ortho's crowns, lime or maple, clear of the
+            // Stooktestraat the route turns into.
+            extraTrees: [(636, -1, 6, 10, 4), (650, -1, 5, 9.5, 3.8), (640, -1, 13, 11, 4.5)]
         ),
     ]
 

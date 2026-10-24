@@ -536,6 +536,39 @@ final class CourseRideControllerTests: XCTestCase {
         c.reset()
     }
 
+    /// A Wattbike's gear reports reach the HUD through the ride controller;
+    /// a trainer without the gear service shows none, and the gear belongs
+    /// to the bike, not the ride.
+    @MainActor
+    func test_gears_followTheTrainer_acrossRides() async throws {
+        let (c, _) = try await loadedController()
+        XCTAssertFalse(c.gears.state.available, "no gear service, no badge")
+        c.gears.handleSupport(true)
+        XCTAssertTrue(c.gears.state.available)
+        XCTAssertNil(c.gears.state.gear)
+        XCTAssertEqual(c.gears.state.count, AppSettings.wattbikeGearCount)
+
+        var now: CFTimeInterval = 1000
+        c.gears.handleGear(6, now: now)
+        connectTrainer(c, now: now)
+        c.beginRiding(now: now)
+        trainerRide(c, watts: 250, now: &now, maxSec: 2)
+        c.gears.handleGear(7, now: now)
+        XCTAssertEqual(c.gears.state.gear, 7)
+        XCTAssertEqual(c.gears.state.lastShift?.kind, .harder)
+        XCTAssertEqual(c.gears.state.lastShift?.at, now)
+
+        c.discard()
+        XCTAssertEqual(c.gears.state.gear, 7, "still in that gear on the start line")
+
+        // The trainer drops: FTMSManager clears both.
+        c.gears.handleGear(nil, now: now)
+        c.gears.handleSupport(false)
+        XCTAssertFalse(c.gears.state.available)
+        XCTAssertNil(c.gears.state.gear)
+        c.reset()
+    }
+
     @MainActor
     func test_virtualCadence_followsGearing() {
         // Stopped: the cranks don't turn.

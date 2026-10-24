@@ -1,3 +1,4 @@
+import simd
 import XCTest
 @testable import CycleJames
 
@@ -122,6 +123,73 @@ final class CourseCatalogTests: XCTestCase {
             }
             for run in art.lamps { XCTAssertGreaterThan(run.spacing, 5, id) }
             for run in art.poles { XCTAssertGreaterThan(run.spacing, 15, id) }
+
+            // Village paving, grates and pollards.
+            var paved = art.pavedVerges.map { ("paved verge", $0.span) } + art.streetGrates.map { ("grates", $0.span) }
+            paved += art.pollards.map { ("pollards", $0.span) }
+            for (kind, span) in paved {
+                XCTAssertGreaterThanOrEqual(span.lowerBound, 0, "\(id) \(kind) \(span)")
+                XCTAssertLessThanOrEqual(span.upperBound, length, "\(id) \(kind) \(span)")
+                XCTAssertLessThan(span.lowerBound, span.upperBound, "\(id) \(kind) \(span)")
+            }
+            for side in art.pavedVerges.map(\.side) + art.pollards.map(\.side) {
+                XCTAssertEqual(abs(side), 1, "\(id): side must be -1 or +1")
+            }
+            for v in art.pavedVerges { XCTAssert((0.3...6).contains(v.width), "\(id): paved verge \(v.span) \(v.width) m") }
+            // A side's paved spans may touch (one strip) but never overlap:
+            // two strips on one spot would fight.
+            for side in [-1.0, 1.0] {
+                let spans = art.pavedVerges.filter { $0.side == side }.map(\.span).sorted { $0.lowerBound < $1.lowerBound }
+                for (earlier, later) in zip(spans, spans.dropFirst()) {
+                    XCTAssertLessThanOrEqual(earlier.upperBound, later.lowerBound, "\(id): paved verges \(earlier) and \(later) overlap")
+                }
+            }
+            for g in art.streetGrates {
+                XCTAssertGreaterThan(g.spacing, 5, id)
+                XCTAssertLessThan(abs(g.lateral), b.route.width(at: g.span.lowerBound) / 2 - 0.3, "\(id): grates off the road")
+            }
+            if art.gutterGrateSpacing > 0 { XCTAssertFalse(art.gutters.isEmpty, "\(id): grates without a gutter") }
+
+            // Signs, furniture and extra trees: on the route, on a side, every
+            // plate in the atlas. A pole stands clear of the broadcast
+            // camera's moto, which keeps within about 2.35 m of the centre
+            // line (`CameraRig`: the rider's 0.4 m plus a 1.95 m swing).
+            let cells = BuildingBuilder.signCells
+            XCTAssertFalse(cells.isEmpty, "cj_signs_map.json not in the bundle")
+            for post in art.signs {
+                XCTAssert((0...length).contains(post.s), "\(id): sign at \(post.s)")
+                XCTAssertEqual(abs(post.side), 1, "\(id): sign at \(post.s)")
+                XCTAssertFalse(post.plates.isEmpty, "\(id): sign at \(post.s)")
+                for key in post.plates { XCTAssertNotNil(cells[key], "\(id): plate \(key) not in the sign atlas") }
+                if post.mount == .pole {
+                    XCTAssertGreaterThan(b.route.width(at: post.s) / 2 + post.offset, 2.5, "\(id): sign at \(post.s) in the camera's way")
+                }
+            }
+            for item in art.furniture {
+                XCTAssert((0...length).contains(item.s), "\(id): furniture at \(item.s)")
+                XCTAssertEqual(abs(item.side), 1, "\(id): furniture at \(item.s)")
+                XCTAssertGreaterThanOrEqual(item.offset, 0, "\(id): furniture at \(item.s)")
+            }
+            for t in art.extraTrees {
+                XCTAssert((0...length).contains(t.s), "\(id): tree at \(t.s)")
+                XCTAssertEqual(abs(t.side), 1, "\(id): tree at \(t.s)")
+                XCTAssertGreaterThan(t.offset, t.radius * 0.5, "\(id): tree at \(t.s) crowding the road")
+                // Clear of every stretch of the route, the one it turns into
+                // included.
+                let d = b.route.direction(at: t.s)
+                let p = b.route.planar(at: t.s) + SIMD2(d.y, -d.x) * (t.side * (b.route.width(at: t.s) / 2 + t.offset))
+                var nearest = Double.infinity
+                var s = 0.0
+                while s <= length {
+                    nearest = min(nearest, simd_distance(p, b.route.planar(at: s)))
+                    s += 1
+                }
+                XCTAssertGreaterThan(nearest, 5, "\(id): tree at \(t.s) stands on the route")
+            }
+        }
+        // The signs' paints and grates are in the atlas too.
+        for key in ["paint.blue", "paint.green", "paint.yellow", "paint.cabinet", "grate.round", "grate.rect"] {
+            XCTAssertNotNil(BuildingBuilder.signCells[key], key)
         }
         // The Paterberg's concrete gutter runs the whole climb on the left.
         let pat = try bundle("paterberg")

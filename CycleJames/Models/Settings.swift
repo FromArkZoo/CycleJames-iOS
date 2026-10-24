@@ -9,6 +9,7 @@ enum SettingsKeys {
     static let bikeWeightKg = "cyclejames_bikeWeightKg"
     static let trainerDifficultyPct = "cyclejames_trainerDifficultyPct"
     static let graphicsQuality = "cyclejames_graphicsQuality"
+    static let wattbikeGearCount = "cyclejames_wattbikeGearCount"
     static let coursePersonalBests = "cyclejames_coursePersonalBests"
     static let coursePersonalBestSplits = "cyclejames_coursePersonalBestSplits"
     static let coursePersonalBestSessions = "cyclejames_coursePersonalBestSessions"
@@ -67,6 +68,20 @@ enum AppSettings {
         set {
             UserDefaults.standard.set(newValue.clamped(to: trainerDifficultyRange), forKey: SettingsKeys.trainerDifficultyPct)
         }
+    }
+
+    /// Gears on the rider's Wattbike Hub preset: 11 or 22 linear, 24 for the
+    /// 12-speed compact presets. Sets the gear badge's "/22" and ladder; a
+    /// higher gear reported mid-ride raises it for that ride.
+    static let wattbikeGearCounts = [11, 22, 24]
+    static let defaultWattbikeGearCount = GearTracker.defaultCount
+
+    static var wattbikeGearCount: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: SettingsKeys.wattbikeGearCount)
+            return wattbikeGearCounts.contains(v) ? v : defaultWattbikeGearCount
+        }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKeys.wattbikeGearCount) }
     }
 
     /// "auto" or a `GraphicsQuality` raw value.

@@ -24,11 +24,15 @@ struct MetricsGrid: View {
                     value: valueOrDash(ride.currentCadence),
                     unit: "rpm"
                 )
-                MetricCard(
-                    label: "Avg",
-                    value: valueOrDash(ride.avgPower),
-                    unit: "W"
-                )
+                // In Free Ride a Wattbike's shifters set the resistance: its
+                // gear takes Avg's place, under Power (Avg is on the summary).
+                GearSlot(feed: ride.gears, mode: ride.mode) {
+                    MetricCard(
+                        label: "Avg",
+                        value: valueOrDash(ride.avgPower),
+                        unit: "W"
+                    )
+                }
                 MetricCard(
                     label: "Heart Rate",
                     value: valueOrDash(ride.currentHR),

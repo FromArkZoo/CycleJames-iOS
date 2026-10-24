@@ -37,6 +37,15 @@ struct WorldConfig: Sendable {
     /// Camera distance at which verge grass has shrunk away; it grows to
     /// full height over `WorldShaders.grassFadeLength` inside it.
     var grassRadius: Double
+    /// The verge's sward (`VegetationBuilder`), streamed with the verge
+    /// grass: the spacing along the road of its row of short tufts over the
+    /// road's edge, metres (never under 0.3), which also sets how much
+    /// rough-sward ribbon stands beyond the mown strip (about 4 m per metre
+    /// of road and side at 0.33); 0 = no sward.
+    var swardFinSpacing: Double { quality == .high ? 0.22 : quality == .balanced ? 0.33 : 0 }
+    /// Share of the tall verge tufts beyond a metre from the road that
+    /// flower (wild carrot, knapweed and yarrow, tansy).
+    var flowerShare: Double { quality == .high ? 0.14 : quality == .balanced ? 0.1 : 0 }
 
     // Look.
     var ssao: Bool
