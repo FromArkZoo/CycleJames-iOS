@@ -4,7 +4,7 @@
 # ///
 """Bake a CycleJames climb course from open data (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg)
+    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg, muur)
 
 Sources (all fetched once and cached under scripts/courses/.cache/<id>/):
   * OpenStreetMap via Overpass  -> route centreline, surface, names
@@ -290,6 +290,88 @@ COURSES["paterberg"] = {
         "retrieved": "2026-10-18",
         "notes": "Race direction and streets: Ronsebaan (N36), Lamontstraat, Kalkhovenstraat, Middelloopstraat, "
                  "Paterbergstraat, Stooktestraat. Paterberg 360 m, 12.9 % average, 20.3 % max, 360 m of cobbles.",
+    },
+}
+
+COURSES["muur"] = {
+    **_SHARED,
+    "name": "Muur van Geraardsbergen",
+    "region": "Geraardsbergen · Flemish Ardennes",
+    # Race order from the Omloop Het Nieuwsblad 2026 course GPX (cyclingstage.com, from the
+    # road book), matched to OSM way by way: Oudenaardsestraat -> Grotestraat -> Brugstraat over
+    # the Dender -> Markt -> Vesten -> Oudebergstraat -> right into the park on the Muur -> the
+    # Kapelmuur round the chapel -> down the Oudeberg and the Driepikkel towards the Bosberg.
+    "ways": [
+        117050598,   # Oudenaardsestraat, asphalt (approach)
+        140834449,   # Grotestraat, asphalt
+        226829598,   # Grotestraat, asphalt
+        121791848,   # Grotestraat, asphalt
+        51812708,    # Brugstraat, asphalt
+        51812713,    # Brugstraat, asphalt: the bridge over the Dender
+        1049733123,  # Brugstraat, asphalt
+        229368632,   # Brugstraat, asphalt
+        31295090,    # Brugstraat, asphalt: the climb starts at its first node, the Kaai corner
+        31295211,    # Brugstraat, grey concrete pavers (photo 2024)
+        86502351,    # Markt, concrete pavers along the church
+        1116471189,  # Markt, sett: the cobbles start
+        501773779,   # Markt, sett
+        147154162,   # Markt, sett
+        439546912,   # Vesten, sett
+        86502349,    # Vesten, sett
+        127709175,   # Oudebergstraat, sett
+        147154153,   # Oudebergstraat, sett
+        365912740,   # Oudebergstraat, sett
+        571820915,   # Muur, sett: into the park on the Oudenberg
+        571820916,   # Muur, sett: down to the left-hand hairpin
+        572035233,   # Muur, sett
+        1453533351,  # Muur, sett
+        410355879,   # Muur, sett
+        117772267,   # Kapelmuur, sett: round the chapel; the climb ends at its last node
+        86502347,    # Oudebergstraat, sett (exit)
+        365912388,   # Oudeberg, sett (exit)
+        229161973,   # Oudeberg, sett (exit; the trimmed route ends inside it)
+        86502330,    # Driepikkel, sett: only extends the chain past exit_m
+    ],
+    # The Dender bridge's east end (climbfinder's start, 50.77158 N 3.88033 E) to the top of the
+    # Kapelmuur (50.77223 N 3.89014 E): climbfinder 1143 m.
+    "climb_start": ("way_start", 31295090),
+    "climb_end": ("way_end", 117772267),
+    "approach_m": 300.0,
+    "exit_m": 200.0,
+    "osm_bbox": (50.766, 3.866, 50.779, 3.897),
+    # OSM width tags where present (Markt 4-6 m, Vesten and Oudebergstraat 4 m, Muur and
+    # Kapelmuur 3 m); the rest from the GRB WGO carriageway edges (build_log.txt).
+    "width_m": {
+        117050598: 4.5, 140834449: 5.0, 226829598: 4.25, 121791848: 6.0,
+        51812708: 6.5, 51812713: 6.5, 1049733123: 6.5, 229368632: 6.5, 31295090: 6.0,
+        31295211: 4.25,
+        365912740: 3.75,
+        365912388: 3.5, 229161973: 3.5, 86502330: 3.5,
+    },
+    # The Brugstraat and the first of the Markt are concrete pavers (OSM paving_stones; the 2024
+    # photos), ridden like asphalt: climbfinder puts the cobbles from 200 m, the Markt's setts.
+    "surface_by_way": {31295211: "asphalt", 86502351: "asphalt"},
+    # The Markt's setts are 6 m between the GRB edges; the app draws 5.5 m of them as the
+    # carriageway (its far sett map spans 5.6 m) and the rest of the square as flush paving.
+    "max_cobbled_width_m": 5.5,
+    # The LiDAR ground under a bridge is the river: carry the deck across.
+    "bridge_ways": [51812713],
+    "refine_centreline": False,
+    "align_to_grb": True,
+    "default_width_m": 3.5,
+    "surface_crr": _SURFACE_CRR,
+    "village": "Geraardsbergen",
+    "climb_start_name": "Muur – start at the Dender",
+    "summit_name": "Muur – the chapel on the Oudenberg",
+    "streets": "Oudenaardsestraat, Grotestraat, Brugstraat, Markt, Vesten, Oudebergstraat, Muur, Kapelmuur, Oudeberg",
+    "roadbook": {
+        "name": "Omloop Het Nieuwsblad 2026 course GPX (cyclingstage.com, from the road book)",
+        "url": "https://cdn.cyclingstage.com/images/omloop-het-nieuwsblad/2026/route.gpx",
+        "retrieved": "2026-10-27",
+        "notes": "Race direction and streets: Oudenaardsestraat, Grotestraat, Brugstraat, Markt, Vesten, "
+                 "Oudebergstraat, Muur, Kapelmuur, Oudeberg, Driepikkel. Muur-Kapelmuur: 1075 m, 9.3 % average, "
+                 "19.8 % max (Ronde van Vlaanderen); climbfinder 1143 m, +91 m from the Dender, cobbles from "
+                 "200 m.",
     },
 }
 
@@ -882,14 +964,22 @@ def build(course_id: str) -> int:
 
     def width_for(k):
         t = tagsk[k]
+        w = None
         if "width" in t:
             try:
-                return float(str(t["width"]).replace("m", "").strip())
+                w = float(str(t["width"]).replace("m", "").strip())
             except ValueError:
                 pass
-        return float(cfg["width_m"].get(chain.ways[k]["id"], cfg["default_width_m"]))
+        if w is None:
+            w = float(cfg["width_m"].get(chain.ways[k]["id"], cfg["default_width_m"]))
+        # The app's far sett map repeats every 5.6 m across the road, so a wider cobbled
+        # carriageway is narrowed to the cap; the square beyond it is CourseArt's flush paving.
+        cap = cfg.get("max_cobbled_width_m")
+        return min(w, cap) if cap and surface_name(k) == "cobbles" else w
 
     def surface_name(k):
+        if chain.ways[k]["id"] in cfg.get("surface_by_way", {}):
+            return cfg["surface_by_way"][chain.ways[k]["id"]]
         v = tagsk[k].get("surface", "asphalt")
         return "cobbles" if v in COBBLE_SURFACES else "concrete" if v in CONCRETE_SURFACES else "asphalt"
 
@@ -1022,6 +1112,25 @@ def build(course_id: str) -> int:
         offs = np.arange(-hw, hw + 1e-9, 0.25)
         z = samp(dtm_f, e_loc[i] + offs * ne_[i], n_loc[i] + offs * nn_[i])
         z_low[i] = np.percentile(z, pct)
+    # Bridges: the bare-earth DTM under a deck is the river bed or the water. Carry the road
+    # straight across from abutment to abutment (bridge_margin_m beyond the OSM bridge way,
+    # where the quay walls still blur into the channel).
+    bridge_ids = set(cfg.get("bridge_ways", []))
+    if bridge_ids:
+        on_bridge = np.array([chain.ways[k]["id"] in bridge_ids for k in widx])
+        m_ = cfg.get("bridge_margin_m", 4.0)
+        deck = np.zeros(n_st, dtype=bool)
+        for i in np.flatnonzero(on_bridge):
+            deck |= np.abs(s - s[i]) <= m_
+        idx_land = np.flatnonzero(~deck)
+        lifted = np.interp(s[deck], s[idx_land], z_low[idx_land])
+        dk = s[deck]
+        br_ = np.flatnonzero(np.diff(dk) > 1.5)
+        spans = ", ".join(f"{a:.0f}-{b:.0f}" for a, b in zip(np.r_[dk[0], dk[br_ + 1]], np.r_[dk[br_], dk[-1]]))
+        log(f"[profile] bridge deck carried across at s = {spans} (OSM bridge ways +-{m_} m): ground under it "
+            f"{z_low[deck].min():.2f} m, deck {lifted.min():.2f}..{lifted.max():.2f} m, "
+            f"lifted by up to {(lifted - z_low[deck]).max():.2f} m")
+        z_low[deck] = lifted
     z_raw = z_low.copy()
     z_low, spikes = hampel(z_raw, int(cfg["despike_window_m"]), cfg["despike_min_m"])
     if spikes.any():

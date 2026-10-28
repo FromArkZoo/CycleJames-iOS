@@ -10,7 +10,8 @@ extension CourseArt.SettLook {
     /// and lay, with rough, tilted tops and chipped corners, most close
     /// together and some well short of their neighbours on sandy joints
     /// (every joint wide rings each stone like grout on new pavers); the
-    /// Paterberg's darker, regular, domed setts close together.
+    /// Paterberg's darker, regular, domed setts close together; the Muur's
+    /// smaller grey setts, close and polished.
     var style: CourseArt.SettStyle {
         switch self {
         case .mixedGrey:
@@ -35,6 +36,15 @@ extension CourseArt.SettLook {
                 stoneA: SIMD4(0.115, 0.111, 0.106, 0.18), stoneB: SIMD4(0.095, 0.096, 0.100, 0.28),
                 stoneC: SIMD4(0.137, 0.120, 0.100, 0.08),
                 wear: SIMD4(0.70, 0.30, 0.6, 0.012), farMatch: 0.886, farAO: 1.11, grainNormal: 1.0)
+        case .smallWorn:
+            // Domed between the Paterberg's and the Kwaremont's, so the far
+            // calibration sits between theirs (not measured on its own).
+            CourseArt.SettStyle(
+                layout: SIMD4(0.125, 0.118, 0.16, 0.26), joint: SIMD4(0.004, 0.009, 0.32, 0.14),
+                shape: SIMD4(0.016, 0.75, 0.002, 0.026),
+                stoneA: SIMD4(0.118, 0.115, 0.110, 0.22), stoneB: SIMD4(0.092, 0.092, 0.094, 0.30),
+                stoneC: SIMD4(0.140, 0.124, 0.100, 0.12),
+                wear: SIMD4(0.70, 0.30, 0.9, 0.015), farMatch: 0.89, farAO: 1.09, grainNormal: 1.0)
         }
     }
 
@@ -44,6 +54,7 @@ extension CourseArt.SettLook {
         case .mixedGrey: 0
         case .paleSplit: 1
         case .darkRegular: 2
+        case .smallWorn: 3
         }
     }
 }

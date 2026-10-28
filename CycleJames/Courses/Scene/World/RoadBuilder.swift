@@ -372,7 +372,7 @@ enum RoadBuilder {
         let lineW = 0.12, lift = 0.006
         func painted(_ s: RoadCorridor.Station) -> Bool {
             s.beyond < 0.95 && s.halfWidth >= 3.0 && s.surface != corridor.cobbleIndex
-                && s.surface != corridor.concreteIndex
+                && s.surface != corridor.concreteIndex && !corridor.art.unmarked.contains { $0.contains(s.s) }
         }
         func hasLanes(_ s: RoadCorridor.Station) -> Bool { s.halfWidth >= 4.5 }
         func edgeLine(_ s: RoadCorridor.Station) -> Double { s.halfWidth - (hasLanes(s) ? 1.45 : 0.35) }

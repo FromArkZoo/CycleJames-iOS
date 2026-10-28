@@ -25,6 +25,10 @@ struct CourseArt: Sendable {
     var lamps: [(span: Span, spacing: Double, side: Double, style: LampStyle)] = []
     /// Brick walls just off the road edge: section and side.
     var walls: [(span: Span, side: Double)] = []
+    /// Dry-stone retaining walls at the carriageway edge, holding up the
+    /// bank behind them (the Muur's park lane): section, side and the most
+    /// the wall stands above the road; it never rises above the bank.
+    var stoneWalls: [(span: Span, side: Double, height: Double)] = []
     /// Post-and-wire fences: section and side (−1 left, +1 right).
     var fences: [(span: Span, side: Double)] = []
     /// Post-and-rail paddock fences: section, side and paint.
@@ -51,6 +55,8 @@ struct CourseArt: Sendable {
     var gutterGrateSpacing: Double = 0
     /// Village stretches, where the verge grass keeps to a thin strip.
     var villages: [Span] = []
+    /// Asphalt wide enough for lines that has none (town streets).
+    var unmarked: [Span] = []
     /// Stretches whose roadside buildings have a known look.
     var houseLooks: [HouseLook] = []
     /// The setts' size, joints, shape, colour and wear (`SettStyle`).
@@ -111,6 +117,14 @@ struct CourseArt: Sendable {
             /// The blue door and cross of the chapel standing within a few
             /// metres (its walls and roof are the footprint's).
             case chapelFront
+            /// The Oudenberg chapel, built whole on the chapel footprint
+            /// nearest (in place of its walls and roof): a red-brick drum
+            /// with stone bands under a slate dome, an open lantern and a
+            /// gilt statue, low side wings, and a stone-dressed front gable
+            /// with its door towards the footprint's porch.
+            case domedChapel
+            /// A tall timber calvary cross with the corpus, on a stone base.
+            case calvary
         }
 
         var kind: Kind
@@ -139,6 +153,10 @@ struct CourseArt: Sendable {
         /// The Paterberg: darker, regular, domed setts, roughly square
         /// 13-14 cm, "closer together than the Koppenberg".
         case darkRegular
+        /// The Muur: smaller setts than the other bergs (about 12 cm),
+        /// grey and blue-grey with a few buff stones, gently domed, close
+        /// together, polished in the wheel tracks by the town's traffic.
+        case smallWorn
     }
 
     enum LampStyle: Sendable {
@@ -148,6 +166,9 @@ struct CourseArt: Sendable {
         case curvedGrey
         /// Black post with a flat LED head on a short arm.
         case ledBlack
+        /// Black post with a four-sided lantern on top (the Muur's park
+        /// and the chapel).
+        case postLantern
     }
 
     enum RailPaint: Sendable {
@@ -485,6 +506,62 @@ struct CourseArt: Sendable {
             // trees: the 2024 ortho's crowns, lime or maple, clear of the
             // Stooktestraat the route turns into.
             extraTrees: [(636, -1, 6, 10, 4), (650, -1, 5, 9.5, 3.8), (640, -1, 13, 11, 4.5)]
+        ),
+        // Geraardsbergen: the Grotestraat and the Brugstraat over the Dender,
+        // the Markt between the town hall and Sint-Bartholomeus, the Vesten
+        // along the parking, the Oudebergstraat between houses; then the Muur
+        // through the park on the Oudenberg, cut into the hillside (the LiDAR
+        // bank rises 1.5-3 m on the left to the hairpin at s ≈ 1300, then
+        // lower on the right), and the Kapelmuur up the side of the chapel's
+        // grass mound. From the 2024 aerial photo, the GRB facades, the
+        // canopy model and photos of 2019-2026 (Commons, Panoramax). The
+        // town's pavements are concrete pavers, left to the draped photo.
+        "muur": CourseArt(
+            sunkenLane: [1170...1300],
+            kerbs: [(1175...1295, 1)],  // the footpath's kerb, on the falling side
+            lamps: [
+                (650...930, 34, -1, .curvedGrey),     // tall grey posts along the Vesten parking
+                (1178...1296, 30, 1, .postLantern),   // beside the footpath up the park lane
+                (1306...1376, 35, -1, .postLantern),
+            ],
+            stoneWalls: [
+                (1176...1294, -1, 1.8),  // stacked schist under the wooded bank
+                (1304...1378, 1, 1.0),   // the lower bank after the hairpin
+                (1404...1434, -1, 0.35), // the sett-faced foot of the chapel's mound, past the bench
+            ],
+            // Setts from the carriageway over the open Markt to the town hall,
+            // in front of Sint-Bartholomeus, and over the Vesten's parking.
+            // With these small setts the far map lays a right-hand strip's
+            // courses again on the left 119 m back and 393 m on (450 and
+            // 950 courses each way), so the strips keep clear of that.
+            pavedVerges: [(446...632, -1, 5.4), (500...562, 1, 5.4), (640...890, -1, 5.4)],
+            villages: [0...1160],
+            // The Grotestraat (a cycle street), the bridge and the Brugstraat:
+            // no lines in the photos of 2019-2026.
+            unmarked: [0...444],
+            houseLooks: [
+                // The neo-Gothic town hall: red brick under slate turrets.
+                // (Sint-Bartholomeus keeps the churches' dark brick and slate,
+                // near its brown-grey sandstone.)
+                HouseLook(span: 540...600, maxRouteDistance: 35, look: .redBrickSlate, side: -1),
+                // The red-brick house under orange pantiles left of the lane after the hairpin.
+                HouseLook(span: 1335...1385, maxRouteDistance: 30, look: .redBrickPantiles, side: -1),
+                HouseLook(span: 0...1630, maxRouteDistance: 60, look: .villageMix),
+            ],
+            setts: .smallWorn,
+            signs: [
+                // At the turn onto the Kapelmuur: the node plate and a route arrow right (2022).
+                SignPost(s: 1381, side: -1, offset: 1.2, plates: ["node.76", "cycle.route.right"]),
+            ],
+            furniture: [
+                // A grey bench and a bin at the foot of the mound (2024).
+                Furniture(kind: .wasteBasket, s: 1397, side: -1, offset: 1.0),
+                Furniture(kind: .bench(wood: false), s: 1400, side: -1, offset: 1.2),
+                // The chapel (footprint centroid 14 m off s 1453) and the calvary
+                // east of it (a lone 6.3 m spike in the canopy model).
+                Furniture(kind: .domedChapel, s: 1453, side: -1, offset: 8),
+                Furniture(kind: .calvary, s: 1465, side: -1, offset: 6.8),
+            ]
         ),
     ]
 

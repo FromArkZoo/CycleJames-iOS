@@ -30,7 +30,7 @@ final class BuildingBuilderTests: XCTestCase {
         XCTAssertEqual(r.uv2.count, r.vertexCount * 2, "\(label): roof texcoord 1", file: file, line: line)
         for i in stride(from: 0, to: w.uv3.count, by: 2) {
             let code = Int(w.uv3[i].rounded())
-            XCTAssertTrue((0...BB.WallKind.steelDoor.rawValue).contains(code / 8), "\(label): wall code \(code)",
+            XCTAssertTrue((0...BB.WallKind.dryStone.rawValue).contains(code / 8), "\(label): wall code \(code)",
                           file: file, line: line)
             XCTAssertTrue((0..<1).contains(w.uv3[i + 1]), "\(label): wall seed", file: file, line: line)
         }
@@ -534,5 +534,19 @@ final class BuildingBuilderTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(mounted, 0)
+    }
+
+    /// The domed chapel's body is a circle fitted to its footprint, clear of
+    /// the porch that pushes out of it.
+    func test_circleFitFindsTheBody() throws {
+        let pts = (0..<10).map { k -> SIMD2<Double> in
+            let a = Double(k) / 10 * 2 * .pi
+            return SIMD2(358.9, 51.8) + SIMD2(cos(a), sin(a)) * 7.5
+        }
+        let fit = try XCTUnwrap(BB.fitCircle(pts))
+        XCTAssertEqual(fit.centre.x, 358.9, accuracy: 1e-6)
+        XCTAssertEqual(fit.centre.y, 51.8, accuracy: 1e-6)
+        XCTAssertEqual(fit.radius, 7.5, accuracy: 1e-6)
+        XCTAssertNil(BB.fitCircle([SIMD2(0, 0), SIMD2(1, 1), SIMD2(2, 2)]))
     }
 }

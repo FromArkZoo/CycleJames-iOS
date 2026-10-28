@@ -15,7 +15,8 @@ its size in metres and its uv rect (u0, v0, u1, v1, v down). BuildingBuilder
 cuts each face to its shape, so the atlas needs no alpha: each cell's corners
 carry the plate's rim colour, which keeps the mips from bleeding a dark edge.
 A few plain cells (paint.*) colour props: the chapel door, the kiosk's
-plinth, the pipeline marker; grate.* are the cast-iron gully grates; kiosk.*
+plinth, the pipeline marker, the Oudenberg chapel's gilt statue; grate.* are
+the cast-iron gully grates; kiosk.*
 are the Paterberg summit kiosk's doors, end panels and roof, weathered, at
 half the density and packed after everything else, so they move no plate.
 
@@ -515,9 +516,11 @@ SIGNS = [
     ("node.65", "rect", 0.32, 0.32, node(65)),
     ("node.69", "rect", 0.32, 0.32, node(69)),
     ("node.19", "rect", 0.32, 0.32, node(19)),
+    ("node.76", "rect", 0.32, 0.32, node(76)),
     ("street.steengat", "rect", 0.80, 0.26, street_plate("STEENGAT", "Stad Oudenaarde")),
     ("tourist.koppenberg.left", "rect", 1.10, 0.25, tourist_arrow("KOPPENBERG", left=True)),
     ("cycle.route.left", "rect", 0.30, 0.20, cycle_route(left=True)),
+    ("cycle.route.right", "rect", 0.30, 0.20, cycle_route(left=False)),
     ("street.paterbergstraat", "rect", 0.95, 0.20, street_plate("PATERBERGSTRAAT")),
     ("plate.landbouw", "rect", 0.70, 0.16, sub_plate("uitgezonderd landbouwvoertuigen", blue=True)),
     ("plate.m11", "rect", 0.45, 0.16, sub_plate("", pictogram=True)),
@@ -529,6 +532,7 @@ SIGNS = [
     ("paint.yellow", "rect", 0.06, 0.06, paint((232, 186, 22))),
     ("paint.cabinet", "rect", 0.06, 0.06, paint((118, 124, 116))),
     ("paint.plinth", "rect", 0.06, 0.06, paint((46, 46, 43))),
+    ("paint.gold", "rect", 0.06, 0.06, paint((201, 158, 62))),
 ]
 
 # The kiosk's faces (`BuildingBuilder.buildFurniture`), at PROP_SCALE of the

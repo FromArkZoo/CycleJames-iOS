@@ -195,7 +195,7 @@ struct CourseSummary: Identifiable, Hashable, Sendable {
 
 /// The courses shipped in the app, in display order.
 enum CourseCatalog {
-    static let courseIDs = ["koppenberg", "oudekwaremont", "paterberg"]
+    static let courseIDs = ["koppenberg", "oudekwaremont", "paterberg", "muur"]
 
     static func summaries(bundle: Bundle = .main) -> [CourseSummary] {
         courseIDs.compactMap { id in

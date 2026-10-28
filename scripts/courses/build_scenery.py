@@ -4,7 +4,7 @@
 # ///
 """Bake scenery.json for a CycleJames course (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg)
+    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg, muur)
 
 Reads the already-baked course folder (course.json, terrain_near.u16,
 canopy_near.u16) and the raw aerial photo build_course.py keeps out of the
@@ -86,6 +86,14 @@ COURSES: dict[str, dict] = {
     "paterberg": {
         "route_ways": [86501819, 86501826, 369071618, 31295027, 223598561, 1472505832],
         "osm_bbox": (50.7762, 3.5377, 50.7876, 3.5552),
+        "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    "muur": {
+        "route_ways": [117050598, 140834449, 226829598, 121791848, 51812708, 51812713, 1049733123, 229368632,
+                       31295090, 31295211, 86502351, 1116471189, 501773779, 147154162, 439546912, 86502349,
+                       127709175, 147154153, 365912740, 571820915, 571820916, 572035233, 1453533351, 410355879,
+                       117772267, 86502347, 365912388, 229161973, 86502330],
+        "osm_bbox": (50.7685, 3.8715, 50.7767, 3.8956),
         "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
     },
 }
@@ -877,7 +885,8 @@ def build(course_id: str, render: bool = True) -> int:
         if rg is not None:
             rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
             glab[rr, cc] = k + 1
-    n_tagged = 0
+    gcells = np.bincount(glab.ravel(), minlength=len(cands) + 1)
+    n_tagged = n_part = 0
     for t, wid, g in osm_other + stale:
         rg = clean_ring(g, nd=2)
         if rg is None:
@@ -886,13 +895,19 @@ def build(course_id: str, render: bool = True) -> int:
         hit = glab[rr, cc]
         if rr.size and (hit > 0).mean() > 0.3:
             k = int(np.bincount(hit[hit > 0]).argmax()) - 1
-            if not cands[k][1]:
+            # Only one covering at least 40 % of that GRB footprint is the same building: a small
+            # one inside a big GRB block is a part of it (Geraardsbergen's Oud-Hospitaal chapel
+            # in the 7500 m2 hospital block would otherwise make the whole block a church).
+            if rr.size < 0.4 * gcells[k + 1]:
+                n_part += 1
+            elif not cands[k][1]:
                 cands[k] = (cands[k][0], t, cands[k][2], wid, cands[k][4], cands[k][5])
                 n_tagged += 1
             continue  # duplicate of a GRB footprint
         cands.append(("osm", t, None, wid, g, {}))
     del glab
-    log(f"[buildings] {n_tagged} GRB footprints took tags from an overlapping OSM building without a Gbg ref")
+    log(f"[buildings] {n_tagged} GRB footprints took tags from an overlapping OSM building without a Gbg ref; "
+        f"{n_part} smaller OSM buildings inside a GRB block left it untagged")
     if offs:
         offs = np.array(offs)
         log(f"[buildings] OSM (projected with pyproj) minus GRB (native L72) centroid offset over {len(offs)} "

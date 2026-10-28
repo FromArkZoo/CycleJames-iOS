@@ -49,8 +49,11 @@ enum BuildingBuilder {
     enum RoofTrim: Int { case whiteBoard = 4, darkBoard, flatRoof, darkRidge }
 
     /// What a wall vertex is, for `WorldShaders.wallSurface`: the doors are
-    /// barns' and sheds', painted by the shader (`Paint.door`).
-    enum WallKind: Int { case wall = 0, tarPlinth, paintedPlinth, stonePlinth, cementPlinth, stack, timberDoor, steelDoor }
+    /// barns' and sheds', painted by the shader (`Paint.door`); a dry-stone
+    /// retaining wall's slabs are laid by the shader too.
+    enum WallKind: Int {
+        case wall = 0, tarPlinth, paintedPlinth, stonePlinth, cementPlinth, stack, timberDoor, steelDoor, dryStone
+    }
 
     /// Texcoord 2 x of a wall vertex: its kind and the building's tint
     /// (an index into the shader's tints).
@@ -97,8 +100,11 @@ enum BuildingBuilder {
     static func build(corridor: RoadCorridor, scenery: SceneryFile?, canopy: HeightRaster? = nil) -> Output {
         var out = Output()
         let terrain = corridor.terrain
+        // Footprints a hand-placed landmark is built on whole.
+        let landmarks = Set(domedChapelSites(corridor: corridor, scenery: scenery).map { $0.index })
         for (index, b) in (scenery?.buildings ?? []).enumerated() {
             if Task.isCancelled { return out }
+            if landmarks.contains(index) { continue }
             var ring = b.ring.compactMap { $0.count >= 2 ? SIMD2($0[0], $0[1]) : nil }
             ring = cleaned(ring)
             guard ring.count >= 3 else { continue }
@@ -120,6 +126,7 @@ enum BuildingBuilder {
             out.count += 1
         }
         buildSummitWall(&out, corridor: corridor)
+        buildStoneWalls(&out, corridor: corridor)
         buildLamps(&out, corridor: corridor)
         // Fences stop at the mouths of the side roads they would cross.
         let sideRoads = RoadBuilder.SideRoadMask(scenery: scenery)
@@ -451,12 +458,17 @@ enum BuildingBuilder {
         }
 
         // A church gets its west tower and spire (Melden's Sint-Martinus is
-        // seen from the upper climb); the LiDAR height is the spire tip.
+        // seen from the upper climb); the LiDAR height is the spire tip. A
+        // town church's (over 1000 m²: Geraardsbergen's Sint-Bartholomeus)
+        // is its nave's ridge, the thin spire too small to lift it: its
+        // tower stands above the nave and the spire about as tall again.
         if b.kind == "church" {
-            let ts = min(obb.halfShort * 2 * 0.8, 6.5)
+            let town = area > 1000
+            let ts = min(obb.halfShort * 2 * 0.8, town ? 8.5 : 6.5)
             let west = obb.long.x > 0 ? -1.0 : 1.0
             let c = obb.centre + obb.long * (west * (obb.halfLong - ts / 2))
-            let towerTop = floorY + height * 0.68
+            let towerTop = floorY + height * (town ? 1.2 : 0.68)
+            let spireTop = floorY + height * (town ? 1.8 : 1.0)
             emitBox(&out.walls, centre: c, along: obb.long, halfA: ts / 2, halfB: ts / 2, y0: baseY, y1: towerTop,
                     floorY: floorY, style: style, eaves: true, ground: ground)
             let side = SIMD2(obb.long.y, -obb.long.x)
@@ -465,8 +477,8 @@ enum BuildingBuilder {
             let across: SIMD2<Double> = side * h2
             let corners: [SIMD2<Double>] = [c - along - across, c + along - across,
                                             c + along + across, c - along + across]
-            let apex = SIMD3<Float>(Float(c.x), Float(floorY + height), Float(-c.y))
-            let slant = Float(simd_length(SIMD2(height * 0.32, h2)))
+            let apex = SIMD3<Float>(Float(c.x), Float(spireTop), Float(-c.y))
+            let slant = Float(simd_length(SIMD2(spireTop - towerTop, h2)))
             for k in 0..<4 {
                 let p0 = corners[k], p1 = corners[(k + 1) % 4]
                 let first = UInt32(out.roofs.vertexCount)
@@ -1197,6 +1209,36 @@ enum BuildingBuilder {
         }
     }
 
+    /// Dry-stone retaining walls at the carriageway edge (the Muur's park
+    /// lane): a 0.35 m thick face from below the road up to the bank 1.5 m
+    /// behind it, never more than the run's height above the road, in 1.5 m
+    /// pieces. The face's slabs are `WallKind.dryStone`'s.
+    static func buildStoneWalls(_ out: inout Output, corridor: RoadCorridor) {
+        let style = Style(row: .cream, pantile: false, pitchDeg: 0, shed: true)
+        for run in corridor.art.stoneWalls {
+            var prev: (p: SIMD2<Double>, road: Double, top: Double)?
+            var s = run.span.lowerBound
+            while s <= run.span.upperBound + 0.01 {
+                let st = corridor.station(at: s)
+                let edge = run.side * (st.halfWidth + 0.2)
+                let road = corridor.roadHeight(st, lateral: edge)
+                let c = st.point(lateral: run.side * (st.halfWidth + 0.375))
+                let back = st.point(lateral: run.side * (st.halfWidth + 1.7))
+                let bank = Double(corridor.terrain.height(east: back.east, north: back.north))
+                let top = road + min(run.height, max(bank - road, 0.3))
+                let here = SIMD2(c.east, c.north)
+                if let a = prev, simd_distance(a.p, here) > 0.05 {
+                    let foot = min(a.road, road)
+                    emitBox(&out.walls, centre: (a.p + here) / 2, along: simd_normalize(here - a.p),
+                            halfA: simd_distance(a.p, here) / 2 + 0.01, halfB: 0.175, y0: foot - 0.3,
+                            y1: (a.top + top) / 2, style: style, kind: .dryStone, ground: { _ in foot })
+                }
+                prev = (here, road, top)
+                s += 1.5
+            }
+        }
+    }
+
     /// Street lamps leaning over the road (black lanterns along the left of
     /// the Steengat; grey and LED ones on the Kwaremont).
     static func buildLamps(_ out: inout Output, corridor: RoadCorridor) {
@@ -1212,7 +1254,7 @@ enum BuildingBuilder {
     private static func buildLamp(_ out: inout Output, corridor: RoadCorridor, at s: Double, side: Double,
                                   style: CourseArt.LampStyle) {
         let st = corridor.station(at: s)
-        let lat = side * (st.halfWidth + (style == .curvedGrey ? 0.7 : 0.4))
+        let lat = side * (st.halfWidth + (style == .curvedGrey ? 0.7 : style == .postLantern ? 1.4 : 0.4))
         let p = st.point(lateral: lat)
         let ground = Float(corridor.terrain.height(east: p.east, north: p.north))
         let base = SIMD3<Float>(Float(p.east), ground - 0.2, Float(-p.north))
@@ -1268,6 +1310,25 @@ enum BuildingBuilder {
             appendParts(&out.props, m, map: [0: PropPart.darkMetal.rawValue])
             var g = MeshBuffer(parts: 1)
             emitPropBox(&g, centre: headC - SIMD3(0, 0.045, 0), x: toRoad, z: along, half: SIMD3(0.26, 0.008, 0.09))
+            appendParts(&out.props, g, map: [0: PropPart.lampGlass.rawValue])
+        case .postLantern:
+            // A black post with a collar near its foot, and on top a
+            // four-sided lantern: base plate, corner bars round the glass
+            // and a pyramid cap.
+            let top = base + SIMD3(0, 3.7, 0)
+            let along = SIMD3<Float>(Float(st.dirE), 0, Float(-st.dirN))
+            var m = MeshBuffer(parts: 1)
+            TreeArchetype.tube(&m, base, top, 0.08, 0.05, sides: 8, height: 100)
+            TreeArchetype.tube(&m, base + SIMD3(0, 0.2, 0), base + SIMD3(0, 0.8, 0), 0.11, 0.09, sides: 8, height: 100)
+            emitPropBox(&m, centre: top + SIMD3(0, 0.03, 0), x: toRoad, z: along, half: SIMD3(0.16, 0.03, 0.16))
+            for (a, b) in [(-1, -1), (1, -1), (1, 1), (-1, 1)] as [(Float, Float)] {
+                emitPropBox(&m, centre: top + toRoad * (a * 0.15) + along * (b * 0.15) + SIMD3(0, 0.31, 0),
+                            x: toRoad, z: along, half: SIMD3(0.016, 0.26, 0.016))
+            }
+            TreeArchetype.tube(&m, top + SIMD3(0, 0.56, 0), top + SIMD3(0, 0.84, 0), 0.25, 0.03, sides: 4, height: 100)
+            appendParts(&out.props, m, map: [0: PropPart.darkMetal.rawValue])
+            var g = MeshBuffer(parts: 1)
+            emitPropBox(&g, centre: top + SIMD3(0, 0.31, 0), x: toRoad, z: along, half: SIMD3(0.13, 0.25, 0.13))
             appendParts(&out.props, g, map: [0: PropPart.lampGlass.rawValue])
         }
     }
@@ -1842,7 +1903,278 @@ enum BuildingBuilder {
                 appendParts(&out.props, m, map: [0: PropPart.signFace.rawValue])
             case .chapelFront:
                 chapelFront(&out, corridor: corridor, scenery: scenery, near: SIMD2(p.east, p.north), paint: paint)
+            case .domedChapel:
+                if let site = domedChapelSites(corridor: corridor, scenery: scenery).first(where: { $0.s == item.s }) {
+                    domedChapel(&out, corridor: corridor, site: site, paint: paint)
+                }
+            case .calvary:
+                // A timber cross 5.6 m tall on a stepped stone base, the
+                // pale corpus on the side facing the road.
+                var stone = MeshBuffer(parts: 1)
+                box(&stone, SIMD3(0, 0.1, 0), SIMD3(0.7, 0.3, 0.7))
+                box(&stone, SIMD3(0, 0.5, 0), SIMD3(0.42, 0.15, 0.42))
+                appendParts(&out.props, stone, map: [0: PropPart.concrete.rawValue])
+                var cross = MeshBuffer(parts: 1)
+                box(&cross, SIMD3(0, 3.4, 0), SIMD3(0.11, 2.8, 0.11))
+                box(&cross, SIMD3(0, 4.75, 0), SIMD3(1.15, 0.1, 0.1))
+                appendParts(&out.props, cross, map: [0: PropPart.darkWood.rawValue])
+                var body = MeshBuffer(parts: 1)
+                box(&body, SIMD3(0, 4.05, 0.16), SIMD3(0.13, 0.6, 0.05))
+                box(&body, SIMD3(0, 4.68, 0.16), SIMD3(0.8, 0.05, 0.04))
+                box(&body, SIMD3(0, 4.82, 0.17), SIMD3(0.08, 0.1, 0.07))
+                appendParts(&out.props, body, map: [0: PropPart.whitePaint.rawValue])
             }
+        }
+    }
+
+    /// Least-squares circle through the points (Kåsa's fit): centre and
+    /// radius; nil for fewer than three points or a degenerate fit.
+    static func fitCircle(_ pts: [SIMD2<Double>]) -> (centre: SIMD2<Double>, radius: Double)? {
+        guard pts.count >= 3 else { return nil }
+        let o = pts.reduce(SIMD2<Double>.zero, +) / Double(pts.count)
+        var a = simd_double3x3(), b = SIMD3<Double>()
+        for p in pts {
+            let q = p - o
+            let v = SIMD3(q.x, q.y, 1)
+            a = a + simd_double3x3(rows: [v * v.x, v * v.y, v])
+            b -= v * simd_length_squared(q)
+        }
+        guard abs(a.determinant) > 1e-9 else { return nil }
+        let x = a.inverse * b
+        let c = SIMD2(-x.x / 2, -x.y / 2)
+        let r2 = simd_length_squared(c) - x.z
+        return r2 > 0 ? (o + c, r2.squareRoot()) : nil
+    }
+
+    /// Where each `.domedChapel` stands: the furniture's route distance, and
+    /// the chapel footprint nearest its verge point (within 15 m) with its
+    /// index among the scenery's buildings. `build` leaves those footprints
+    /// out and `buildFurniture` builds the chapel on them.
+    static func domedChapelSites(corridor: RoadCorridor, scenery: SceneryFile?)
+        -> [(s: Double, index: Int, ring: [SIMD2<Double>], heightM: Double)] {
+        let buildings = scenery?.buildings ?? []
+        var out: [(s: Double, index: Int, ring: [SIMD2<Double>], heightM: Double)] = []
+        for item in corridor.art.furniture {
+            guard case .domedChapel = item.kind else { continue }
+            let st = corridor.station(at: item.s)
+            let p = RoadBuilder.vergePoint(corridor, st, side: item.side, offset: item.offset)
+            let near = SIMD2(p.east, p.north)
+            var best: (index: Int, ring: [SIMD2<Double>], d: Double)?
+            for (k, b) in buildings.enumerated() where b.kind == "chapel" {
+                var ring = cleaned(b.ring.compactMap { $0.count >= 2 ? SIMD2($0[0], $0[1]) : nil })
+                guard ring.count >= 3 else { continue }
+                if signedArea(ring) < 0 { ring.reverse() }
+                let d = distanceToRing(near, ring)
+                if d < 15, d < (best?.d ?? .infinity) { best = (k, ring, d) }
+            }
+            if let best { out.append((item.s, best.index, best.ring, buildings[best.index].heightM)) }
+        }
+        return out
+    }
+
+    /// The Oudenberg chapel on its footprint (photos 2007-2022): an
+    /// octagonal red-brick drum with stone quoins under a stone cornice, a
+    /// faceted slate dome, a white lantern with its own little dome and the
+    /// gilt statue of Our Lady; low brick wings round the drum under lean-to
+    /// slates; and the porch the footprint pushes out (the vertices well
+    /// beyond the circle fitted to the rest) as a brick front with stone
+    /// pilasters, a gable over the roof line, a cross on it and a timber
+    /// door, kept low enough that the dome shows over it from the road, as
+    /// in the photos. Sized from the footprint, its heights scaled to the
+    /// LiDAR height (12.1 m here).
+    private static func domedChapel(_ out: inout Output, corridor: RoadCorridor,
+                                    site: (s: Double, index: Int, ring: [SIMD2<Double>], heightM: Double),
+                                    paint: (String, inout MeshBuffer) -> Void) {
+        let ring = site.ring
+        func P(_ p: SIMD2<Double>, _ y: Double) -> SIMD3<Float> { SIMD3(Float(p.x), Float(y), Float(-p.y)) }
+        func ground(_ p: SIMD2<Double>) -> Double { Double(corridor.terrain.height(east: p.x, north: p.y)) }
+        let mean = ring.reduce(SIMD2<Double>.zero, +) / Double(ring.count)
+        // The porch: the vertices well beyond the rest (over 1.25 times the
+        // median distance from the middle); the body: a circle fitted to the
+        // others, so the porch doesn't pull it off centre.
+        let dists = ring.map { simd_distance($0, mean) }.sorted()
+        let median = dists[dists.count / 2]
+        let body = ring.filter { simd_distance($0, mean) <= 1.25 * median }
+        let (centre, fitted) = fitCircle(body) ?? (mean, median)
+        var porch = ring.filter { simd_distance($0, mean) > 1.25 * median }
+        if porch.isEmpty { porch = [ring.max { simd_distance($0, centre) < simd_distance($1, centre) }!] }
+        let front = simd_normalize(porch.reduce(SIMD2<Double>.zero, +) / Double(porch.count) - centre)
+        let outer = min(max(fitted, 4.5), 9)
+        let drumR = outer - 1.5
+        let k = min(max(site.heightM / 12.1, 0.85), 1.2)
+        let porchReach = porch.map { simd_dot($0 - centre, front) }.max()!
+        let floorY = ground(centre + front * porchReach) + 0.15
+        let baseY = (ring.map(ground).min() ?? floorY) - 0.4
+        let sd: Float = 0.37
+        var brick = Style(row: .redBrick, pantile: false, pitchDeg: 0, shed: false)
+        brick.plinth = .stonePlinth
+        brick.plinthHeight = 0.5
+        brick.seed = sd
+        var stone = Style(row: .cream, pantile: false, pitchDeg: 0, shed: false)
+        stone.seed = sd
+        var white = Style(row: .painted, pantile: false, pitchDeg: 0, shed: false)
+        white.seed = sd
+        let slate = RoofCover.slate.rawValue, board = RoofTrim.whiteBoard.rawValue
+
+        // An octagon of radius r turned so a face looks along `front`.
+        let a0 = atan2(front.y, front.x) + .pi / 8
+        func octagon(_ r: Double) -> [SIMD2<Double>] {
+            (0..<8).map { i in
+                let a = a0 + Double(i) * .pi / 4
+                return centre + SIMD2(cos(a), sin(a)) * r
+            }
+        }
+        func walls(_ poly: [SIMD2<Double>], top: Double, style: Style) {
+            for i in poly.indices {
+                let p = poly[i], q = poly[(i + 1) % poly.count]
+                let len = simd_distance(p, q)
+                let w = WallFrame(a: p, dir: (q - p) / len, len: len, top0: top, top1: top, floorY: floorY,
+                                  baseY: baseY, ground: groundSamples(p, q, ground))
+                emitWall(&out.walls, w, style: style, openings: [])
+            }
+        }
+        // A faceted dome over an octagon from radius r0 at y0 to r1 at y1,
+        // the profile a quarter ellipse.
+        func dome(r0: Double, y0: Double, r1: Double, y1: Double, rings: Int) {
+            let phiTop = acos(min(r1 / r0, 1))
+            var prev: [SIMD3<Float>] = []
+            var prevUp = 0.0
+            for j in 0...rings {
+                let phi = phiTop * Double(j) / Double(rings)
+                let r = r0 * cos(phi), y = y0 + (y1 - y0) * sin(phi) / max(sin(phiTop), 1e-6)
+                let cur = octagon(r).map { P($0, y) }
+                let up = prevUp + (j == 0 ? 0 : Double(simd_distance(cur[0], prev[0])))
+                if j > 0 {
+                    for i in 0..<8 {
+                        let a = prev[i], b = prev[(i + 1) % 8], c = cur[(i + 1) % 8], d = cur[i]
+                        let mid = (a + b) / 2 - P(centre, y0)
+                        let n = simd_normalize(SIMD3(mid.x, 0, mid.z)) + SIMD3(0, 0.3, 0)
+                        let wb = simd_distance(a, b), wt = simd_distance(c, d)
+                        let h = Float(up - prevUp)
+                        roofQuad(&out.roofs, [a, b, c, d], facing: n,
+                                 uv: [(0, h), (wb, h), ((wb + wt) / 2, 0), ((wb - wt) / 2, 0)],
+                                 id: slate, seed: sd, up: Float(prevUp), part: 1)
+                    }
+                }
+                prev = cur
+                prevUp = up
+            }
+        }
+
+        // The wings round the drum, under lean-to slates rising to it.
+        let wingTop = floorY + 4.2 * k
+        let wing = octagon(outer)
+        walls(wing, top: wingTop, style: brick)
+        let eave = octagon(outer + 0.3).map { P($0, wingTop - 0.05) }
+        let foot = octagon(drumR).map { P($0, wingTop + 1.2 * k) }
+        for i in 0..<8 {
+            let a = eave[i], b = eave[(i + 1) % 8], c = foot[(i + 1) % 8], d = foot[i]
+            let mid = (a + b) / 2 - P(centre, wingTop)
+            let wb = simd_distance(a, b), wt = simd_distance(c, d), h = simd_distance((a + b) / 2, (c + d) / 2)
+            roofQuad(&out.roofs, [a, b, c, d], facing: simd_normalize(SIMD3(mid.x, 0, mid.z)) + SIMD3(0, 1, 0),
+                     uv: [(0, h), (wb, h), ((wb + wt) / 2, 0), ((wb - wt) / 2, 0)], id: slate, seed: sd, up: 0, part: 1)
+            emitBoard(&out.roofs, octagon(outer + 0.3)[i], octagon(outer + 0.3)[(i + 1) % 8], ya: wingTop - 0.05,
+                      yb: wingTop - 0.05, out: simd_normalize((octagon(outer)[i] + octagon(outer)[(i + 1) % 8]) / 2 - centre),
+                      depth: 0.22, id: board, seed: sd, part: 1)
+        }
+        // The drum, its stone quoins and cornice, and the dome.
+        let cornice = floorY + 7.6 * k
+        let drum = octagon(drumR)
+        walls(drum, top: cornice, style: brick)
+        for p in drum {
+            let out2 = simd_normalize(p - centre)
+            emitBox(&out.walls, centre: p + out2 * 0.05, along: SIMD2(out2.y, -out2.x), halfA: 0.3, halfB: 0.12,
+                    y0: wingTop, y1: cornice, style: stone, eaves: true, ground: ground)
+        }
+        for i in 0..<8 {
+            let a = octagon(drumR + 0.25)[i], c = octagon(drumR + 0.25)[(i + 1) % 8]
+            emitBoard(&out.roofs, a, c, ya: cornice + 0.1, yb: cornice + 0.1,
+                      out: simd_normalize((a + c) / 2 - centre), depth: 0.45, lip: 0.08, id: board, seed: sd, part: 1)
+        }
+        let lanternR = 1.05
+        let domeTop = cornice + 3.9 * k
+        dome(r0: drumR + 0.25, y0: cornice + 0.1, r1: lanternR + 0.1, y1: domeTop, rings: 6)
+        // The lantern, its dome and the statue.
+        let lantern = octagon(lanternR)
+        let lanternTop = domeTop + 1.6 * k
+        for i in lantern.indices {
+            let p = lantern[i], q = lantern[(i + 1) % 8]
+            let len = simd_distance(p, q)
+            let w = WallFrame(a: p, dir: (q - p) / len, len: len, top0: lanternTop, top1: lanternTop, floorY: domeTop - 0.2,
+                              baseY: domeTop - 0.4, ground: [domeTop - 0.2, domeTop - 0.2])
+            emitWall(&out.walls, w, style: white, openings: [])
+        }
+        var openings = MeshBuffer(parts: 1)
+        for i in 0..<8 {
+            let mid = (lantern[i] + lantern[(i + 1) % 8]) / 2
+            let n = simd_normalize(mid - centre)
+            let c = P(mid + n * 0.01, domeTop + 0.75 * k)
+            emitPropBox(&openings, centre: c, x: SIMD3(Float(-n.y), 0, Float(-n.x)), z: SIMD3(Float(n.x), 0, Float(-n.y)),
+                        half: SIMD3(0.18, Float(0.45 * k), 0.01))
+        }
+        appendParts(&out.props, openings, map: [0: PropPart.darkMetal.rawValue])
+        for i in 0..<8 {
+            let a = octagon(lanternR + 0.15)[i], c = octagon(lanternR + 0.15)[(i + 1) % 8]
+            emitBoard(&out.roofs, a, c, ya: lanternTop + 0.05, yb: lanternTop + 0.05,
+                      out: simd_normalize((a + c) / 2 - centre), depth: 0.2, id: board, seed: sd, part: 1)
+        }
+        dome(r0: lanternR + 0.15, y0: lanternTop + 0.05, r1: 0.12, y1: lanternTop + 0.7 * k, rings: 3)
+        let statueFoot = P(centre, lanternTop + 0.7 * k)
+        var gilt = MeshBuffer(parts: 1)
+        TreeArchetype.tube(&gilt, statueFoot, statueFoot + SIMD3(0, 1.15, 0), 0.24, 0.12, sides: 8, height: 100)
+        TreeArchetype.tube(&gilt, statueFoot + SIMD3(0, 1.15, 0), statueFoot + SIMD3(0, 1.45, 0), 0.1, 0.07, sides: 8, height: 100)
+        paint("paint.gold", &gilt)
+        appendParts(&out.props, gilt, map: [0: PropPart.signFace.rawValue])
+
+        // The porch: brick walls out to the footprint's front, a slate
+        // gable roof back to the drum, and the front wall standing above it
+        // as a gable with stone pilasters, a cross and the door.
+        let side = SIMD2(front.y, -front.x)
+        let halfW = min(max((porch.map { abs(simd_dot($0 - centre, side)) }.max() ?? 2.8), 2.2), 3.2)
+        let back = drumR - 0.6, ahead = min(max(porchReach, drumR + 2.5), drumR + 6.5)
+        let wallTop = floorY + 5.2 * k, gableTop = floorY + 7.6 * k
+        let fl = centre + front * ahead + side * halfW, fr = centre + front * ahead - side * halfW
+        let bl = centre + front * back + side * halfW, br = centre + front * back - side * halfW
+        for (p, q) in [(bl, fl), (fr, br)] {
+            let len = simd_distance(p, q)
+            let w = WallFrame(a: p, dir: (q - p) / len, len: len, top0: wallTop, top1: wallTop, floorY: floorY,
+                              baseY: baseY, ground: groundSamples(p, q, ground))
+            emitWall(&out.walls, w, style: brick, openings: [])
+        }
+        let frontLen = simd_distance(fl, fr)
+        var face = WallFrame(a: fl, dir: (fr - fl) / frontLen, len: frontLen, top0: wallTop, top1: wallTop, floorY: floorY,
+                             baseY: baseY, ground: groundSamples(fl, fr, ground))
+        face.uRidge = frontLen / 2
+        face.topRidge = gableTop
+        let door = Opening(cut: .door, u0: frontLen / 2 - 0.8, u1: frontLen / 2 + 0.8, y0: floorY, y1: floorY + 3.0,
+                           painted: .timberDoor)
+        emitWall(&out.walls, face, style: brick, openings: [door])
+        for p in [fl, fr] {
+            emitBox(&out.walls, centre: p + front * 0.08 - (p - centre - front * ahead) * 0.06, along: side, halfA: 0.32,
+                    halfB: 0.14, y0: baseY, y1: wallTop + 0.4, style: stone, eaves: true, ground: ground)
+        }
+        let apex = centre + front * (ahead + 0.1)
+        for (p, q) in [(fl, apex), (apex, fr)] {
+            let pa = p + front * 0.1
+            emitBoard(&out.roofs, pa, q, ya: p == fl ? wallTop + 0.1 : gableTop + 0.1, yb: q == fr ? wallTop + 0.1 : gableTop + 0.1,
+                      out: front, depth: 0.35, lip: 0.08, id: board, seed: sd, part: 1)
+        }
+        var cross = MeshBuffer(parts: 1)
+        let cb = P(apex + front * 0.05, gableTop + 0.15)
+        let fx = SIMD3<Float>(Float(side.x), 0, Float(-side.y)), fz = SIMD3<Float>(Float(front.x), 0, Float(-front.y))
+        emitPropBox(&cross, centre: cb + SIMD3(0, 0.55, 0), x: fx, z: fz, half: SIMD3(0.05, 0.55, 0.05))
+        emitPropBox(&cross, centre: cb + SIMD3(0, 0.75, 0), x: fx, z: fz, half: SIMD3(0.3, 0.05, 0.05))
+        appendParts(&out.props, cross, map: [0: PropPart.darkMetal.rawValue])
+        let ridgeY = floorY + 7.0 * k
+        for sgn in [-1.0, 1.0] {
+            let e0 = centre + front * back + side * (sgn * (halfW + 0.25))
+            let e1 = centre + front * (ahead - 0.15) + side * (sgn * (halfW + 0.25))
+            let r0 = centre + front * back, r1 = centre + front * (ahead - 0.15)
+            let slope = Float(simd_length(SIMD2(halfW + 0.25, ridgeY - wallTop)))
+            let len = Float(simd_distance(e0, e1))
+            roofQuad(&out.roofs, [P(e0, wallTop - 0.05), P(e1, wallTop - 0.05), P(r1, ridgeY), P(r0, ridgeY)],
+                     facing: SIMD3(Float(side.x * sgn), 1, Float(-side.y * sgn)), uv: [(0, slope), (len, slope), (len, 0), (0, 0)],
+                     id: slate, seed: sd, up: 0, part: 1)
         }
     }
 

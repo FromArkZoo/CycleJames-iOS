@@ -24,6 +24,7 @@
 		101F4D6CB7330E0D26ABE370 /* TrainerOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1458F63CCB62F3FBD17704D /* TrainerOwnership.swift */; };
 		10B5231DA3D5D6356C778F52 /* cj_sett_grain.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 8476AE58B3F1BFC4773FF514 /* cj_sett_grain.rgbz */; };
 		145A85093BFB15F6721C5871 /* GearTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9518F6384BF3C09BD1DE3CE9 /* GearTrackerTests.swift */; };
+		161006D944B40C6A8E4F9846 /* muur_light.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = F170A26C9BF54663317BB5CC /* muur_light.rgbz */; };
 		167A097840EDE2B20CE1362F /* cj_grime.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 5A1ED7B98646F24E15977FAF /* cj_grime.rgbz */; };
 		16A6B3B4D30409DEA12821E4 /* BuildingBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19FC797CDFB0F012501F2848 /* BuildingBuilderTests.swift */; };
 		17FF6C2C0D9D84FD8129487B /* CourseStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBCB79DE3C80C688C91B5D26 /* CourseStyle.swift */; };
@@ -121,12 +122,14 @@
 		8988BE4AEF26E440BDB9DC2C /* CourseRideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88280AAB1541B91F62DA9CD0 /* CourseRideController.swift */; };
 		89DDAB5EA2CBAD39F233F024 /* TCXExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6916420C79FEF783388FAD /* TCXExporterTests.swift */; };
 		8AFADB5F48C02E80ECFE9D7D /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB29625AF30B7031270D3C15 /* Settings.swift */; };
+		8C78798CCB55F9A2FC6B7986 /* muur_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = DFE0F6145FD2AEFC83387C10 /* muur_splat.rgbz */; };
 		8CD756D5C7CC6C876CD43F4E /* cj_skyenv_ny.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 86FCFE731536CD4C78AEE049 /* cj_skyenv_ny.jpg */; };
 		8D04E0261A5897F85BC2D2E2 /* WorkoutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */; };
 		8D591D79BC4DD2DEF291158F /* cj_skyenv_nz.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 003D04A8C1F205B8E291EDE6 /* cj_skyenv_nz.jpg */; };
 		8E1A06EF1A72C060BFEB088C /* cj_sky_px.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3DE0F23BF9D848D168F8CAD8 /* cj_sky_px.jpg */; };
 		8F16DD091C7980B1AD7192D9 /* WorldMaterials+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8F5BC22E3DCC6CC7F57D10 /* WorldMaterials+Live.swift */; };
 		90DA56E6C17FDF876B838F14 /* WorldDebugShots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F70B06A9D7977A6DAA0DB47 /* WorldDebugShots.swift */; };
+		926E6D3FAA6B38B99385C3F5 /* muur_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 52888F967D148AB4EEA031F7 /* muur_ortho_ground.jpg */; };
 		93D188F68C758B269C023B05 /* paterberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 03CDE2A6A473CCF563F37B29 /* paterberg_splat.rgbz */; };
 		9514B112188173FCC00CED4F /* FTMSEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01E9D4B7E075307B78DF4546 /* FTMSEncodingTests.swift */; };
 		96D3F8205C93D4DED8505F34 /* ConnectDevicesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B570935389484BF33FD3CFFF /* ConnectDevicesSheet.swift */; };
@@ -275,6 +278,7 @@
 		4D9205A091D4BDCD3E8433EF /* WorkoutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCard.swift; sourceTree = "<group>"; };
 		4F70B06A9D7977A6DAA0DB47 /* WorldDebugShots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldDebugShots.swift; sourceTree = "<group>"; };
 		502AAD41F580534579B79A49 /* WorldMaterials+Road.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldMaterials+Road.swift"; sourceTree = "<group>"; };
+		52888F967D148AB4EEA031F7 /* muur_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = muur_ortho_ground.jpg; sourceTree = "<group>"; };
 		5615116856CF6B9E60874EAB /* CourseWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseWorld.swift; sourceTree = "<group>"; };
 		570CD782243E928071F235E2 /* koppenberg_light.rgbz */ = {isa = PBXFileReference; path = koppenberg_light.rgbz; sourceTree = "<group>"; };
 		5976FCA4CCC06FA73310400F /* WorldShaders+Light.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Light.swift"; sourceTree = "<group>"; };
@@ -380,6 +384,7 @@
 		DCECB17632BF3E35ED6B1CC7 /* cj_facade.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_facade.jpg; sourceTree = "<group>"; };
 		DD59C8BE8974EE520A981D7C /* RideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideView.swift; sourceTree = "<group>"; };
 		DE76ACCF85FA8CA2C6DB6DE9 /* GearTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearTracker.swift; sourceTree = "<group>"; };
+		DFE0F6145FD2AEFC83387C10 /* muur_splat.rgbz */ = {isa = PBXFileReference; path = muur_splat.rgbz; sourceTree = "<group>"; };
 		E013CE6A3276A89C81289B5A /* ReviewPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPromptTests.swift; sourceTree = "<group>"; };
 		E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingIntervalsSheet.swift; sourceTree = "<group>"; };
 		E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledRideModel.swift; sourceTree = "<group>"; };
@@ -396,6 +401,7 @@
 		EC7FB9D5FB194EA542682FCC /* TrainerData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerData.swift; sourceTree = "<group>"; };
 		EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutGraphView.swift; sourceTree = "<group>"; };
 		EE8BC6F5708BA1592FFEEAA4 /* WorldShaders+Setts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Setts.swift"; sourceTree = "<group>"; };
+		F170A26C9BF54663317BB5CC /* muur_light.rgbz */ = {isa = PBXFileReference; path = muur_light.rgbz; sourceTree = "<group>"; };
 		F2D5483DC78BDB81827047D1 /* MiniWorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniWorkoutGraphView.swift; sourceTree = "<group>"; };
 		F3F0DC515C5E08E5496C231C /* CameraSweep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSweep.swift; sourceTree = "<group>"; };
 		F4D44C4123CD39755C9C78BF /* RideSettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideSettingsPanel.swift; sourceTree = "<group>"; };
@@ -476,6 +482,9 @@
 				570CD782243E928071F235E2 /* koppenberg_light.rgbz */,
 				2319389A874329620F99A4BD /* koppenberg_ortho_ground.jpg */,
 				7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */,
+				F170A26C9BF54663317BB5CC /* muur_light.rgbz */,
+				52888F967D148AB4EEA031F7 /* muur_ortho_ground.jpg */,
+				DFE0F6145FD2AEFC83387C10 /* muur_splat.rgbz */,
 				4D034851E44C62AD2869288C /* oudekwaremont_light.rgbz */,
 				E438A5DD8E5C982BE46ABB39 /* oudekwaremont_ortho_ground.jpg */,
 				1887AD3521A7DE6BB5888637 /* oudekwaremont_splat.rgbz */,
@@ -960,6 +969,9 @@
 				3098806ED9581475EF71BDCC /* koppenberg_light.rgbz in Resources */,
 				24F704302B1D9E83B497999D /* koppenberg_ortho_ground.jpg in Resources */,
 				C6AE3F3B74C20B7D4384C1CE /* koppenberg_splat.rgbz in Resources */,
+				161006D944B40C6A8E4F9846 /* muur_light.rgbz in Resources */,
+				926E6D3FAA6B38B99385C3F5 /* muur_ortho_ground.jpg in Resources */,
+				8C78798CCB55F9A2FC6B7986 /* muur_splat.rgbz in Resources */,
 				A5B82ABA61B53B570D574444 /* oudekwaremont_light.rgbz in Resources */,
 				B7EDF88B4941F3A0B66BB0BC /* oudekwaremont_ortho_ground.jpg in Resources */,
 				0B6C58F27EF3691AC7FFCCA4 /* oudekwaremont_splat.rgbz in Resources */,

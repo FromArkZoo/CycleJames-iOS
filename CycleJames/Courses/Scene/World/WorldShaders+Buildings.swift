@@ -23,7 +23,7 @@ extension WorldShaders {
     /// edges; tinted per building (warm or cool white, cream, redder or
     /// browner brick); plinths tarred, painted, bluestone or cement over the
     /// wall's own relief; a barn's timber or steel door painted in boards or
-    /// ribs; rain streaks under the eaves, a damp, splashed foot with green
+    /// ribs; a dry-stone retaining wall laid in slabs; rain streaks under the eaves, a damp, splashed foot with green
     /// on the shady side, and ambient occlusion where the wall meets the
     /// ground and under the eaves. The atlas's glass is dark and bluish: it
     /// turns smooth, so it mirrors the sky. The light raster
@@ -77,7 +77,32 @@ extension WorldShaders {
         alb = pl.rgb * (0.75 + 0.5 * smoothstep(0.03, 0.6, lum));
         rough = pl.a;
     }
-    if (kind > 5.5) {
+    if (kind > 7.5) {
+        // A dry-stone retaining wall: flat schist and sandstone slabs in
+        // rough courses 7-15 cm high, each 20-60 cm long, grey to brown,
+        // with dark open joints and no mortar; the joints fade to their
+        // mean under a few pixels.
+        float2 sp = gp;
+        // Metres per pixel: the blank wall's texcoord runs a cell (3 m) per unit.
+        float pxs = 3.0 * max(length(tdx), length(tdy));
+        float band = floor(sp.y / 0.11);
+        float hb = fract(sin(band * 91.7 + seed * 13.1) * 43758.5453);
+        float rowH = 0.07 + 0.08 * hb;
+        float fy = fract(sp.y / 0.11) * 0.11 / rowH;
+        float row = band * 3.0 + floor(fy);
+        float hr = fract(sin(row * 37.13 + seed * 5.7) * 43758.5453);
+        float len = 0.2 + 0.4 * hr;
+        float xs = sp.x / len + hr * 7.0;
+        float hs = fract(sin(floor(xs) * 12.9898 + row * 78.233 + seed * 3.1) * 43758.5453);
+        float jx = min(fract(xs), 1.0 - fract(xs)) * len;
+        float jy = min(fract(fy), 1.0 - fract(fy)) * rowH;
+        float joint = (1.0 - smoothstep(0.005, 0.016, min(jx, jy))) * (1.0 - smoothstep(0.01, 0.04, pxs));
+        float3 slab = mix(float3(0.060, 0.058, 0.054), float3(0.105, 0.092, 0.074), hs);
+        slab *= 0.85 + 0.3 * fract(hs * 17.0);
+        alb = mix(slab, float3(0.012, 0.011, 0.010), joint * 0.85 + 0.15 * smoothstep(0.01, 0.04, pxs));
+        rough = 0.92;
+    }
+    if (kind > 5.5 && kind < 7.5) {
         // A barn's door: texcoord 0 = 2 + 8 * its size in decimetres +
         // metres from its lower left. Boards 16 cm wide, each its own tone,
         // or 20 cm box ribs on steel, fading to their mean under a few
