@@ -12,7 +12,7 @@ import Metal
 ///     -worldShotList 150:chase,590:broadcast,760:back
 ///                                     distances and views (chase, broadcast,
 ///                                     back, high, top, sun, plan, plan30,
-///                                     graze, strip<metres>); default
+///                                     graze, eye, strip<metres>); default
 ///                                     covers the climb
 ///     -worldShotTag v3                file name suffix
 enum WorldDebugShots {
@@ -215,6 +215,12 @@ enum WorldDebugShots {
                 // show as a rhythm, and where the setts fade to their mean.
                 eye = pose.position - fwdH * 2 + SIMD3(0, 1.2, 0)
                 target = route.pose(at: spec.s + 40).position + SIMD3(0, 0.4, 0)
+            case "eye":
+                // A photographer standing in the road, landscape and a
+                // normal lens, looking 20 m up the road and 4 m above it:
+                // to set beside a photo taken from the same spot.
+                eye = pose.position + SIMD3(0, 1.6, 0)
+                target = route.pose(at: spec.s + 20).position + SIMD3(0, 4.0, 0)
             default:
                 eye = pose.position - fwdH * 5.2 + SIMD3(0, 2.3, 0)
                 target = route.pose(at: spec.s + 14).position + SIMD3(0, 1.1, 0)
@@ -230,11 +236,15 @@ enum WorldDebugShots {
             let ev = ["top", "high", "plan", "plan30"].contains(spec.view) ? 0 : LaneExposure.target(at: spec.s, profile: light)
             setExposure(ev)
             frame.update(camera: eyeY, time: t)
+            let photo = spec.view == "eye"
+            camera.fieldOfView = photo ? 46 : 62
             // Two frames so streamed grass and LOD settle.
             _ = renderer.snapshot(atTime: t, with: CGSize(width: 64, height: 128), antialiasingMode: .none)
             t += 0.5
-            let img = renderer.snapshot(atTime: t, with: size, antialiasingMode: quality == .battery ? .none : .multisampling4X)
+            let img = renderer.snapshot(atTime: t, with: photo ? CGSize(width: 1140, height: 900) : size,
+                                        antialiasingMode: quality == .battery ? .none : .multisampling4X)
             t += 0.5
+            camera.fieldOfView = 62
             // Whole metres; a fraction kept (330.08:chase, a step of half a
             // course, to compare two frames for shimmer).
             let at = spec.s == spec.s.rounded() ? "\(Int(spec.s))" : "\(spec.s)"

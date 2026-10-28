@@ -15,7 +15,8 @@ its size in metres and its uv rect (u0, v0, u1, v1, v down). BuildingBuilder
 cuts each face to its shape, so the atlas needs no alpha: each cell's corners
 carry the plate's rim colour, which keeps the mips from bleeding a dark edge.
 A few plain cells (paint.*) colour props: the chapel door, the kiosk's
-plinth, the pipeline marker, the Oudenberg chapel's gilt statue; grate.* are
+plinth, the pipeline marker, the Oudenberg chapel's gilt statue, its stone
+dressings, white statue, timber door, window glass and niche; grate.* are
 the cast-iron gully grates; kiosk.*
 are the Paterberg summit kiosk's doors, end panels and roof, weathered, at
 half the density and packed after everything else, so they move no plate.
@@ -533,6 +534,11 @@ SIGNS = [
     ("paint.cabinet", "rect", 0.06, 0.06, paint((118, 124, 116))),
     ("paint.plinth", "rect", 0.06, 0.06, paint((46, 46, 43))),
     ("paint.gold", "rect", 0.06, 0.06, paint((201, 158, 62))),
+    ("paint.stone", "rect", 0.06, 0.06, paint((214, 205, 186))),
+    ("paint.marble", "rect", 0.06, 0.06, paint((232, 229, 220))),
+    ("paint.door", "rect", 0.06, 0.06, paint((92, 56, 34))),
+    ("paint.glass", "rect", 0.06, 0.06, paint((30, 34, 40))),
+    ("paint.niche", "rect", 0.06, 0.06, paint((96, 62, 48))),
 ]
 
 # The kiosk's faces (`BuildingBuilder.buildFurniture`), at PROP_SCALE of the

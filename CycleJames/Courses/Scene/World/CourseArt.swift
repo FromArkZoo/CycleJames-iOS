@@ -26,9 +26,10 @@ struct CourseArt: Sendable {
     /// Brick walls just off the road edge: section and side.
     var walls: [(span: Span, side: Double)] = []
     /// Dry-stone retaining walls at the carriageway edge, holding up the
-    /// bank behind them (the Muur's park lane): section, side and the most
-    /// the wall stands above the road; it never rises above the bank.
-    var stoneWalls: [(span: Span, side: Double, height: Double)] = []
+    /// bank behind them (the Muur's park lane): section, side, the most the
+    /// wall stands above the road (it never rises above the bank) and its
+    /// stones.
+    var stoneWalls: [(span: Span, side: Double, height: Double, look: StoneLook)] = []
     /// Post-and-wire fences: section and side (−1 left, +1 right).
     var fences: [(span: Span, side: Double)] = []
     /// Post-and-rail paddock fences: section, side and paint.
@@ -55,6 +56,9 @@ struct CourseArt: Sendable {
     var gutterGrateSpacing: Double = 0
     /// Village stretches, where the verge grass keeps to a thin strip.
     var villages: [Span] = []
+    /// Mown lawn to the road edge (a park): section and side. Short green
+    /// grass only, no flowers, seed heads or rough sward.
+    var lawns: [(span: Span, side: Double)] = []
     /// Asphalt wide enough for lines that has none (town streets).
     var unmarked: [Span] = []
     /// Stretches whose roadside buildings have a known look.
@@ -118,10 +122,11 @@ struct CourseArt: Sendable {
             /// metres (its walls and roof are the footprint's).
             case chapelFront
             /// The Oudenberg chapel, built whole on the chapel footprint
-            /// nearest (in place of its walls and roof): a red-brick drum
-            /// with stone bands under a slate dome, an open lantern and a
-            /// gilt statue, low side wings, and a stone-dressed front gable
-            /// with its door towards the footprint's porch.
+            /// nearest (in place of its walls and roof): a red-brick
+            /// octagon and drum with limestone quoins under a slate dome, a
+            /// louvred lantern and a gilt statue, and the baroque porch
+            /// towards the footprint's front: an arched door, a niche with a
+            /// statue, scrolled shoulders with urns, a pediment and a cross.
             case domedChapel
             /// A tall timber calvary cross with the corpus, on a stone base.
             case calvary
@@ -157,6 +162,13 @@ struct CourseArt: Sendable {
         /// grey and blue-grey with a few buff stones, gently domed, close
         /// together, polished in the wheel tracks by the town's traffic.
         case smallWorn
+    }
+
+    enum StoneLook: Sendable {
+        /// Flat schist and sandstone slabs in thin courses.
+        case slabs
+        /// Big rounded brown-grey ironstone blocks.
+        case rubble
     }
 
     enum LampStyle: Sendable {
@@ -253,6 +265,11 @@ struct CourseArt: Sendable {
     func pavedWidth(_ s: Double, side: Double) -> Double {
         max(pavementWidth(s, side: side),
             pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0)
+    }
+
+    /// Whether the verge on a side of the road at `s` is mown lawn.
+    func isLawn(_ s: Double, side: Double) -> Bool {
+        lawns.contains { $0.side * side > 0 && $0.span.contains(s) }
     }
 
     /// Whether a LiDAR tree is grown as a pollard willow: `side` is the side
@@ -518,24 +535,35 @@ struct CourseArt: Sendable {
         // town's pavements are concrete pavers, left to the draped photo.
         "muur": CourseArt(
             sunkenLane: [1170...1300],
-            kerbs: [(1175...1295, 1)],  // the footpath's kerb, on the falling side
+            kerbs: [
+                (1175...1295, 1),  // the footpath's kerb, on the falling side
+                (1405...1442, 1),  // the pale kerb along the lawn up to the chapel
+            ],
             lamps: [
                 (650...930, 34, -1, .curvedGrey),     // tall grey posts along the Vesten parking
                 (1178...1296, 30, 1, .postLantern),   // beside the footpath up the park lane
                 (1306...1376, 35, -1, .postLantern),
             ],
             stoneWalls: [
-                (1176...1294, -1, 1.8),  // stacked schist under the wooded bank
-                (1304...1378, 1, 1.0),   // the lower bank after the hairpin
-                (1404...1434, -1, 0.35), // the sett-faced foot of the chapel's mound, past the bench
+                (1176...1294, -1, 1.8, .slabs),  // stacked schist under the wooded bank
+                (1304...1378, 1, 1.0, .slabs),   // the lower bank after the hairpin
+                // A knee-high edge of rough ironstone blocks at the foot of the
+                // chapel's grass mound, past the bench.
+                (1404...1434, -1, 0.45, .rubble),
             ],
             // Setts from the carriageway over the open Markt to the town hall,
-            // in front of Sint-Bartholomeus, and over the Vesten's parking.
-            // With these small setts the far map lays a right-hand strip's
-            // courses again on the left 119 m back and 393 m on (450 and
-            // 950 courses each way), so the strips keep clear of that.
-            pavedVerges: [(446...632, -1, 5.4), (500...562, 1, 5.4), (640...890, -1, 5.4)],
+            // in front of Sint-Bartholomeus, and over the Vesten's parking;
+            // and up to the chapel's steps. With these small setts the far map
+            // lays a right-hand strip's courses again on the left 119 m back
+            // and 393 m on (450 and 950 courses each way, the map 512 m
+            // long), so the strips keep clear of that: the church side ends
+            // at 531, where it would lay the chapel's square again.
+            pavedVerges: [(446...632, -1, 5.4), (500...531, 1, 5.4), (640...890, -1, 5.4), (1439...1451, -1, 4.2)],
             villages: [0...1160],
+            // The Oudenberg's mown grass to the road edge: the chapel's mound
+            // on the left, the lawn along the kerb on the right, and past the
+            // paved square at the chapel's front the lawn north of the path.
+            lawns: [(1395...1438, -1), (1400...1480, 1), (1452...1480, -1)],
             // The Grotestraat (a cycle street), the bridge and the Brugstraat:
             // no lines in the photos of 2019-2026.
             unmarked: [0...444],

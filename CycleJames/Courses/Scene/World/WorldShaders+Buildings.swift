@@ -23,7 +23,9 @@ extension WorldShaders {
     /// edges; tinted per building (warm or cool white, cream, redder or
     /// browner brick); plinths tarred, painted, bluestone or cement over the
     /// wall's own relief; a barn's timber or steel door painted in boards or
-    /// ribs; a dry-stone retaining wall laid in slabs; rain streaks under the eaves, a damp, splashed foot with green
+    /// ribs; a dry-stone retaining wall laid in slabs or rubble; dressed
+    /// limestone and a sandstone plinth (the Oudenberg chapel); rain
+    /// streaks under the eaves, a damp, splashed foot with green
     /// on the shady side, and ambient occlusion where the wall meets the
     /// ground and under the eaves. The atlas's glass is dark and bluish: it
     /// turns smooth, so it mirrors the sky. The light raster
@@ -77,30 +79,63 @@ extension WorldShaders {
         alb = pl.rgb * (0.75 + 0.5 * smoothstep(0.03, 0.6, lum));
         rough = pl.a;
     }
-    if (kind > 7.5) {
+    if (kind > 7.5 && kind < 8.5) {
         // A dry-stone retaining wall: flat schist and sandstone slabs in
         // rough courses 7-15 cm high, each 20-60 cm long, grey to brown,
-        // with dark open joints and no mortar; the joints fade to their
-        // mean under a few pixels.
+        // with dark open joints and no mortar; or (tint 1) rubble, rounded
+        // brown-grey ironstone blocks 18-30 cm high and 25-55 cm long.
+        // The joints fade to their mean under a few pixels.
+        bool rubble = tint > 0.5;
         float2 sp = gp;
         // Metres per pixel: the blank wall's texcoord runs a cell (3 m) per unit.
         float pxs = 3.0 * max(length(tdx), length(tdy));
-        float band = floor(sp.y / 0.11);
+        float bandH = rubble ? 0.24 : 0.11;
+        float band = floor(sp.y / bandH);
         float hb = fract(sin(band * 91.7 + seed * 13.1) * 43758.5453);
-        float rowH = 0.07 + 0.08 * hb;
-        float fy = fract(sp.y / 0.11) * 0.11 / rowH;
+        float rowH = rubble ? 0.18 + 0.12 * hb : 0.07 + 0.08 * hb;
+        float fy = fract(sp.y / bandH) * bandH / rowH;
         float row = band * 3.0 + floor(fy);
         float hr = fract(sin(row * 37.13 + seed * 5.7) * 43758.5453);
-        float len = 0.2 + 0.4 * hr;
+        float len = rubble ? 0.25 + 0.3 * hr : 0.2 + 0.4 * hr;
         float xs = sp.x / len + hr * 7.0;
         float hs = fract(sin(floor(xs) * 12.9898 + row * 78.233 + seed * 3.1) * 43758.5453);
         float jx = min(fract(xs), 1.0 - fract(xs)) * len;
         float jy = min(fract(fy), 1.0 - fract(fy)) * rowH;
-        float joint = (1.0 - smoothstep(0.005, 0.016, min(jx, jy))) * (1.0 - smoothstep(0.01, 0.04, pxs));
-        float3 slab = mix(float3(0.060, 0.058, 0.054), float3(0.105, 0.092, 0.074), hs);
+        // Rubble's rounded edges: a wide, soft joint.
+        float jw = rubble ? 0.035 : 0.016;
+        float joint = (1.0 - smoothstep(0.005, jw, min(jx, jy))) * (1.0 - smoothstep(0.01, 0.04, pxs));
+        float3 slab = rubble ? mix(float3(0.13, 0.11, 0.09), float3(0.26, 0.21, 0.155), hs)
+                             : mix(float3(0.060, 0.058, 0.054), float3(0.105, 0.092, 0.074), hs);
         slab *= 0.85 + 0.3 * fract(hs * 17.0);
         alb = mix(slab, float3(0.012, 0.011, 0.010), joint * 0.85 + 0.15 * smoothstep(0.01, 0.04, pxs));
+        // The top: earth and moss over the last course.
+        float cap = smoothstep(0.6, 0.85, nW.y);
+        alb = mix(alb, mix(float3(0.032, 0.027, 0.019), float3(0.04, 0.055, 0.02), gA.b), cap);
         rough = 0.92;
+    }
+    if (kind > 8.5) {
+        // Dressed stone: cream limestone in courses 30 cm high, blocks
+        // 45-90 cm long on fine joints (the chapel's pilasters, quoins and
+        // cornices); or its sandstone plinth, grey-brown and rougher, in
+        // 26 cm courses. The joints fade to their mean under a few pixels.
+        bool sand = kind > 9.5;
+        float2 sp = gp;
+        float pxs = 3.0 * max(length(tdx), length(tdy));
+        float courseH = sand ? 0.26 : 0.3;
+        float fy = sp.y / courseH;
+        float row = floor(fy);
+        float hr = fract(sin(row * 37.13 + seed * 5.7) * 43758.5453);
+        float len = (sand ? 0.35 : 0.45) + 0.45 * hr;
+        float xs = sp.x / len + hr * 7.0;
+        float hs = fract(sin(floor(xs) * 12.9898 + row * 78.233 + seed * 3.1) * 43758.5453);
+        float jx = min(fract(xs), 1.0 - fract(xs)) * len;
+        float jy = min(fract(fy), 1.0 - fract(fy)) * courseH;
+        float jw = sand ? 0.012 : 0.006;
+        float joint = (1.0 - smoothstep(0.5 * jw, 1.6 * jw, min(jx, jy))) * (1.0 - smoothstep(0.008, 0.03, pxs));
+        float3 stone = sand ? mix(float3(0.22, 0.21, 0.18), float3(0.31, 0.29, 0.25), hs)
+                            : mix(float3(0.50, 0.49, 0.45), float3(0.58, 0.56, 0.51), hs);
+        alb = mix(stone, stone * 0.6, joint);
+        rough = sand ? 0.9 : 0.8;
     }
     if (kind > 5.5 && kind < 7.5) {
         // A barn's door: texcoord 0 = 2 + 8 * its size in decimetres +
@@ -189,7 +224,7 @@ extension WorldShaders {
     /// across, so ridge tiles keep the crown), toned per roof and mottled
     /// at roof scale. Moss grows on the north slopes, towards the eaves and
     /// first in the laps and troughs; lichen spots the sunny side. Trims
-    /// (boards, flat roofs, dark ridges) take a flat colour.
+    /// (boards, flat roofs, dark ridges, lead rolls) take a flat colour.
     static let roofSurface = """
     #pragma arguments
     texture2d<float> roofTex;
@@ -232,7 +267,8 @@ extension WorldShaders {
     alb = mix(alb, float3(0.42, 0.41, 0.3), lichen * 0.45);
     bool trim = id > 3.5;
     float3 trimCol = id < 4.5 ? float3(0.70, 0.70, 0.68) : (id < 5.5 ? float3(0.03, 0.028, 0.026)
-                   : (id < 6.5 ? float3(0.05, 0.05, 0.048) : float3(0.055, 0.058, 0.064)));
+                   : (id < 6.5 ? float3(0.05, 0.05, 0.048) : (id < 7.5 ? float3(0.055, 0.058, 0.064)
+                   : float3(0.17, 0.18, 0.19))));
     alb = trim ? trimCol * (0.85 + 0.3 * g.a) : alb;
     float2 nxy = (d.rg * 2.0 - 1.0) * detailNormals * (trim ? 0.0 : 1.0 - 0.6 * moss);
     float3 nts = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
@@ -243,7 +279,8 @@ extension WorldShaders {
     float invmax = rsqrt(max(max(dot(Tn, Tn), dot(Bn, Bn)), 1e-20));
     _surface.normal = normalize(Tn * invmax * nts.x + Bn * invmax * nts.y + N0 * nts.z);
     _surface.diffuse = float4(alb, 1.0);
-    _surface.roughness = trim ? (id < 5.5 ? 0.55 : (id < 6.5 ? 0.9 : 0.6)) : mix(d.b, 0.95, max(moss, lichen));
+    _surface.roughness = trim ? (id < 5.5 ? 0.55 : (id < 6.5 ? 0.9 : (id < 7.5 ? 0.6 : 0.45)))
+                              : mix(d.b, 0.95, max(moss, lichen));
     _surface.ambientOcclusion *= trim ? 1.0 : 0.55 + 0.45 * d.a;
     """
 }

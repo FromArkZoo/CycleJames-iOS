@@ -30,13 +30,13 @@ final class BuildingBuilderTests: XCTestCase {
         XCTAssertEqual(r.uv2.count, r.vertexCount * 2, "\(label): roof texcoord 1", file: file, line: line)
         for i in stride(from: 0, to: w.uv3.count, by: 2) {
             let code = Int(w.uv3[i].rounded())
-            XCTAssertTrue((0...BB.WallKind.dryStone.rawValue).contains(code / 8), "\(label): wall code \(code)",
+            XCTAssertTrue((0...BB.WallKind.sandstone.rawValue).contains(code / 8), "\(label): wall code \(code)",
                           file: file, line: line)
             XCTAssertTrue((0..<1).contains(w.uv3[i + 1]), "\(label): wall seed", file: file, line: line)
         }
         for i in stride(from: 0, to: r.uv2.count, by: 2) {
             let id = r.uv2[i].rounded(.down)
-            XCTAssertTrue((0...Float(BB.RoofTrim.darkRidge.rawValue)).contains(id), "\(label): roof id \(id)",
+            XCTAssertTrue((0...Float(BB.RoofTrim.lead.rawValue)).contains(id), "\(label): roof id \(id)",
                           file: file, line: line)
         }
         // The geometry SceneKit gets has every channel too.

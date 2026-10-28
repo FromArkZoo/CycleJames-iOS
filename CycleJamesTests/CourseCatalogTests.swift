@@ -116,13 +116,15 @@ final class CourseCatalogTests: XCTestCase {
             spans += art.fences.map { ("fence", $0.span) } + art.rails.map { ("rails", $0.span) }
             spans += art.poles.map { ("poles", $0.span) } + art.houseLooks.map { ("houses", $0.span) }
             spans += art.stoneWalls.map { ("stone wall", $0.span) } + art.unmarked.map { ("unmarked", $0) }
+            spans += art.lawns.map { ("lawn", $0.span) }
             for (kind, span) in spans {
                 XCTAssertGreaterThanOrEqual(span.lowerBound, 0, "\(id) \(kind) \(span)")
                 XCTAssertLessThanOrEqual(span.upperBound, length, "\(id) \(kind) \(span)")
                 XCTAssertLessThan(span.lowerBound, span.upperBound, "\(id) \(kind) \(span)")
             }
             for side in art.kerbs.map(\.side) + art.gutters.map(\.side) + art.lamps.map(\.side) + art.walls.map(\.side)
-                + art.fences.map(\.side) + art.rails.map(\.side) + art.poles.map(\.side) + art.stoneWalls.map(\.side) {
+                + art.fences.map(\.side) + art.rails.map(\.side) + art.poles.map(\.side) + art.stoneWalls.map(\.side)
+                + art.lawns.map(\.side) {
                 XCTAssertEqual(abs(side), 1, "\(id): side must be -1 or +1")
             }
             for wall in art.stoneWalls { XCTAssert((0.2...2.5).contains(wall.height), "\(id): stone wall \(wall.span) \(wall.height) m") }
@@ -193,7 +195,8 @@ final class CourseCatalogTests: XCTestCase {
             }
         }
         // The signs' paints and grates are in the atlas too.
-        for key in ["paint.blue", "paint.green", "paint.yellow", "paint.cabinet", "paint.gold", "grate.round", "grate.rect"] {
+        for key in ["paint.blue", "paint.green", "paint.yellow", "paint.cabinet", "paint.gold", "paint.stone", "paint.marble",
+                    "paint.door", "paint.glass", "paint.niche", "grate.round", "grate.rect"] {
             XCTAssertNotNil(BuildingBuilder.signCells[key], key)
         }
         // The Paterberg's concrete gutter runs the whole climb on the left.

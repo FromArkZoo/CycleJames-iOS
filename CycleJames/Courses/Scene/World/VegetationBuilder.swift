@@ -640,7 +640,9 @@ enum VegetationBuilder {
                         oMax = oMax * (1 - sunk) + 0.7 * sunk
                         oMax = min(oMax, verge - 0.4)
                         guard oMax > 0.15 else { continue }
-                        let density = config.grassDensity * (1 - 0.65 * village) * (1 - 0.6 * sunk)
+                        // A lawn is a close sward: twice the tufts, short and wide.
+                        let lawnSide = corridor.art.isLawn(s, side: side)
+                        let density = config.grassDensity * (1 - 0.65 * village) * (1 - 0.6 * sunk) * (lawnSide ? 2.2 : 1)
                         let count = Int(density * (oMax - 0.1) * 0.5 + Double(rnd.unit()))
                         for _ in 0..<count {
                             let o = Double(rnd.range(0.1, Float(oMax)))
@@ -652,8 +654,12 @@ enum VegetationBuilder {
                             let p = RoadBuilder.vergePoint(corridor, st2, side: side, offset: o)
                             if (p.y - p.edgeY) / max(o, 0.1) > 1.3 { continue }
                             if sideRoads.covers(east: p.east, north: p.north) { continue }
-                            let tint = grassTint(ground?.color(east: p.east, north: p.north), sunk: Float(sunk))
-                            let tall = Double(rnd.unit()) >= village && sunk < 0.3
+                            // A mown lawn is watered green, whatever the dry
+                            // summer photo says, and grows no tall tufts (the
+                            // draw is kept so the tufts elsewhere stay put).
+                            let lawn = corridor.art.isLawn(ss, side: side)
+                            let tint = lawn ? Self.lawnTint : grassTint(ground?.color(east: p.east, north: p.north), sunk: Float(sunk))
+                            let tall = Double(rnd.unit()) >= village && sunk < 0.3 && !lawn
                             // Late August: past the mown strip some tufts
                             // flower, some have gone to straw, and nettles
                             // come up.
@@ -670,7 +676,8 @@ enum VegetationBuilder {
                                 }
                             }
                             grassTuft(&mesh, x: Float(p.east), y: Float(p.y) - 0.02, z: Float(-p.north), rnd: &rnd,
-                                      tall: tall, tint: tint, cell: kind)
+                                      tall: tall, tint: tint, cell: kind, height: lawn ? 0.1...0.2 : nil,
+                                      width: lawn ? 0.45...0.75 : nil)
                             tufts += 1
                         }
                         // Bank flora: nettle beds at the foot; up the faces,
@@ -769,7 +776,7 @@ enum VegetationBuilder {
                             let o = Double(finRnd.range(Float(lo), Float(max(r.oMax, lo))))
                             let ang = Double(finRnd.range(-1.0, 1.0)), half = Double(finRnd.range(0.25, 0.55))
                             let oa = max(lo, o - half * cos(ang)), ob = min(r.oMax, o + half * cos(ang))
-                            guard r.oMax > lo + 0.1, ob > oa + 0.1 else { continue }
+                            guard r.oMax > lo + 0.1, ob > oa + 0.1, !corridor.art.isLawn(sc, side: side) else { continue }
                             if swardRibbon(&mesh, corridor, side: side, from: (sc - half * sin(ang), oa), to: (sc + half * sin(ang), ob),
                                            village: Float(r.village), sideRoads: sideRoads, rnd: &finRnd, ground: ground,
                                            sunk: Float(r.sunk)) {
@@ -1243,6 +1250,9 @@ enum VegetationBuilder {
     /// Vertex colour that pulls a tuft towards the ground it grows from
     /// (a dry, pale verge or a lush one), part of the way and within limits.
     /// Inside the sunken lane, shade-grown and darker.
+    /// A kept lawn's tufts: greener than the card.
+    static let lawnTint = SIMD3<Float>(0.76, 1.0, 0.68)
+
     static func grassTint(_ ground: SIMD3<Float>?, sunk: Float) -> SIMD3<Float> {
         guard let g = ground else { return SIMD3(1, 1, 1) }
         let ratio = simd_clamp(g / grassCardColor, SIMD3(repeating: 0.55), SIMD3(1.7, 1.7, 1.3))
