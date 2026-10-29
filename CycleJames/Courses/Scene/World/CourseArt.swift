@@ -18,13 +18,17 @@ struct CourseArt: Sendable {
     /// Stone edge strips inside the carriageway edge, flush with the
     /// cobbles: section and side (−1 left, +1 right).
     var kerbs: [(span: Span, side: Double)] = []
-    /// Smooth concrete rainwater gutters, 0.6 m wide and slightly dished,
-    /// inside the carriageway edge: section and side.
-    var gutters: [(span: Span, side: Double)] = []
+    /// Smooth concrete rainwater gutters, slightly dished, inside the
+    /// carriageway edge: section, side and width (the Paterberg's 0.6 m,
+    /// the Taaienberg's 0.7 m).
+    var gutters: [(span: Span, side: Double, width: Double)] = []
     /// Street lamps every `spacing` metres: section, side and style.
     var lamps: [(span: Span, spacing: Double, side: Double, style: LampStyle)] = []
-    /// Brick walls just off the road edge: section and side.
-    var walls: [(span: Span, side: Double)] = []
+    /// Brick walls just off the road edge: section, side, height above the
+    /// road (a bridge parapet stands up from the deck; its foot goes down
+    /// to the ground, to the water under a bridge), distance of the road
+    /// face beyond the carriageway edge, and the brick.
+    var walls: [(span: Span, side: Double, height: Double, offset: Double, look: WallLook)] = []
     /// Dry-stone retaining walls at the carriageway edge, holding up the
     /// bank behind them (the Muur's park lane): section, side, the most the
     /// wall stands above the road (it never rises above the bank) and its
@@ -34,6 +38,10 @@ struct CourseArt: Sendable {
     var fences: [(span: Span, side: Double)] = []
     /// Post-and-rail paddock fences: section, side and paint.
     var rails: [(span: Span, side: Double, paint: RailPaint)] = []
+    /// Split-chestnut paling (kastanjehekwerk): stakes wired together on
+    /// posts, standing on the ground (or a wall) beyond the edge: section,
+    /// side, height and offset.
+    var palings: [(span: Span, side: Double, height: Double, offset: Double)] = []
     /// Utility poles carrying overhead wires along the road: section,
     /// spacing, side and pole.
     var poles: [(span: Span, spacing: Double, side: Double, kind: PoleKind)] = []
@@ -76,6 +84,10 @@ struct CourseArt: Sendable {
     /// Pollard willows (knotwilgen): the LiDAR trees of a section, on a
     /// side, up to `maxHeight` and within 15 m of the road.
     var pollards: [(span: Span, side: Double, maxHeight: Double)] = []
+    /// Ground the LiDAR's trees and shrubs (2013-15) no longer stand on:
+    /// section, side and width beyond the carriageway edge (the
+    /// Taaienberg's summit corner, paved round its sculpture in 2023).
+    var clearings: [(span: Span, side: Double, width: Double)] = []
 
     /// Plates on one galvanised pole (or a wall bracket), top to bottom:
     /// keys of the sign atlas (cj_signs_map.json, baked by
@@ -118,9 +130,9 @@ struct CourseArt: Sendable {
             case gatePillar(whiteCap: Bool)
             /// Grey utility cabinet.
             case cabinet
-            /// The blue door and cross of the chapel standing within a few
-            /// metres (its walls and roof are the footprint's).
-            case chapelFront
+            /// The door, blue or dark grey, and cross of the chapel standing
+            /// within a few metres (its walls and roof are the footprint's).
+            case chapelFront(blueDoor: Bool)
             /// The Oudenberg chapel, built whole on the chapel footprint
             /// nearest (in place of its walls and roof): a red-brick
             /// octagon and drum with limestone quoins under a slate dome, a
@@ -130,6 +142,10 @@ struct CourseArt: Sendable {
             case domedChapel
             /// A tall timber calvary cross with the corpus, on a stone base.
             case calvary
+            /// A pair of bronze legs, hips to bare feet, standing on a low
+            /// round plinth of pale concrete that serves as a seat (the
+            /// sculpture at the top of the Taaienberg, 2023).
+            case bronzeLegs
         }
 
         var kind: Kind
@@ -162,6 +178,22 @@ struct CourseArt: Sendable {
         /// grey and blue-grey with a few buff stones, gently domed, close
         /// together, polished in the wheel tracks by the town's traffic.
         case smallWorn
+        /// The Molenberg: near-square 13-15 cm setts, mid and dark grey and
+        /// blue-grey with a fifth of brown and ochre stones, gently domed
+        /// with worn arrises, on wide joints of soil, moss and grass;
+        /// uneven, the odd sett sunk.
+        case mossyGrey
+        /// The Taaienberg: warm and dark greys with brown, ochre and rust
+        /// stones, oblong (14-16 cm along the road, 16-22 cm across), domed
+        /// and worn smooth, on wide sandy joints.
+        case warmOblong
+    }
+
+    enum WallLook: Sendable {
+        /// Red brick.
+        case redBrick
+        /// White-washed brick.
+        case whitewashed
     }
 
     enum StoneLook: Sendable {
@@ -267,6 +299,12 @@ struct CourseArt: Sendable {
             pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0)
     }
 
+    /// Whether a point `beyondEdge` metres past the carriageway edge on
+    /// `side` at `s` lies in a clearing.
+    func isCleared(s: Double, side: Double, beyondEdge: Double) -> Bool {
+        clearings.contains { $0.side * side > 0 && $0.span.contains(s) && beyondEdge < $0.width }
+    }
+
     /// Whether the verge on a side of the road at `s` is mown lawn.
     func isLawn(_ s: Double, side: Double) -> Bool {
         lawns.contains { $0.side * side > 0 && $0.span.contains(s) }
@@ -331,7 +369,7 @@ struct CourseArt: Sendable {
             sunkenLane: [535...648, 765...812],
             kerbs: [(302...430, -1), (688...866, -1)],
             lamps: [(312...432, 29, -1, .curvedBlack)],
-            walls: [(842...868, 1)],
+            walls: [(842...868, 1, 1.7, 0.4, .redBrick)],
             fences: [(700...836, 1), (884...1060, 1), (905...1050, -1)],
             hedges: [(360...395, -1, 1.0, 0.6, .green)],
             pavedVerges: [
@@ -386,7 +424,7 @@ struct CourseArt: Sendable {
                 (1492...1640, 35, -1, .ledBlack),
                 (1660...1712, 35, 1, .ledBlack),
             ],
-            walls: [(1597...1629, 1)],  // the old pastorie's garden wall, after the house
+            walls: [(1597...1629, 1, 1.7, 0.4, .redBrick)],  // the old pastorie's garden wall, after the house
             fences: [(300...480, 1), (709...779, -1), (859...989, -1), (2079...2298, -1), (2318...2418, -1)],
             rails: [(480...615, -1, .paleTimber)],  // horse paddock: two rails of bare timber
             poles: [(635...780, 40, 1, .wood), (2080...2300, 45, -1, .wood)],
@@ -456,7 +494,7 @@ struct CourseArt: Sendable {
             ],
             furniture: [
                 // Our Lady of the Cyclists: the blue door and the bench beside it.
-                Furniture(kind: .chapelFront, s: 635, side: -1, offset: 3),
+                Furniture(kind: .chapelFront(blueDoor: true), s: 635, side: -1, offset: 3),
                 Furniture(kind: .bench(wood: true), s: 640.8, side: -1, offset: 2.2),
                 // Not the three benches facing café 't Juiste Verzet (OSM,
                 // 10 m across the road): with no terrace under them they
@@ -477,7 +515,7 @@ struct CourseArt: Sendable {
         // shallow cutting facing south, dry, with no mud on the stones.
         "paterberg": CourseArt(
             kerbs: [(300...664, 1)],
-            gutters: [(300...664, -1)],
+            gutters: [(300...664, -1, 0.6)],
             fences: [(305...385, -1)],  // stock fence on the north bank at the foot
             rails: [
                 (505...635, 1, .darkStain),
@@ -590,6 +628,166 @@ struct CourseArt: Sendable {
                 Furniture(kind: .domedChapel, s: 1453, side: -1, offset: 8),
                 Furniture(kind: .calvary, s: 1465, side: -1, offset: 6.8),
             ]
+        ),
+        // Sint-Denijs-Boekel: the concrete Smarre along the valley floor, a
+        // sharp left onto the setts and over the beek by the Moldergem mill
+        // (low brick parapets, no railings), the mill square, the terrace cut
+        // into the hillside under the wood (a bank and evergreens on the
+        // right, gardens falling away on the left), the shallow holle weg,
+        // the open cutting to the Caildenberg mouth where the setts end
+        // (s 557), then narrow cracked asphalt past the farm, the paddock and
+        // the chapel of Our Lady of the Seven Sorrows to Moldergem. The setts
+        // have an edge row laid lengthwise on both sides and no kerbs or
+        // gutters. From the Panoramax pass of 1 March 2026, Commons photos
+        // of 2012-2026, the heritage inventory, the 2024 aerial photo and the
+        // canopy model (scripts/courses/debug/molenberg/research_summary.json).
+        "molenberg": CourseArt(
+            sunkenLane: [365...452],
+            walls: [
+                (328...340, 1, 0.55, 0.1, .redBrick),    // the bridge parapet over the pond and the beek
+                (332...338, -1, 0.5, 0.2, .redBrick),    // the mill race's wall, up to the mill's gable
+                (540...556, -1, 1.9, 0.7, .whitewashed), // the garden wall under ivy, a big pollard behind
+            ],
+            // A retaining wall of grey setts in courses under a clipped yew.
+            stoneWalls: [(440...452, -1, 0.8, .slabs)],
+            fences: [(400...455, 1), (495...556, 1)],  // timber posts and wire on the pasture banks
+            rails: [(558...650, 1, .paleTimber)],      // the horse paddock's weathered rails
+            // Square concrete poles: on the left to the Caildenberg, then the
+            // right past the paddock, the left again to the top.
+            poles: [(325...560, 39, -1, .concrete), (585...655, 34, 1, .concrete), (692...780, 41.5, -1, .concrete)],
+            hedges: [
+                (250...266, 1, 2.8, 1.5, .laurel),   // on the Smarre, before the yellow house
+                (365...398, 1, 1.6, 0.2, .ivy),      // dark clipped evergreens and ivy rising from the bank
+                (375...390, -1, 2.0, 1.3, .green),   // beech, behind a sandy strip
+                (440...452, -1, 1.0, 0.5, .ivy),     // yew on top of the sett wall
+                (485...500, 1, 1.8, 0.8, .ivy),      // yew in front of the white house
+                (648...668, -1, 1.8, 6.0, .green),   // beech along the farm yard
+                (650...760, 1, 2.0, 1.0, .laurel),   // 2.5-3.5 m above the road on its bank (1.5 m in 2015)
+                (740...760, -1, 1.6, 0.6, .ivy),     // ivy over a fence
+                (765...880, 1, 2.6, 1.0, .laurel),
+                (780...880, -1, 1.5, 1.5, .green),   // a young pleached hornbeam on posts and wires
+            ],
+            // The mill square's setts out to the house fronts, the forecourts of
+            // the two white houses, the chapel's apron.
+            pavedVerges: [(345...368, 1, 5.4), (474...497, 1, 3.0), (636...643, -1, 2.7)],
+            villages: [325...375, 468...500, 690...763],
+            houseLooks: [
+                // The yellow-rendered house on the Smarre, under orange-red tiles.
+                HouseLook(span: 262...290, maxRouteDistance: 14, look: .paleRenderTiles, side: 1),
+                // The mill: dark multi-tone red brick under weathered orange-red
+                // pantiles, its gable at the road; its barn and sheds beyond.
+                HouseLook(span: 335...352, maxRouteDistance: 12, look: .redBrickPantiles, side: -1),
+                HouseLook(span: 352...385, maxRouteDistance: 12, look: .redBrickPantiles, side: -1),
+                // The miller's house in cream render under dark tiles, then a long
+                // low cream range under orange tiles, half in ivy.
+                HouseLook(span: 335...352, maxRouteDistance: 15, look: .paleRender, side: 1),
+                HouseLook(span: 349...366, maxRouteDistance: 19, look: .paleRenderTiles, side: 1),
+                HouseLook(span: 389...405, maxRouteDistance: 12, look: .paleRender, side: -1),  // buff-grey brick, at the edge
+                HouseLook(span: 420...437, maxRouteDistance: 24, look: .whitewashedPantiles, side: -1),
+                HouseLook(span: 437...460, maxRouteDistance: 18, look: .redBrickPantiles, side: -1),
+                HouseLook(span: 460...500, maxRouteDistance: 12, look: .paleRenderTiles, side: 1, kind: "house"),
+                // The farm's white-painted range at the road and the farmhouse
+                // behind its lawn, orange pantiles.
+                HouseLook(span: 545...600, maxRouteDistance: 45, look: .whitewashedPantiles, side: -1),
+                HouseLook(span: 634...643, maxRouteDistance: 8, look: .whitewashedPantiles, side: -1, kind: "chapel"),
+                HouseLook(span: 660...692, maxRouteDistance: 20, look: .redBrickSlate, side: -1),  // salmon brick, dark tiles
+                HouseLook(span: 695...760, maxRouteDistance: 22, look: .paleRender, side: -1),     // the villas
+                HouseLook(span: 693...760, maxRouteDistance: 30, look: .redBrickSlate, side: 1),   // over the laurel
+            ],
+            setts: .mossyGrey,
+            signs: [
+                // At the turn: Zwalm's plate looking back at the Smarre, and
+                // the weight limit and uneven-road warning facing riders.
+                SignPost(s: 305, side: -1, offset: 2.5, plates: ["street.molenberg"], turn: 60),
+                SignPost(s: 306, side: 1, offset: 1.0, plates: ["c21.3_5t", "a7.uneven"]),
+                SignPost(s: 362, side: 1, offset: 1.2, plates: ["place.stdenijsboekel", "plate.wegdek"]),
+                SignPost(s: 560, side: 1, offset: 3.0, plates: ["c3", "plate.aangelanden"], turn: 45),  // the Caildenberg
+                SignPost(s: 765, side: 1, offset: 2.0, plates: ["street.wijlegem", "street.molenberg"]),
+            ],
+            furniture: [
+                // White-painted brick, a pointed gable with an iron cross, a dark
+                // grey glazed door.
+                Furniture(kind: .chapelFront(blueDoor: false), s: 639, side: -1, offset: 2.7),
+                Furniture(kind: .cabinet, s: 738, side: -1, offset: 0.8),
+                Furniture(kind: .wasteBasket, s: 781, side: -1, offset: 1.5),
+            ],
+            // A lichen-covered pollard by the chapel, 0.8-3 m in the 2015 LiDAR.
+            extraTrees: [(646, -1, 4.0, 5.0, 2.2)],
+            pollards: [(540...556, -1, 8)]
+        ),
+        // Etikhove: the concrete Boitsbank past the silos and the paddock, a
+        // fork left onto the Taaienberg's concrete foot, then setts from the
+        // Fortstraat corner (s 300) to the Bossenaarstraat/Poesthemstraat
+        // junction. The cobbled 4.4 m between the surveyed edges is a 0.35 m
+        // concrete strip on the left, about 3.25 m of setts and the 0.7 m
+        // concrete gutter on the right, flush and the riders' line. The
+        // wooded holloway under ivy-clad trees (to s 480), the house in the
+        // trees, then open pasture, the farm at the road, a dry-laid stone
+        // wall on the left and the bronze legs in the summit garden. From the
+        // Panoramax passes of 2 April 2025 (a helmet 360 camera riding up) and
+        // 8 March 2026, Commons photos of 2016-2025, the 2024 aerial photo and
+        // the canopy model (scripts/courses/debug/taaienberg/research_summary.json).
+        "taaienberg": CourseArt(
+            sunkenLane: [300...480],
+            kerbs: [(299...850, -1)],  // the Fortstraat corner's kerb, then the narrow concrete strip
+            gutters: [(300...855, 1, 0.7)],
+            stoneWalls: [(595...836, -1, 0.6, .slabs)],  // squared grey blocks, dry-laid, holding up the left verge
+            fences: [(545...628, 1), (690...770, 1)],
+            rails: [
+                (0...205, 1, .darkStain),     // the Boitsbank paddock's dark three-rail fence
+                (517...545, 1, .paleTimber),  // grey planks by the open paddock shelter
+            ],
+            palings: [(799...836, -1, 1.2, 1.0), (838...854, -1, 1.2, 8.5)],  // on the wall, then round the garden
+            poles: [(0...205, 40, -1, .concrete), (308...856, 38, 1, .concrete)],
+            hedges: [
+                (285...318, -1, 2.0, 2.0, .green),        // the corner house's garden at the Fortstraat
+                (555...578, -1, 3.8, 1.5, .ivy),          // a tall dark conifer hedge
+                (665...672, 1, 1.2, 1.5, .copperBeech),   // red-leaved, behind the farm's mesh fence
+                (710...799, -1, 1.5, 0.8, .green),        // on the stone wall, before the white house
+                (771...811, 1, 2.8, 1.0, .green),         // beech
+                (811...818, 1, 2.5, 1.0, .laurel),
+            ],
+            // Setts from the gutter to the farmhouse and the barn; the apron
+            // laid in arcs round the plinth at the top corner.
+            pavedVerges: [(629...668, 1, 3.0), (836...855, -1, 5.4)],
+            // Round covers in the setts, left of the middle, about every 45 m.
+            streetGrates: [(300...850, -0.5, 45)],
+            gutterGrateSpacing: 110,
+            villages: [835...1055],
+            houseLooks: [
+                HouseLook(span: 85...140, maxRouteDistance: 25, look: .redBrickPantiles, side: -1),  // the old farm walls and barns
+                HouseLook(span: 150...180, maxRouteDistance: 55, look: .darkBrick, side: 1),  // barns clad in dark timber
+                HouseLook(span: 190...237, maxRouteDistance: 25, look: .whitewashedPantiles, side: -1),
+                HouseLook(span: 290...320, maxRouteDistance: 36, look: .redBrickPantiles, side: -1),
+                HouseLook(span: 460...505, maxRouteDistance: 30, look: .whitewashedPantiles, side: 1),  // the house in the trees
+                // The farm at the road: a long cream house under orange-red
+                // tiles, then the dark brick barn under black tiles.
+                HouseLook(span: 629...650, maxRouteDistance: 22, look: .paleRenderTiles, side: 1, kind: "house"),
+                HouseLook(span: 644...690, maxRouteDistance: 16, look: .darkBrick, side: 1),
+                HouseLook(span: 690...740, maxRouteDistance: 75, look: .hilltopFarms, side: -1),
+                HouseLook(span: 750...775, maxRouteDistance: 12, look: .whitewashedPantiles, side: -1),
+                HouseLook(span: 778...792, maxRouteDistance: 20, look: .whitewashedCottages, side: 1),
+                HouseLook(span: 780...830, maxRouteDistance: 48, look: .paleRender, side: -1),
+                HouseLook(span: 850...860, maxRouteDistance: 20, look: .paleRender, side: -1, kind: "house"),
+                HouseLook(span: 840...870, maxRouteDistance: 15, look: .whitewashedPantiles, side: 1),
+                HouseLook(span: 865...950, maxRouteDistance: 25, look: .redBrickPantiles),  // Poesthemstraat
+            ],
+            setts: .warmOblong,
+            signs: [
+                SignPost(s: 194, side: -1, offset: 0.5, plates: ["street.boitsbank"]),
+                SignPost(s: 204, side: -1, offset: 2.0, plates: ["street.taaienberg"]),  // its text unread, a Maarkedal plate
+                SignPost(s: 276, side: 1, offset: 1.0, plates: ["node.32", "cycle.route.left"]),
+                SignPost(s: 814, side: 1, offset: 0.8, plates: ["cycle.route.right"]),  // the right turn at the top
+            ],
+            furniture: [
+                // On its round plinth at the top corner, facing the road (2023).
+                Furniture(kind: .bronzeLegs, s: 842.9, side: -1, offset: 6.3),
+                Furniture(kind: .wasteBasket, s: 839, side: -1, offset: 5.5),
+            ],
+            pollards: [(178...190, 1, 10), (600...625, -1, 8), (640...668, -1, 8), (820...845, -1, 12)],
+            // The corner the apron and the plinth took over (open in the 2025
+            // photos, the trees behind the paling).
+            clearings: [(834...856, -1, 8.0)]
         ),
     ]
 

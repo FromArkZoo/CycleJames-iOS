@@ -135,6 +135,7 @@ enum BuildingBuilder {
         let sideRoads = RoadBuilder.SideRoadMask(scenery: scenery)
         buildFences(&out, corridor: corridor, sideRoads: sideRoads)
         buildRails(&out, corridor: corridor, sideRoads: sideRoads)
+        buildPalings(&out, corridor: corridor, sideRoads: sideRoads)
         buildPoles(&out, corridor: corridor)
         buildSigns(&out, corridor: corridor, scenery: scenery)
         buildGrates(&out, corridor: corridor)
@@ -493,8 +494,9 @@ enum BuildingBuilder {
             }
         }
 
-        // A chimney on most houses, in brick (or the white-wash).
-        if !flat, !style.shed, rnd.unit() < 0.6 {
+        // A chimney on most houses, in brick (or the white-wash); none on a
+        // church or a chapel.
+        if !flat, !style.shed, b.kind != "church", b.kind != "chapel", rnd.unit() < 0.6 {
             let t = Double(rnd.range(-0.6, 0.6)) * obb.halfLong
             let c = obb.centre + obb.long * t + obb.short * (hw * 0.25)
             let y0 = roofY(c) - 0.6
@@ -1182,33 +1184,38 @@ enum BuildingBuilder {
     // MARK: - Props
 
     /// Brick walls just off the road (on the Koppenberg, beside the farm on
-    /// the right where the cobbles end).
+    /// the right where the cobbles end; the Molenberg's bridge parapets by
+    /// the mill and its white-washed garden wall).
     static func buildSummitWall(_ out: inout Output, corridor: RoadCorridor) {
-        for (span, side) in corridor.art.walls {
-            buildWall(&out, corridor: corridor, from: span.lowerBound, to: span.upperBound, side: side)
+        for run in corridor.art.walls {
+            buildWall(&out, corridor: corridor, run: run)
         }
     }
 
-    private static func buildWall(_ out: inout Output, corridor: RoadCorridor, from s0: Double, to s1: Double,
-                                  side: Double) {
-        var prev: (SIMD2<Double>, Double)?
-        var s = s0
-        while s <= s1 + 0.01 {
+    private static func buildWall(_ out: inout Output, corridor: RoadCorridor,
+                                  run: (span: CourseArt.Span, side: Double, height: Double, offset: Double,
+                                        look: CourseArt.WallLook)) {
+        let style = Style(row: run.look == .whitewashed ? .painted : .redBrick, pantile: false, pitchDeg: 0, shed: true)
+        // Its foot (the lower of the road and the ground under it) and the
+        // road beside it.
+        var prev: (p: SIMD2<Double>, foot: Double, road: Double)?
+        var s = run.span.lowerBound
+        while s <= run.span.upperBound + 0.01 {
             let st = corridor.station(at: s)
-            let p = st.point(lateral: side * (st.halfWidth + 0.55))
+            let p = st.point(lateral: run.side * (st.halfWidth + run.offset + 0.15))
             let ground = Double(corridor.terrain.height(east: p.east, north: p.north))
+            let road = corridor.roadHeight(st, lateral: run.side * st.halfWidth)
             let here = SIMD2(p.east, p.north)
-            if let (a, ga) = prev {
-                let mid = (a + here) / 2
-                let along = simd_normalize(here - a)
-                let half = simd_length(here - a) / 2 + 0.01
-                let y0 = min(ga, ground) - 0.3
-                emitBox(&out.walls, centre: mid, along: along, halfA: half, halfB: 0.15, y0: y0,
-                        y1: max(ga, ground) + 1.7, style: Style(row: .redBrick, pantile: false, pitchDeg: 0, shed: true),
+            if let a = prev {
+                let mid = (a.p + here) / 2
+                let along = simd_normalize(here - a.p)
+                let half = simd_length(here - a.p) / 2 + 0.01
+                emitBox(&out.walls, centre: mid, along: along, halfA: half, halfB: 0.15,
+                        y0: min(a.foot, ground, road) - 0.3, y1: max(a.road, road) + run.height, style: style,
                         ground: { Double(corridor.terrain.height(east: $0.x, north: $0.y)) })
             }
-            prev = (here, ground)
-            s += 3
+            prev = (here, min(ground, road), road)
+            s += min(3, max(run.span.upperBound - s, 1))
         }
     }
 
@@ -1503,6 +1510,54 @@ enum BuildingBuilder {
         }
     }
 
+    /// Split-chestnut paling: rough stakes 8-9 cm apart, their tops ragged,
+    /// twisted together by three wires, on round posts about 2.5 m apart
+    /// (the Taaienberg's summit garden, on top of its stone wall).
+    static func buildPalings(_ out: inout Output, corridor: RoadCorridor, sideRoads: RoadBuilder.SideRoadMask? = nil) {
+        for run in corridor.art.palings {
+            var r = WorldRandom(seed: UInt64(run.span.lowerBound * 5 + 1))
+            var stakes = MeshBuffer(parts: 1), wires = MeshBuffer(parts: 1)
+            var prevWire: [SIMD3<Float>]?
+            var s = run.span.lowerBound, sincePost = 0.0
+            while s <= run.span.upperBound {
+                let st = corridor.station(at: s)
+                let p = RoadBuilder.vergePoint(corridor, st, side: run.side, offset: run.offset)
+                if sideRoads?.covers(east: p.east, north: p.north, margin: 0.3) == true {
+                    prevWire = nil
+                    s += 0.5
+                    continue
+                }
+                let base = SIMD3<Float>(Float(p.east), Float(p.y) - 0.1, Float(-p.north))
+                let along = SIMD3<Float>(Float(st.dirE), 0, Float(-st.dirN))
+                let across = SIMD3<Float>(Float(st.rightE), 0, Float(-st.rightN))
+                let h = Float(run.height) + r.range(-0.07, 0.05)
+                let lean = SIMD3<Float>(r.range(-0.015, 0.015), 1, r.range(-0.015, 0.015))
+                if sincePost >= 2.5 || prevWire == nil {
+                    TreeArchetype.tube(&stakes, base - SIMD3(0, 0.1, 0), base + lean * (Float(run.height) + 0.12), 0.045, 0.04,
+                                       sides: 6, height: 100)
+                    sincePost = 0
+                }
+                let half = SIMD3<Float>(r.range(0.018, 0.026), h / 2, r.range(0.012, 0.018))
+                let c = base + lean * (h / 2)
+                emitPropBox(&stakes, centre: c, x: along, z: across, half: half)
+                // The wires on the field side of the stakes.
+                let back: SIMD3<Float> = across * (0.025 * Float(run.side))
+                let wire: [SIMD3<Float>] = [Float(0.2), 0.55, 0.9].map { f in base + lean * (Float(run.height) * f) + back }
+                if let a = prevWire {
+                    for k in wire.indices {
+                        TreeArchetype.tube(&wires, a[k], wire[k], 0.003, 0.003, sides: 3, height: 100)
+                    }
+                }
+                prevWire = wire
+                let step = Double(r.range(0.08, 0.095))
+                s += step
+                sincePost += step
+            }
+            appendParts(&out.props, stakes, map: [0: PropPart.wood.rawValue])
+            appendParts(&out.props, wires, map: [0: PropPart.wire.rawValue])
+        }
+    }
+
     /// Utility poles beside the road with three wires sagging between them
     /// (the Paterberg's low-voltage line on concrete poles, wooden ones on
     /// the Kwaremont).
@@ -1771,13 +1826,13 @@ enum BuildingBuilder {
         }
         let spacing = corridor.art.gutterGrateSpacing
         if let cell = cells["grate.rect"], spacing > 0 {
-            for (span, side) in corridor.art.gutters {
+            for (span, side, width) in corridor.art.gutters {
                 var r = WorldRandom(seed: UInt64(span.lowerBound * 11 + 3))
                 var s = span.lowerBound + spacing * 0.6
                 while s < span.upperBound - 2 {
                     let st = corridor.station(at: s)
                     // Over the gutter's dished middle (its lift there is 6-10 mm).
-                    lay(cell, at: s, lateral: side * (st.halfWidth - 0.3), lift: 0.013)
+                    lay(cell, at: s, lateral: side * (st.halfWidth - width / 2), lift: 0.013)
                     s += spacing * Double(r.range(0.85, 1.15))
                 }
             }
@@ -1937,8 +1992,9 @@ enum BuildingBuilder {
                 box(&m, SIMD3(0, 0.5, 0), SIMD3(0.32, 0.6, 0.18))
                 paint("paint.cabinet", &m)
                 appendParts(&out.props, m, map: [0: PropPart.signFace.rawValue])
-            case .chapelFront:
-                chapelFront(&out, corridor: corridor, scenery: scenery, near: SIMD2(p.east, p.north), paint: paint)
+            case .chapelFront(let blueDoor):
+                chapelFront(&out, corridor: corridor, scenery: scenery, near: SIMD2(p.east, p.north),
+                            door: blueDoor ? "paint.blue" : "paint.darkgrey", paint: paint)
             case .domedChapel:
                 if let site = domedChapelSites(corridor: corridor, scenery: scenery).first(where: { $0.s == item.s }) {
                     domedChapel(&out, corridor: corridor, site: site, paint: paint)
@@ -1959,6 +2015,36 @@ enum BuildingBuilder {
                 box(&body, SIMD3(0, 4.68, 0.16), SIMD3(0.8, 0.05, 0.04))
                 box(&body, SIMD3(0, 4.82, 0.17), SIMD3(0.08, 0.1, 0.07))
                 appendParts(&out.props, body, map: [0: PropPart.whitePaint.rawValue])
+            case .bronzeLegs:
+                // The plinth: 2.8 m across, 0.4 m high, its top the seat.
+                var side = MeshBuffer(parts: 1), top = MeshBuffer(parts: 1)
+                TreeArchetype.tube(&side, g - up * 0.25, g + up * 0.4, 1.4, 1.4, sides: 32, height: 100)
+                let centre = UInt32(top.vertexCount)
+                top.vertex(g.x, g.y + 0.4, g.z, 0, 1, 0, 0, 0)
+                for k in 0...32 {
+                    let a = Float(k) / 32 * 2 * .pi
+                    let q = g + up * 0.4 + (x * cos(a) + fwd * sin(a)) * 1.4
+                    top.vertex(q.x, q.y, q.z, 0, 1, 0, cos(a), sin(a))
+                    if k > 0 { top.tri(centre, centre + UInt32(k), centre + UInt32(k + 1)) }
+                }
+                appendParts(&out.props, side, map: [0: PropPart.concrete.rawValue])
+                appendParts(&out.props, top, map: [0: PropPart.concrete.rawValue])
+                // The legs, 1.05 m from the cut at the hips to the soles,
+                // a little apart, facing the road.
+                let foot = g + up * 0.4 - fwd * 0.2
+                var bronze = MeshBuffer(parts: 1), cast = MeshBuffer(parts: 1)
+                for sx in [-1, 1] as [Float] {
+                    let hip = foot + x * (0.1 * sx) + up * 1.05, knee = foot + x * (0.12 * sx) + up * 0.55 + fwd * 0.03
+                    let calf = foot + x * (0.12 * sx) + up * 0.38 - fwd * 0.02, ankle = foot + x * (0.12 * sx) + up * 0.09
+                    TreeArchetype.tube(&bronze, hip, knee, 0.085, 0.055, sides: 10, height: 100)
+                    TreeArchetype.tube(&bronze, knee, calf, 0.055, 0.06, sides: 10, height: 100)
+                    TreeArchetype.tube(&bronze, calf, ankle, 0.06, 0.034, sides: 10, height: 100)
+                    emitPropBox(&cast, centre: foot + x * (0.13 * sx) + up * 0.04 + fwd * 0.06, x: x, z: fwd,
+                                half: SIMD3(0.045, 0.04, 0.12))
+                }
+                emitPropBox(&cast, centre: foot + up * 1.07, x: x, z: fwd, half: SIMD3(0.2, 0.04, 0.1))
+                appendParts(&out.props, bronze, map: [0: PropPart.darkMetal.rawValue])
+                appendParts(&out.props, cast, map: [0: PropPart.darkMetal.rawValue])
             }
         }
     }
@@ -2459,7 +2545,7 @@ enum BuildingBuilder {
     /// The blue door, centred on the wall of the chapel nearest `near` that
     /// faces the road, 2 cm proud, and a small iron cross above it.
     private static func chapelFront(_ out: inout Output, corridor: RoadCorridor, scenery: SceneryFile?, near: SIMD2<Double>,
-                                    paint: (String, inout MeshBuffer) -> Void) {
+                                    door key: String, paint: (String, inout MeshBuffer) -> Void) {
         let chapels = (scenery?.buildings ?? []).filter { $0.kind == "chapel" }.map {
             cleaned($0.ring.compactMap { $0.count >= 2 ? SIMD2($0[0], $0[1]) : nil })
         }
@@ -2487,7 +2573,7 @@ enum BuildingBuilder {
         let c = SIMD3<Float>(Float(mid.x), ground, Float(-mid.y))
         var door = MeshBuffer(parts: 1)
         emitPropBox(&door, centre: c + SIMD3(0, 0.92, 0), x: x, z: n, half: SIMD3(0.46, 1.0, 0.02))
-        paint("paint.blue", &door)
+        paint(key, &door)
         appendParts(&out.props, door, map: [0: PropPart.signFace.rawValue])
         var cross = MeshBuffer(parts: 1)
         emitPropBox(&cross, centre: c + SIMD3(0, 2.45, 0) + n * 0.03, x: x, z: n, half: SIMD3(0.025, 0.24, 0.02))

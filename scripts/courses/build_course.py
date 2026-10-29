@@ -4,7 +4,7 @@
 # ///
 """Bake a CycleJames climb course from open data (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg, muur)
+    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg, muur, molenberg, taaienberg)
 
 Sources (all fetched once and cached under scripts/courses/.cache/<id>/):
   * OpenStreetMap via Overpass  -> route centreline, surface, names
@@ -372,6 +372,101 @@ COURSES["muur"] = {
                  "Oudebergstraat, Muur, Kapelmuur, Oudeberg, Driepikkel. Muur-Kapelmuur: 1075 m, 9.3 % average, "
                  "19.8 % max (Ronde van Vlaanderen); climbfinder 1143 m, +91 m from the Dender, cobbles from "
                  "200 m.",
+    },
+}
+
+COURSES["molenberg"] = {
+    **_SHARED,
+    "name": "Molenberg",
+    "region": "Sint-Denijs-Boekel, Zwalm · Flemish Ardennes",
+    # Race order from the Ronde van Vlaanderen 2026 course GPX (cyclingstage.com, from the road
+    # book), matched to OSM way by way, and the 2025 roadmap (Flanders Classics): Smarre -> right
+    # into the Molenberg over the bridge by the Moldergem mill -> up to Moldergem -> Wijlegem.
+    "ways": [
+        229057047,   # Smarre, concrete plates (approach along the valley)
+        562510988,   # Molenberg, sett: the turn off the Smarre, where the 463 m climb starts
+        370262557,   # Molenberg, sett: the bridge over the beek by the mill
+        370262562,   # Molenberg, sett
+        489939403,   # Molenberg, sett: the cobbles end at its last node (Caildenberg junction)
+        440285202,   # Molenberg, asphalt: the climb ends at its last node (Moldergem junction)
+        503851708,   # Molenberg, concrete plates (exit; the trimmed route ends inside it)
+    ],
+    # From the Smarre to the Moldergem junction: 464.5 m along OSM (roadmap 463 m, 7 %, max 14.2 %).
+    "climb_start": ("way_start", 562510988),
+    "climb_end": ("way_end", 440285202),
+    "approach_m": 300.0,
+    "exit_m": 200.0,
+    "osm_bbox": (50.8535, 3.6886, 50.8657, 3.7154),
+    # No OSM width tags; medians of the GRB WGO carriageway edges (build_log.txt), rounded to
+    # 0.25 m: the Smarre 6.05 m, the Molenberg 2.97-3.62 m (the bridge the narrowest), the exit 2.51 m.
+    "width_m": {229057047: 6.0, 562510988: 3.25, 370262557: 3.0, 370262562: 3.5, 489939403: 3.25,
+                440285202: 3.25, 503851708: 2.5},
+    # The LiDAR ground under a bridge is the stream: carry the deck across.
+    "bridge_ways": [370262557],
+    "refine_centreline": False,
+    "align_to_grb": True,
+    "default_width_m": 3.5,
+    "surface_crr": _SURFACE_CRR,
+    "village": "Sint-Maria-Horebeke",
+    "climb_start_name": "Molenberg – off the Smarre at the mill",
+    "summit_name": "Molenberg – top at Moldergem",
+    "streets": "Smarre, Molenberg",
+    "roadbook": {
+        "name": "Ronde van Vlaanderen 2026 course GPX (cyclingstage.com, from the road book)",
+        "url": "https://cdn.cyclingstage.com/images/tour-of-flanders/2026/route.gpx",
+        "retrieved": "2026-10-18",
+        "notes": "Race direction and streets: Meerhem, Smarre, Molenberg, Wijlegem. Molenberg 463 m, 7 % average, "
+                 "14.2 % max, 300 m of cobbles (Ronde van Vlaanderen 2025 roadmap, Flanders Classics).",
+    },
+}
+
+COURSES["taaienberg"] = {
+    **_SHARED,
+    "name": "Taaienberg",
+    "region": "Etikhove, Maarkedal · Flemish Ardennes",
+    # Race order from the Ronde van Vlaanderen 2026 course GPX (cyclingstage.com, from the road
+    # book), matched to OSM way by way, and the 2025 roadmap (Flanders Classics): Nederholbeekstraat
+    # -> Boitsbank -> right up the Taaienberg -> Poesthemstraat -> Poesthem.
+    "ways": [
+        1446400782,  # Nederholbeekstraat, concrete (approach)
+        1447012705,  # Boitsbank, concrete: the turn off the Nederholbeekstraat
+        965272548,   # Boitsbank, sett
+        1447012704,  # Boitsbank, concrete
+        34006550,    # Boitsbank, concrete
+        1492020940,  # Taaienberg, concrete: the turn off the Boitsbank
+        798758556,   # Taaienberg, sett: the cobbles start
+        34006549,    # Taaienberg, sett: from the Fortstraat junction to the top
+        186384384,   # Poesthemstraat, concrete (exit)
+        121508810,   # Poesthem, concrete (exit; the trimmed route ends inside it)
+    ],
+    # The cobbled Taaienberg, from the first setts to the Bossenaarstraat/Poesthemstraat junction
+    # (roadmap 530 m, 6.6 %, max 15.8 %, 500 m of cobbles).
+    "climb_start": ("way_start", 798758556),
+    "climb_end": ("way_end", 34006549),
+    "approach_m": 300.0,
+    "exit_m": 200.0,
+    "osm_bbox": (50.7895, 3.6142, 50.8010, 3.6489),
+    # No OSM width tags; medians of the GRB WGO carriageway edges (build_log.txt): the concrete
+    # Boitsbank and foot of the Taaienberg 5.07 m, the cobbled Taaienberg 4.38 m. The photo survey
+    # (debug/taaienberg/research_summary.json) splits the cobbled 4.4 m into a ~0.35 m concrete
+    # strip on the left, ~3.25 m of setts and the ~0.7 m concrete gutter on the right (CourseArt).
+    "width_m": {1447012704: 5.0, 34006550: 5.0, 1492020940: 5.0, 798758556: 4.4, 34006549: 4.4,
+                186384384: 4.5, 121508810: 4.0},
+    "refine_centreline": False,
+    "align_to_grb": True,
+    "default_width_m": 3.25,
+    "surface_crr": _SURFACE_CRR,
+    "village": "Etikhove",
+    "climb_start_name": "Taaienberg – foot of the cobbles",
+    "summit_name": "Taaienberg – top at the Poesthemstraat",
+    "streets": "Nederholbeekstraat, Boitsbank, Taaienberg, Poesthemstraat, Poesthem",
+    "roadbook": {
+        "name": "Ronde van Vlaanderen 2026 course GPX (cyclingstage.com, from the road book)",
+        "url": "https://cdn.cyclingstage.com/images/tour-of-flanders/2026/route.gpx",
+        "retrieved": "2026-10-18",
+        "notes": "Race direction and streets: Nederholbeekstraat, Boitsbank, Taaienberg, Poesthemstraat, Poesthem. "
+                 "Taaienberg 530 m, 6.6 % average, 15.8 % max, 500 m of cobbles (Ronde van Vlaanderen 2025 roadmap, "
+                 "Flanders Classics).",
     },
 }
 

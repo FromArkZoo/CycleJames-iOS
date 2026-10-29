@@ -277,6 +277,16 @@ enum VegetationBuilder {
             return (st.rightE * push, st.rightN * push)
         }
 
+        /// Whether the ground at a point has been cleared since the LiDAR
+        /// flight (`CourseArt.clearings`).
+        func cleared(_ e: Double, _ n: Double) -> Bool {
+            guard !corridor.art.clearings.isEmpty else { return false }
+            let q = corridor.coarse.query(east: e, north: n)
+            let st = corridor.station(at: q.s)
+            let side: Double = (e - st.east) * st.rightE + (n - st.north) * st.rightN >= 0 ? 1 : -1
+            return corridor.art.isCleared(s: q.s, side: side, beyondEdge: q.dist - st.halfWidth)
+        }
+
         // Trees.
         let library = TreeLibrary()
         let streams = StreamIndex(scenery?.water ?? [])
@@ -285,6 +295,7 @@ enum VegetationBuilder {
         var formCounts = [Int](repeating: 0, count: TreeArchetype.Form.allCases.count)
         for t in (scenery?.trees ?? []) + extraTrees(corridor) {
             if Task.isCancelled { return finish() }
+            if cleared(t.e, t.n) { continue }
             var e = t.e, n = t.n
             let crowded = crowns.neighbours(east: t.e, north: t.n, within: 6) >= 3
             let q = corridor.coarse.query(east: e, north: n)
@@ -379,7 +390,7 @@ enum VegetationBuilder {
             if i % 256 == 0, Task.isCancelled { return finish() }
             let q = corridor.coarse.query(east: sh.e, north: sh.n)
             if q.dist > config.shrubMaxRouteRadius { continue }
-            if roadClearance(sh.e, sh.n, margin: 0.25) != nil { continue }
+            if roadClearance(sh.e, sh.n, margin: 0.25) != nil || cleared(sh.e, sh.n) { continue }
             let y = Float(terrain.height(east: sh.e, north: sh.n))
             guard y.isFinite else { continue }
             var rnd = WorldRandom(sh.e, sh.n, salt: 29)

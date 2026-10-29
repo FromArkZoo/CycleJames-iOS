@@ -6,7 +6,7 @@
 
     uv run --script scripts/courses/textures/bake_signs.py
 
-cj_signs.png (1024 x 1024, sRGB, opaque) and cj_signs_map.json go to
+cj_signs.png (1024 x 1536, sRGB, opaque) and cj_signs_map.json go to
 CycleJames/Resources/CourseTextures/. Every plate the climbs carry
 (CourseArt.signs: Belgian road signs, street plates, the climbs' own boards,
 cycle-node plates, traffic mirrors), drawn flat at 256 px per metre and
@@ -14,7 +14,7 @@ shelf-packed; the map gives each key its shape (rect, tri, triDown, disc),
 its size in metres and its uv rect (u0, v0, u1, v1, v down). BuildingBuilder
 cuts each face to its shape, so the atlas needs no alpha: each cell's corners
 carry the plate's rim colour, which keeps the mips from bleeding a dark edge.
-A few plain cells (paint.*) colour props: the chapel door, the kiosk's
+A few plain cells (paint.*) colour props: the chapel doors, the kiosk's
 plinth, the pipeline marker, the Oudenberg chapel's gilt statue, its stone
 dressings, white statue, timber door, window glass and niche; grate.* are
 the cast-iron gully grates; kiosk.*
@@ -39,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "CycleJames/Resources/CourseTextures"
 
 SIZE = 1024
+HEIGHT = 1536               # the plates outgrew a square 1024 with the Molenberg's and Taaienberg's
 SS = 2                      # supersampling
 PPM = 256 * SS              # pixels per metre while drawing
 PAD = 10 * SS               # between cells
@@ -111,6 +112,38 @@ def street_plate(name, header=None):
     return draw
 
 
+def town_plate(name, header, ink, rim, sub=None):
+    """A municipality's street plate: white, rounded, a coloured border,
+    the village (and municipality) small above the street's name (Zwalm:
+    blue; Maarkedal: green with white letters, `ink` WHITE on `rim`)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        field = rim if ink == WHITE else WHITE
+        d.rectangle(box, fill=rim)
+        d.rounded_rectangle(inset(box, h * 0.04), radius=h * 0.16, fill=field)
+        d.rounded_rectangle(inset(box, h * 0.09), radius=h * 0.12, outline=ink if ink == WHITE else rim,
+                            width=max(2, int(h * 0.05)))
+        x0, y0, x1, y1 = inset(box, h * 0.16)
+        top = (y1 - y0) * 0.32
+        text(d, (x0, y0, x1, y0 + top), header + (f"  {sub}" if sub else ""), top * 0.75, ink, FONT_C)
+        text(d, (x0, y0 + top, x1, y1), name, (y1 - y0 - top) * 0.78, ink)
+    return draw
+
+
+def village_board(town, municipality):
+    """A village's own name board (not an F1): yellow, a red border, black
+    letters (Sint-Denijs-Boekel, at the Molenberg's mill square)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        d.rectangle(box, fill=RED)
+        d.rectangle(inset(box, h * 0.07), fill=YELLOW)
+        text(d, (x0 + h * 0.15, y0 + h * 0.14, x1 - h * 0.15, y0 + h * 0.62), town, h * 0.36, BLACK)
+        text(d, (x0 + h * 0.15, y0 + h * 0.6, x1 - h * 0.15, y1 - h * 0.14), municipality, h * 0.2, BLACK)
+    return draw
+
+
 def tourist_arrow(name, left=True):
     def draw(d, box):
         x0, y0, x1, y1 = box
@@ -163,6 +196,19 @@ def steep(pct):                                       # A5: steep descent
         d.polygon([(x0 + w * 0.3, y0 + h * 0.8), (x0 + w * 0.7, y0 + h * 0.8), (x0 + w * 0.3, y0 + h * 0.56)], fill=BLACK)
         text(d, (x0 + w * 0.42, y0 + h * 0.5, x0 + w * 0.72, y0 + h * 0.66), pct, h * 0.15, BLACK)
     return draw
+
+
+def uneven(d, box):                                   # A7a: uneven road, two humps
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    base = y0 + h * 0.78
+    pts = [(x0 + w * 0.26, base)]
+    for k in range(41):
+        f = k / 40
+        hump = max(0.0, math.sin(f * 2 * math.pi)) ** 1.2 if f < 0.5 else max(0.0, -math.sin(f * 2 * math.pi)) ** 1.2
+        pts.append((x0 + w * (0.26 + 0.48 * f), base - h * 0.17 * hump))
+    pts.append((x0 + w * 0.74, base))
+    d.polygon(pts + [(x0 + w * 0.74, base + h * 0.035), (x0 + w * 0.26, base + h * 0.035)], fill=BLACK)
 
 
 def children(d, box):                                 # A23: two children
@@ -507,6 +553,7 @@ SIGNS = [
     ("f1.kwaremont", "rect", 1.10, 0.60, place_name("Kwaremont", "Kluisbergen")),
     ("a.steep20", "tri", 0.90, 0.78, triangle(steep("20%"))),
     ("a23.children", "tri", 0.90, 0.78, triangle(children)),
+    ("a7.uneven", "tri", 0.90, 0.78, triangle(uneven)),
     ("b1.giveway", "triDown", 0.90, 0.78, triangle(down=True)),
     ("c3", "disc", 0.70, 0.70, disc()),
     ("c1.noentry", "disc", 0.70, 0.70, no_entry),
@@ -518,6 +565,7 @@ SIGNS = [
     ("node.69", "rect", 0.32, 0.32, node(69)),
     ("node.19", "rect", 0.32, 0.32, node(19)),
     ("node.76", "rect", 0.32, 0.32, node(76)),
+    ("node.32", "rect", 0.32, 0.32, node(32)),
     ("street.steengat", "rect", 0.80, 0.26, street_plate("STEENGAT", "Stad Oudenaarde")),
     ("tourist.koppenberg.left", "rect", 1.10, 0.25, tourist_arrow("KOPPENBERG", left=True)),
     ("cycle.route.left", "rect", 0.30, 0.20, cycle_route(left=True)),
@@ -526,6 +574,13 @@ SIGNS = [
     ("plate.landbouw", "rect", 0.70, 0.16, sub_plate("uitgezonderd landbouwvoertuigen", blue=True)),
     ("plate.m11", "rect", 0.45, 0.16, sub_plate("", pictogram=True)),
     ("plate.100m", "rect", 0.45, 0.16, sub_plate("100 m")),
+    ("plate.aangelanden", "rect", 0.70, 0.16, sub_plate("uitgezonderd aangelanden", blue=True)),
+    ("plate.wegdek", "rect", 0.90, 0.18, sub_plate("WEGDEK IN SLECHTE STAAT", blue=True)),
+    ("street.molenberg", "rect", 0.80, 0.30, town_plate("MOLENBERG", "SINT-DENIJS-BOEKEL", BLUE, BLUE, "zwalm")),
+    ("street.wijlegem", "rect", 0.80, 0.30, town_plate("WIJLEGEM", "SINT-DENIJS-BOEKEL", BLUE, BLUE, "zwalm")),
+    ("street.boitsbank", "rect", 0.80, 0.22, town_plate("Boitsbank", "MAARKEDAL", WHITE, GREEN)),
+    ("street.taaienberg", "rect", 0.80, 0.22, town_plate("Taaienberg", "MAARKEDAL", WHITE, GREEN)),
+    ("place.stdenijsboekel", "rect", 1.10, 0.55, village_board("St-Denijs-Boekel", "Zwalm")),
     ("grate.round", "disc", 0.45, 0.45, grate_round),
     ("grate.rect", "rect", 0.50, 0.30, grate_rect),
     ("paint.blue", "rect", 0.06, 0.06, paint((44, 78, 140))),
@@ -539,6 +594,7 @@ SIGNS = [
     ("paint.door", "rect", 0.06, 0.06, paint((92, 56, 34))),
     ("paint.glass", "rect", 0.06, 0.06, paint((30, 34, 40))),
     ("paint.niche", "rect", 0.06, 0.06, paint((96, 62, 48))),
+    ("paint.darkgrey", "rect", 0.06, 0.06, paint((64, 68, 72))),
 ]
 
 # The kiosk's faces (`BuildingBuilder.buildFurniture`), at PROP_SCALE of the
@@ -553,8 +609,8 @@ PROPS = [
 
 
 def bake() -> None:
-    big = SIZE * SS
-    atlas = Image.new("RGB", (big, big), (128, 128, 128))
+    big, tall = SIZE * SS, HEIGHT * SS
+    atlas = Image.new("RGB", (big, tall), (128, 128, 128))
     d = ImageDraw.Draw(atlas)
     order = [(*c, 1.0) for c in sorted(SIGNS, key=lambda c: -c[3])]        # shelves by height
     order += [(*c, PROP_SCALE) for c in PROPS]
@@ -565,32 +621,32 @@ def bake() -> None:
         if x + w + 2 * PAD > big:
             x, y, row_h = 0, y + row_h, 0
         box = (x + PAD, y + PAD, x + PAD + w, y + PAD + h)
-        if box[3] + PAD > big:
+        if box[3] + PAD > tall:
             raise SystemExit(f"atlas full at {key}")
         face = painter(d, box)
         if face is not None:
             atlas.paste(face, box[:2])
         # The cell's padding takes its edge colours, so mips don't bleed grey.
         cells[key] = dict(key=key, shape=shape, w=w_m, h=h_m,
-                          uv=[round(box[0] / big, 6), round(box[1] / big, 6),
-                              round(box[2] / big, 6), round(box[3] / big, 6)])
+                          uv=[round(box[0] / big, 6), round(box[1] / tall, 6),
+                              round(box[2] / big, 6), round(box[3] / tall, 6)])
         x += w + 2 * PAD
         row_h = max(row_h, h + 2 * PAD)
     # Bleed every cell's border into its padding.
     px = atlas.load()
     for c in cells.values():
-        u0, v0, u1, v1 = (int(round(t * big)) for t in c["uv"])
+        u0, v0, u1, v1 = (int(round(t * n)) for t, n in zip(c["uv"], (big, tall, big, tall)))
         for yy in range(v0 - PAD + 2, v1 + PAD - 2):
             for xx in range(u0 - PAD + 2, u1 + PAD - 2):
                 if u0 <= xx < u1 and v0 <= yy < v1:
                     continue
                 px[xx, yy] = px[min(max(xx, u0), u1 - 1), min(max(yy, v0), v1 - 1)]
-    out = atlas.resize((SIZE, SIZE), Image.LANCZOS)
+    out = atlas.resize((SIZE, HEIGHT), Image.LANCZOS)
     OUT.mkdir(parents=True, exist_ok=True)
     out.save(OUT / "cj_signs.png", optimize=True)
     keys = [k for k, *_ in SIGNS + PROPS]
     (OUT / "cj_signs_map.json").write_text(json.dumps([cells[k] for k in keys], indent=1) + "\n")
-    used = (y + row_h) / big
+    used = (y + row_h) / tall
     print(f"cj_signs.png: {len(cells)} cells, {used * 100:.0f} % of the height used")
 
 

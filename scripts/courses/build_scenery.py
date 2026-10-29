@@ -4,7 +4,7 @@
 # ///
 """Bake scenery.json for a CycleJames course (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg, muur)
+    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg, muur, molenberg, taaienberg)
 
 Reads the already-baked course folder (course.json, terrain_near.u16,
 canopy_near.u16) and the raw aerial photo build_course.py keeps out of the
@@ -94,6 +94,17 @@ COURSES: dict[str, dict] = {
                        127709175, 147154153, 365912740, 571820915, 571820916, 572035233, 1453533351, 410355879,
                        117772267, 86502347, 365912388, 229161973, 86502330],
         "osm_bbox": (50.7685, 3.8715, 50.7767, 3.8956),
+        "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    "molenberg": {
+        "route_ways": [229057047, 562510988, 370262557, 370262562, 489939403, 440285202, 503851708],
+        "osm_bbox": (50.8535, 3.6886, 50.8657, 3.7154),
+        "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    "taaienberg": {
+        "route_ways": [1446400782, 1447012705, 965272548, 1447012704, 34006550, 1492020940, 798758556, 34006549,
+                       186384384, 121508810],
+        "osm_bbox": (50.7895, 3.6142, 50.8010, 3.6489),
         "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
     },
 }

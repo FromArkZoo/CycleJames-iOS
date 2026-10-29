@@ -41,9 +41,12 @@
 		24F704302B1D9E83B497999D /* koppenberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 2319389A874329620F99A4BD /* koppenberg_ortho_ground.jpg */; };
 		278B20583ECE6A589FC31B31 /* CameraSpring.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD72B488C19083A0EE46263 /* CameraSpring.swift */; };
 		28FCD7A9F3F06B95AF584359 /* GearTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE76ACCF85FA8CA2C6DB6DE9 /* GearTracker.swift */; };
+		29C55E6D8C0299D339DAC0E5 /* molenberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 3B6ED47BB40444F306DA55C6 /* molenberg_ortho_ground.jpg */; };
 		2A6A4FCA810CBEC17D3EB69C /* cj_skyenv_nx.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 6F266668D6226E338F2273A7 /* cj_skyenv_nx.jpg */; };
+		2AA56382AECE6DC49CEC5D2A /* molenberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 07DB707CB9BF12ACD65D2E4D /* molenberg_splat.rgbz */; };
 		2B15EC960D6441C0C5A465BA /* WattbikeLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78E31EFC945EBA21DDA8AC0 /* WattbikeLog.swift */; };
 		2B612340B7C42A04A292EB1B /* FTMSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968D2E2E0F76370A84721343 /* FTMSManager.swift */; };
+		2C8450E8DF7DEC759EB894D8 /* taaienberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 58F03BDB38BC8284E488A444 /* taaienberg_splat.rgbz */; };
 		2E731837FEF572A30EDF4FAE /* HistoryDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB146FEDFD0188672F0BE65 /* HistoryDetailView.swift */; };
 		2F5C69DBF371093B29D02875 /* WorldShaders+Light.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5976FCA4CCC06FA73310400F /* WorldShaders+Light.swift */; };
 		3098806ED9581475EF71BDCC /* koppenberg_light.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 570CD782243E928071F235E2 /* koppenberg_light.rgbz */; };
@@ -105,6 +108,7 @@
 		7762E7528F97E2634CDA0FDB /* CourseRideSamplesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87FCF7874FB04FD2882CA10C /* CourseRideSamplesTests.swift */; };
 		78AA6D1DCAAAC7FBA14C8FF3 /* CourseWorldBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B6954ECE3210A3EBA3947CB /* CourseWorldBuilder.swift */; };
 		7A1B8DF3021205EB9190F2ED /* cj_impostor.png in Resources */ = {isa = PBXBuildFile; fileRef = B7A282C4C06B730487A252CE /* cj_impostor.png */; };
+		7AAB3FA05D1D09D2CFC1986A /* taaienberg_light.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 268CAF05B789E15379534FFE /* taaienberg_light.rgbz */; };
 		7AD7655876E5DBF42164989D /* UpcomingIntervalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */; };
 		7B2F5621AB4D46DAA0AC1087 /* WorkoutFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */; };
 		7B5B83D0DA421E8A0F5AB5DD /* cj_skyenv_px.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 76BCDE3557CCB3C5A7811AEF /* cj_skyenv_px.jpg */; };
@@ -163,6 +167,7 @@
 		B9B2A05075C659905F6078ED /* CourseBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31513E32BD6F8219B674DEF /* CourseBundle.swift */; };
 		BABED744A2BA262F9A23BC1B /* IntervalEditBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B23BF1F345751BA37219ADD /* IntervalEditBar.swift */; };
 		BFDCF1CE90DC5D6BA98DF457 /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D658811265D09659A8C1D3B /* CalendarView.swift */; };
+		C33909BD3EB73EB18E79C7E3 /* taaienberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 304C8D4A463331459A7FE9F0 /* taaienberg_ortho_ground.jpg */; };
 		C339D19BC077595A7F71C48C /* HRManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD14DA6F0DFAE1F0B9B757B7 /* HRManager.swift */; };
 		C6AE3F3B74C20B7D4384C1CE /* koppenberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */; };
 		C752E561ECCCA40EFA41463A /* CourseListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60BA0B5131BABFFF94F0724 /* CourseListView.swift */; };
@@ -190,6 +195,7 @@
 		E74461E4289D7EC93CD5C91B /* CourseRideSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FDE61A337378085218E7966 /* CourseRideSettingsControls.swift */; };
 		ECD918DE4D68D1ECFEDECA6E /* cj_foliage.png in Resources */ = {isa = PBXBuildFile; fileRef = BB6B3EB4AF105B7E4BED0D34 /* cj_foliage.png */; };
 		EE0ED61F0BD68F614EFC58FA /* cj_asphalt_albedo.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 0EC6CE876C0021DBE03439B1 /* cj_asphalt_albedo.jpg */; };
+		EEEB8728D18DBD3DBDAA87E5 /* molenberg_light.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 79E6A4E72F028DC18FD98DD2 /* molenberg_light.rgbz */; };
 		EF1F074EF6BB473E393DB6F3 /* CourseData.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDBCF8E7A1DB5B71A81B0FD1 /* CourseData.swift */; };
 		F235BF3D06ACEBDEEC0AD7C8 /* WorldTextures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C0FE83567FA5506A6F299E7 /* WorldTextures.swift */; };
 		F2CB5CDF750B23633645DC40 /* RiderMaterials.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E734E1BB9F5BA8A509A8B4 /* RiderMaterials.swift */; };
@@ -222,6 +228,7 @@
 		04F52916E8BE52598439FEF9 /* ReschedulePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReschedulePickerSheet.swift; sourceTree = "<group>"; };
 		06857ECE0A906B5070333B6B /* LandscapeRideLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LandscapeRideLayout.swift; sourceTree = "<group>"; };
 		07229889D8F9791E370B786F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		07DB707CB9BF12ACD65D2E4D /* molenberg_splat.rgbz */ = {isa = PBXFileReference; path = molenberg_splat.rgbz; sourceTree = "<group>"; };
 		0801789C3556EAA0FFDCF3B0 /* CycleJamesTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CycleJamesTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		096E8D20A018E13E1B268E0A /* OrientationLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationLock.swift; sourceTree = "<group>"; };
 		09D0E9C0282E931415CDADF9 /* BuildingBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildingBuilder.swift; sourceTree = "<group>"; };
@@ -249,11 +256,13 @@
 		247B7303868D62A1EC8D1406 /* WholeRideIntensityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WholeRideIntensityTests.swift; sourceTree = "<group>"; };
 		24A16C4D8AB7A444DC693A24 /* CourseClimbTimingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseClimbTimingTests.swift; sourceTree = "<group>"; };
 		25FA5672C03582B2B97668B3 /* HeightRaster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeightRaster.swift; sourceTree = "<group>"; };
+		268CAF05B789E15379534FFE /* taaienberg_light.rgbz */ = {isa = PBXFileReference; path = taaienberg_light.rgbz; sourceTree = "<group>"; };
 		27045B67616F657CBEBCC974 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		2833CB8B069F0020C986152B /* ScreenshotSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotSeeder.swift; sourceTree = "<group>"; };
 		2B0BF55BF0000F40A9B475DF /* CourseProfileViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseProfileViews.swift; sourceTree = "<group>"; };
 		2BA4F37A09097307A9B0BB7C /* WorkoutPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPlayer.swift; sourceTree = "<group>"; };
 		2CB5B6C76728E11F1BE935A5 /* cj_signs_map.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = cj_signs_map.json; sourceTree = "<group>"; };
+		304C8D4A463331459A7FE9F0 /* taaienberg_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = taaienberg_ortho_ground.jpg; sourceTree = "<group>"; };
 		305180187B96D40006981F76 /* GroundColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundColor.swift; sourceTree = "<group>"; };
 		3296CC0597F16AEAC3B27DE7 /* WorldMaterials+Buildings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldMaterials+Buildings.swift"; sourceTree = "<group>"; };
 		3413B27E31AD7912F1F00023 /* CycleJamesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CycleJamesApp.swift; sourceTree = "<group>"; };
@@ -261,6 +270,7 @@
 		36D233EC39C36A14272B23DD /* cj_roof_detail.rgbz */ = {isa = PBXFileReference; path = cj_roof_detail.rgbz; sourceTree = "<group>"; };
 		381E222819FF32A8ABD3BEEC /* ClimbTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClimbTimer.swift; sourceTree = "<group>"; };
 		38E115B36E6DF285BF18ADFA /* SettFarMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettFarMap.swift; sourceTree = "<group>"; };
+		3B6ED47BB40444F306DA55C6 /* molenberg_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = molenberg_ortho_ground.jpg; sourceTree = "<group>"; };
 		3CC2818092CBB742E52D3D4B /* WorldMaterials+Light.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldMaterials+Light.swift"; sourceTree = "<group>"; };
 		3D5E89461389BBE63D5B7131 /* CustomWorkoutModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomWorkoutModel.swift; sourceTree = "<group>"; };
 		3D658811265D09659A8C1D3B /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
@@ -281,6 +291,7 @@
 		52888F967D148AB4EEA031F7 /* muur_ortho_ground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = muur_ortho_ground.jpg; sourceTree = "<group>"; };
 		5615116856CF6B9E60874EAB /* CourseWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseWorld.swift; sourceTree = "<group>"; };
 		570CD782243E928071F235E2 /* koppenberg_light.rgbz */ = {isa = PBXFileReference; path = koppenberg_light.rgbz; sourceTree = "<group>"; };
+		58F03BDB38BC8284E488A444 /* taaienberg_splat.rgbz */ = {isa = PBXFileReference; path = taaienberg_splat.rgbz; sourceTree = "<group>"; };
 		5976FCA4CCC06FA73310400F /* WorldShaders+Light.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Light.swift"; sourceTree = "<group>"; };
 		5A1ED7B98646F24E15977FAF /* cj_grime.rgbz */ = {isa = PBXFileReference; path = cj_grime.rgbz; sourceTree = "<group>"; };
 		5BA92A2BC40DFFA96A4FCA49 /* LightProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightProfileTests.swift; sourceTree = "<group>"; };
@@ -307,6 +318,7 @@
 		76BCDE3557CCB3C5A7811AEF /* cj_skyenv_px.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_skyenv_px.jpg; sourceTree = "<group>"; };
 		774E07143BFA319D2C27BA74 /* cj_sky_py.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_sky_py.jpg; sourceTree = "<group>"; };
 		778E15CE958C063A7DBE4882 /* CourseRideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRideView.swift; sourceTree = "<group>"; };
+		79E6A4E72F028DC18FD98DD2 /* molenberg_light.rgbz */ = {isa = PBXFileReference; path = molenberg_light.rgbz; sourceTree = "<group>"; };
 		7A21BCD05706976595E49E1E /* Zone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zone.swift; sourceTree = "<group>"; };
 		7B2C590500CED6AD8765CCDA /* cj_bark_detail.rgbz */ = {isa = PBXFileReference; path = cj_bark_detail.rgbz; sourceTree = "<group>"; };
 		7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */ = {isa = PBXFileReference; path = koppenberg_splat.rgbz; sourceTree = "<group>"; };
@@ -482,6 +494,9 @@
 				570CD782243E928071F235E2 /* koppenberg_light.rgbz */,
 				2319389A874329620F99A4BD /* koppenberg_ortho_ground.jpg */,
 				7CB496886621B1E66038A3CE /* koppenberg_splat.rgbz */,
+				79E6A4E72F028DC18FD98DD2 /* molenberg_light.rgbz */,
+				3B6ED47BB40444F306DA55C6 /* molenberg_ortho_ground.jpg */,
+				07DB707CB9BF12ACD65D2E4D /* molenberg_splat.rgbz */,
 				F170A26C9BF54663317BB5CC /* muur_light.rgbz */,
 				52888F967D148AB4EEA031F7 /* muur_ortho_ground.jpg */,
 				DFE0F6145FD2AEFC83387C10 /* muur_splat.rgbz */,
@@ -491,6 +506,9 @@
 				4B6F6DA7C83704E0210C6481 /* paterberg_light.rgbz */,
 				ACE8A7EEC8A6F6BE106E989F /* paterberg_ortho_ground.jpg */,
 				03CDE2A6A473CCF563F37B29 /* paterberg_splat.rgbz */,
+				268CAF05B789E15379534FFE /* taaienberg_light.rgbz */,
+				304C8D4A463331459A7FE9F0 /* taaienberg_ortho_ground.jpg */,
+				58F03BDB38BC8284E488A444 /* taaienberg_splat.rgbz */,
 			);
 			path = CourseTextures;
 			sourceTree = "<group>";
@@ -969,6 +987,9 @@
 				3098806ED9581475EF71BDCC /* koppenberg_light.rgbz in Resources */,
 				24F704302B1D9E83B497999D /* koppenberg_ortho_ground.jpg in Resources */,
 				C6AE3F3B74C20B7D4384C1CE /* koppenberg_splat.rgbz in Resources */,
+				EEEB8728D18DBD3DBDAA87E5 /* molenberg_light.rgbz in Resources */,
+				29C55E6D8C0299D339DAC0E5 /* molenberg_ortho_ground.jpg in Resources */,
+				2AA56382AECE6DC49CEC5D2A /* molenberg_splat.rgbz in Resources */,
 				161006D944B40C6A8E4F9846 /* muur_light.rgbz in Resources */,
 				926E6D3FAA6B38B99385C3F5 /* muur_ortho_ground.jpg in Resources */,
 				8C78798CCB55F9A2FC6B7986 /* muur_splat.rgbz in Resources */,
@@ -978,6 +999,9 @@
 				A1F0FC500145EDE7E4D5D0D9 /* paterberg_light.rgbz in Resources */,
 				9A94EDB001769331519D36FC /* paterberg_ortho_ground.jpg in Resources */,
 				93D188F68C758B269C023B05 /* paterberg_splat.rgbz in Resources */,
+				7AAB3FA05D1D09D2CFC1986A /* taaienberg_light.rgbz in Resources */,
+				C33909BD3EB73EB18E79C7E3 /* taaienberg_ortho_ground.jpg in Resources */,
+				2C8450E8DF7DEC759EB894D8 /* taaienberg_splat.rgbz in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

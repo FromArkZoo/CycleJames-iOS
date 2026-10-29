@@ -9,7 +9,7 @@ import XCTest
 /// centre line, so the bound is checked against every cobbled surface the
 /// courses really have.
 final class SettStyleTests: XCTestCase {
-    private let looks: [CourseArt.SettLook] = [.mixedGrey, .paleSplit, .darkRegular, .smallWorn]
+    private let looks: [CourseArt.SettLook] = [.mixedGrey, .paleSplit, .darkRegular, .smallWorn, .mossyGrey, .warmOblong]
 
     private func bundle(_ id: String) throws -> CourseBundle {
         do {
@@ -229,6 +229,18 @@ final class SettStyleTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(c.x, c.z * 0.95)
             }
         }
+        // The Molenberg's near square, on joints as wide as the Koppenberg's;
+        // the Taaienberg's longer across the road than along it, warm, domed.
+        let mol = CourseArt.SettLook.mossyGrey.style, taai = CourseArt.SettLook.warmOblong.style
+        XCTAssertEqual(mol.layout.x / mol.layout.y, 1, accuracy: 0.1)
+        XCTAssertGreaterThan(taai.layout.y, taai.layout.x * 1.15)
+        for st in [mol, taai] {
+            XCTAssertGreaterThan(st.meanJoint, pat.meanJoint)
+            for c in [st.stoneA, st.stoneB, st.stoneC] { XCTAssertGreaterThanOrEqual(c.x, c.z * 0.95) }
+            XCTAssertEqual(st.split, SIMD4(0, 0, 0.016, 0.48))
+        }
+        XCTAssertGreaterThan(taai.shape.y, mol.shape.y)
+        XCTAssertGreaterThan(taai.stoneC.w, mol.stoneC.w)
         let ids = Set(looks.map(\.seed))
         XCTAssertEqual(ids.count, looks.count)
     }

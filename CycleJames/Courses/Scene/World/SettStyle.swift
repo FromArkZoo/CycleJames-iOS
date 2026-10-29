@@ -11,7 +11,9 @@ extension CourseArt.SettLook {
     /// together and some well short of their neighbours on sandy joints
     /// (every joint wide rings each stone like grout on new pavers); the
     /// Paterberg's darker, regular, domed setts close together; the Muur's
-    /// smaller grey setts, close and polished.
+    /// smaller grey setts, close and polished; the Molenberg's near-square
+    /// grey and blue-grey setts on wide mossy joints; the Taaienberg's warm,
+    /// oblong, domed setts on wide sandy joints.
     var style: CourseArt.SettStyle {
         switch self {
         case .mixedGrey:
@@ -45,6 +47,26 @@ extension CourseArt.SettLook {
                 stoneA: SIMD4(0.118, 0.115, 0.110, 0.22), stoneB: SIMD4(0.092, 0.092, 0.094, 0.30),
                 stoneC: SIMD4(0.140, 0.124, 0.100, 0.12),
                 wear: SIMD4(0.70, 0.30, 0.9, 0.015), farMatch: 0.89, farAO: 1.09, grainNormal: 1.0)
+        case .mossyGrey:
+            // Photos (debug/molenberg/research_summary.json): 13-15 cm, joints
+            // 1.5-3 cm of soil and moss, gently to moderately domed, the odd
+            // sett sunk or missing, little polish on a lane with few cars.
+            CourseArt.SettStyle(
+                layout: SIMD4(0.140, 0.140, 0.20, 0.30), joint: SIMD4(0.006, 0.014, 0.40, 0.16),
+                shape: SIMD4(0.018, 0.70, 0.004, 0.030),
+                stoneA: SIMD4(0.110, 0.107, 0.104, 0.22), stoneB: SIMD4(0.092, 0.092, 0.096, 0.32),
+                stoneC: SIMD4(0.140, 0.115, 0.088, 0.20),
+                wear: SIMD4(0.70, 0.30, 0.5, 0.025), farMatch: 0.89, farAO: 1.04, grainNormal: 1.0)
+        case .warmOblong:
+            // Photos (debug/taaienberg/research_summary.json): 14-16 cm along
+            // the road by 16-22 cm across, domed and worn smooth, some proud,
+            // joints 1-3 cm of sand and grit; relaid in 1993 and intact.
+            CourseArt.SettStyle(
+                layout: SIMD4(0.150, 0.190, 0.20, 0.35), joint: SIMD4(0.006, 0.014, 0.40, 0.16),
+                shape: SIMD4(0.022, 0.85, 0.005, 0.040),
+                stoneA: SIMD4(0.122, 0.114, 0.103, 0.26), stoneB: SIMD4(0.094, 0.093, 0.094, 0.32),
+                stoneC: SIMD4(0.155, 0.112, 0.082, 0.24),
+                wear: SIMD4(0.70, 0.30, 0.7, 0.015), farMatch: 0.887, farAO: 1.04, grainNormal: 1.0)
         }
     }
 
@@ -55,6 +77,8 @@ extension CourseArt.SettLook {
         case .paleSplit: 1
         case .darkRegular: 2
         case .smallWorn: 3
+        case .mossyGrey: 4
+        case .warmOblong: 5
         }
     }
 }

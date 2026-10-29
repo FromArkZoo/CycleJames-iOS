@@ -626,15 +626,15 @@ enum RoadBuilder {
         mesh.computeNormals()
     }
 
-    /// Precast concrete rainwater gutters, 0.6 m wide, along the inside of
-    /// the carriageway edge (the Paterberg's left side). The section dips
-    /// 1.2 cm to its middle; it sits just proud of the road mesh it covers.
+    /// Precast concrete rainwater gutters along the inside of the
+    /// carriageway edge (the Paterberg's left side, 0.6 m; the
+    /// Taaienberg's right, 0.7 m). The section dips 1.2 cm to its middle; it
+    /// sits just proud of the road mesh it covers.
     private static func buildGutters(corridor: RoadCorridor, into mesh: inout MeshBuffer) {
-        let width = 0.6
         // Across the gutter from the road edge inwards: fraction of the width, lift above the road.
         let profile: [(f: Double, lift: Double)] = [(0, 0.018), (0.2, 0.011), (0.5, 0.006), (0.8, 0.011), (1, 0.02)]
         let n = UInt32(profile.count)
-        for (span, side) in corridor.art.gutters {
+        for (span, side, width) in corridor.art.gutters {
             var prev: UInt32?
             for s in corridor.stations where span.contains(s.s) && s.beyond == 0 {
                 let first = UInt32(mesh.vertexCount)

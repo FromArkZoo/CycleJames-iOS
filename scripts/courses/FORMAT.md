@@ -23,8 +23,8 @@ pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
 - **Raster encoding `u16le_cm`:** little-endian `UInt16`,
   `value_m = baseM + raw / 100`; `raw == 65535` means no data.
 - **Direction of travel:** the route always runs in the direction it is raced
-  (uphill for the Koppenberg, the Oude Kwaremont, the Paterberg and the Muur
-  van Geraardsbergen).
+  (uphill for the Koppenberg, the Oude Kwaremont, the Paterberg, the Muur
+  van Geraardsbergen, the Molenberg and the Taaienberg).
 
 ## `course.json`
 
@@ -64,12 +64,12 @@ pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
     "surface": []     // index into "surfaces"
     // east/north follow the OSM ways, moved onto the sunken-lane floor (DTM
     // trough fit, the Koppenberg) or onto the middle of the surveyed
-    // carriageway (GRB WGO edges, the Oude Kwaremont, the Paterberg and the
-    // Muur). widthM is narrowed to the clear floor where a bank rises inside
+    // carriageway (GRB WGO edges, every other berg). widthM is narrowed to the clear floor where a bank rises inside
     // a lane of at most 5 m nominal (never below 2.5 m), and a cobbled one to
     // max_cobbled_width_m where the course sets it (the Muur's Markt: the
     // app's far sett map spans 5.6 m). elev is carried straight across
-    // bridges (the Muur's over the Dender), where the DTM is the water.
+    // bridges (the Muur's over the Dender, the Molenberg's over the beek by
+    // the mill), where the DTM is the water.
   },
   // "concrete" is appended only when the route has some (the Paterberg's exit
   // along the concrete-plate Stooktestraat); the app draws it as pale slabs and
