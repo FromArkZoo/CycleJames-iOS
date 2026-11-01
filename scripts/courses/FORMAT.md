@@ -131,17 +131,19 @@ pipeline needs live in `scripts/courses/pipeline/<course-id>/` instead (see
 ```
 
 The Poggio's far land also has its own aerial photo,
-`CycleJames/Resources/CourseTextures/poggio_ortho_far.jpg`: the 2022
-Regione Liguria ortho, north up, exactly over `terrain.far`'s footprint at
-2.5 m/px (2000 × 2000 px), where the Flemish bergs use the generic
-`cj_farfields`.
+`CycleJames/Resources/CourseTextures/poggio_ortho_far.jpg`: AGEA's 2022
+ortho from Regione Liguria's WMS, north up, exactly over `terrain.far`'s
+footprint at 2.5 m/px (2000 × 2000 px), where the Flemish bergs use the
+generic `cj_farfields`.
 
 Attribution lines are shown on the course page. Lines naming
 "OpenStreetMap" link to openstreetmap.org/copyright and lines naming
 "Modellicentie Gratis Hergebruik" link to that licence
 (`CourseLicence` in `CourseDetailView.swift`); keep those names in the text.
-The Poggio's Italian sources (Regione Liguria, INGV) are CC BY 4.0 and say so
-in their lines.
+The Poggio's Italian sources (Regione Liguria, INGV and AGEA's 2022 ortho) are
+CC BY 4.0 and say so in their lines. That licence also asks for a note of any
+changes, so the ortho's line says how the photo was changed; keep it in step
+with what `textures/bake_course_maps.py` does to the photo.
 
 ## `scenery.json`
 

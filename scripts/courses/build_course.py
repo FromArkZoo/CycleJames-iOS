@@ -18,7 +18,7 @@ Sources (all fetched once and cached under scripts/courses/.cache/<id>/):
       .cache/poggio/lidar/, else a 1 m DTM shaped from the Carta Tecnica Regionale 1:5000 3D survey
       (WFS: road areas, centrelines, walls, contours, spot heights) over INGV TINITALY 10 m
     - INGV TINITALY/1.1 (WCS, 10 m) for the far grid and the skyline (horizon) raster
-    - Regione Liguria Ortofoto 2022 (WMS, EPSG:7791), Linea di costa 2022 (WFS) for the sea
+    - AGEA Ortofoto 2022 (CC BY 4.0) from Regione Liguria's WMS (EPSG:7791), Linea di costa 2022 (WFS) for the sea
 
 Outputs go to CycleJames/Resources/Courses/<id>/ (shipped in the app), the
 raw aerial photo, which only build_scenery.py and
@@ -648,6 +648,10 @@ COURSES["poggio"] = {
     "sea": {"level_m": 0.0, "coast_wfs": f"{LIGURIA_GS}/M2274/wfs", "coast_layer": "M2274:L10350",
             "name": "Regione Liguria – Linea di costa 2022 (M2274:L10350)",
             "attribution": "Regione Liguria – Linea di costa 2022, CC BY 4.0"},
+    # The aerial photo is AGEA's 2022 flight, served by Regione Liguria. The Region's record says "no conditions
+    # apply", but AGEA licenses it to the regions for their own public duties only. Since August 2026 AGEA's
+    # GeoPortale releases its 2022-2024 RGB orthophotos under CC BY 4.0, which asks for credit to AGEA, the
+    # licence and a note of the changes; the attribution line and the source notes give all three.
     "ortho": {
         "service": f"{LIGURIA_GS}/M2555/wms",
         "layer": "M2555:L10401",
@@ -655,11 +659,17 @@ COURSES["poggio"] = {
         "format": "image/jpeg",
         "season": "summer",
         "year": 2022,
-        "title": "Ortofoto a colori 2022 sc. 1:5000 (AGEA), Regione Liguria",
+        "title": "AGEA – Ortofoto a colori 2022 sc. 1:5000, via Regione Liguria (M2555)",
         "m_per_px": 0.5,
         "notes": "AGEA flight, summer 2022, native 0.2 m (sharp to ~0.4 m); shadows fall to the north-west "
-                 "(a morning flight). INSPIRE: no conditions apply.",
-        "attribution": "Regione Liguria – Ortofoto a colori 2022 sc. 1:5000 (AGEA)",
+                 "(a morning flight). By AGEA (Agenzia per le Erogazioni in Agricoltura), served by Regione "
+                 "Liguria. AGEA releases its 2022-2024 RGB orthophotos under CC BY 4.0 "
+                 "(https://creativecommons.org/licenses/by/4.0/; https://geoportale.agea.gov.it/legal-notes). "
+                 "Changed here: cropped to the near and far grids and resampled; in "
+                 "CourseTextures/poggio_ortho_ground.jpg the trees, roofs, the photo's shadows and the sea are "
+                 "also painted out and the colours adjusted (textures/bake_course_maps.py).",
+        "attribution": "AGEA – Ortofoto a colori 2022, via Regione Liguria, CC BY 4.0 (modified: cropped and "
+                       "resampled; trees, roofs, shadows and sea painted out; colours adjusted)",
     },
     # The same photo over the whole far grid, for the land beyond the near grid (CourseTextures, shipped).
     "ortho_far": {"m_per_px": 2.5, "file": "poggio_ortho_far.jpg", "quality": 85},
