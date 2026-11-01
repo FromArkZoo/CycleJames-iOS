@@ -29,9 +29,11 @@ final class BuildingBuilderTests: XCTestCase {
         XCTAssertEqual(r.uvs.count, r.vertexCount * 2, "\(label): roof texcoord 0", file: file, line: line)
         XCTAssertEqual(r.uv2.count, r.vertexCount * 2, "\(label): roof texcoord 1", file: file, line: line)
         for i in stride(from: 0, to: w.uv3.count, by: 2) {
+            // Over 128: a Riviera wall's render and shutter colours.
             let code = Int(w.uv3[i].rounded())
-            XCTAssertTrue((0...BB.WallKind.sandstone.rawValue).contains(code / 8), "\(label): wall code \(code)",
+            XCTAssertTrue((0...BB.WallKind.sandstone.rawValue).contains(code % 128 / 8), "\(label): wall code \(code)",
                           file: file, line: line)
+            XCTAssertLessThan(code / 128, 64, "\(label): wall colours \(code)", file: file, line: line)
             XCTAssertTrue((0..<1).contains(w.uv3[i + 1]), "\(label): wall seed", file: file, line: line)
         }
         for i in stride(from: 0, to: r.uv2.count, by: 2) {
@@ -49,6 +51,8 @@ final class BuildingBuilderTests: XCTestCase {
     func test_everyCourseBuildingCarriesTheShaderChannels() throws {
         for id in CourseCatalog.courseIDs {
             let b = try bundle(id)
+            // A course whose scenery isn't baked yet has nothing to check.
+            guard b.scenery?.buildings?.isEmpty == false else { continue }
             let corridor = RoadCorridor(bundle: b, vergeWidth: 12)
             let out = BB.build(corridor: corridor, scenery: b.scenery)
             XCTAssertGreaterThan(out.walls.triangleCount, 1000, id)
@@ -534,6 +538,330 @@ final class BuildingBuilderTests: XCTestCase {
             }
         }
         XCTAssertGreaterThan(mounted, 0)
+    }
+
+    // MARK: Riviera
+
+    /// A Riviera house's roof: the lowest of the planes rising from its walls
+    /// makes a hipped roof over a rectangle (two trapezoids and two
+    /// triangles meeting at a ridge half the width up), a pyramid over a
+    /// square, and a gabled one when only the long walls carry planes; the
+    /// faces cover the plan once.
+    func test_rivieraRoofEnvelope() {
+        func planes(_ ring: [SIMD2<Double>], only: ((SIMD2<Double>) -> Bool)? = nil) -> [BB.RoofPlane] {
+            ring.indices.compactMap { i in
+                let a = ring[i], c = ring[(i + 1) % ring.count]
+                let along = simd_normalize(c - a)
+                if let only, !only(along) { return nil }
+                return BB.RoofPlane(a: a, along: along, n: SIMD2(-along.y, along.x))
+            }
+        }
+        let rect: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(12, 0), SIMD2(12, 8), SIMD2(0, 8)]
+        let hipped = BB.envelopeFaces(rect, planes: planes(rect))
+        XCTAssertEqual(hipped.count, 4)
+        XCTAssertEqual(hipped.map { BB.signedArea($0.poly) }.reduce(0, +), 96, accuracy: 1e-6)
+        XCTAssertEqual(Set(hipped.map { $0.poly.count }), [3, 4])
+        let slope = 0.4
+        XCTAssertEqual(BB.envelopeHeight(SIMD2(6, 4), planes: planes(rect), eaveY: 10, slope: slope), 10 + 4 * slope,
+                       accuracy: 1e-9)
+        XCTAssertEqual(BB.envelopeHeight(SIMD2(3, 4), planes: planes(rect), eaveY: 10, slope: slope), 10 + 3 * slope,
+                       accuracy: 1e-9)
+        let square: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(8, 0), SIMD2(8, 8), SIMD2(0, 8)]
+        let pyramid = BB.envelopeFaces(square, planes: planes(square))
+        XCTAssertEqual(pyramid.count, 4)
+        XCTAssertTrue(pyramid.allSatisfy { $0.poly.count == 3 })
+        let gabled = BB.envelopeFaces(rect, planes: planes(rect) { abs($0.x) > 0.5 })
+        XCTAssertEqual(gabled.count, 2)
+        XCTAssertEqual(gabled.map { BB.signedArea($0.poly) }.reduce(0, +), 96, accuracy: 1e-6)
+        // A gable wall's top rises to the ridge and falls again; an eave
+        // wall's stays level.
+        let gable = BB.envelopeProfile(SIMD2(12, 0), SIMD2(12, 8), planes: planes(rect) { abs($0.x) > 0.5 }, eaveY: 10,
+                                       slope: slope)
+        XCTAssertEqual(gable.count, 3)
+        XCTAssertEqual(gable[1].u, 4, accuracy: 1e-6)
+        XCTAssertEqual(gable[1].y, 10 + 4 * slope, accuracy: 1e-6)
+        let eave = BB.envelopeProfile(SIMD2(0, 0), SIMD2(12, 0), planes: planes(rect), eaveY: 10, slope: slope)
+        XCTAssertEqual(eave.count, 2)
+        XCTAssertTrue(eave.allSatisfy { abs($0.y - 10) < 1e-6 })
+    }
+
+    /// Every Riviera writer on its own (as `build` calls them on a Riviera
+    /// course): hipped, gabled, L-shaped, flat-roofed and palazzina houses,
+    /// a shed, near and far greenhouses, a film tunnel, a cistern, a cistern
+    /// tower and a church. Their vertices carry the shader channels; the
+    /// glass is on its own part with greenhouse ids; a hipped house is
+    /// roofed over all its plan, up to its height; the far greenhouse's
+    /// roof is one plane the shader draws in spans.
+    func test_everyRivieraWriterEmitsItsChannels() throws {
+        let b = try bundle("koppenberg")
+        let corridor = RoadCorridor(bundle: b, vergeWidth: 12)
+        let o = b.route.planar(at: 300) + SIMD2(25, 0)
+        func rect(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, at origin: SIMD2<Double>? = nil) -> [[Double]] {
+            let p = origin ?? o
+            return [[p.x + x0, p.y + y0], [p.x + x1, p.y + y0], [p.x + x1, p.y + y1], [p.x + x0, p.y + y1]]
+        }
+        let ell: [[Double]] = [[0, 0], [14, 0], [14, 5], [5, 5], [5, 12], [0, 12]].map { [o.x + $0[0], o.y + $0[1]] }
+        let circle: [[Double]] = (0..<16).map { k in
+            let a = Double(k) / 16 * 2 * .pi
+            return [o.x + 4 * cos(a), o.y + 4 * sin(a)]
+        }
+        let far = o + SIMD2(400, 0)
+        let cases: [(String, SceneryFile.Building)] = [
+            ("hipped", .init(ring: rect(0, 0, 12, 8), heightM: 8, roofShape: nil, kind: "house", groundElevM: nil)),
+            ("gabled", .init(ring: rect(0, 0, 12, 8), heightM: 8, roofShape: "gabled", kind: "house", groundElevM: nil)),
+            ("L-shaped", .init(ring: ell, heightM: 7.5, roofShape: "hipped", kind: "house", groundElevM: nil)),
+            ("flat", .init(ring: rect(0, 0, 9, 8), heightM: 7, roofShape: "flat", kind: "house", groundElevM: nil)),
+            ("palazzina", .init(ring: rect(0, 0, 18, 12), heightM: 15, roofShape: nil, kind: "apartments", groundElevM: nil)),
+            ("shed", .init(ring: rect(0, 0, 5, 4), heightM: 2.8, roofShape: nil, kind: "other", groundElevM: nil)),
+            ("greenhouse", .init(ring: rect(0, 0, 30, 19), heightM: 4.2, roofShape: "sawtooth", kind: "greenhouse",
+                                 groundElevM: nil)),
+            ("far greenhouse", .init(ring: rect(0, 0, 30, 19, at: far), heightM: 4.2, roofShape: "sawtooth",
+                                     kind: "greenhouse", groundElevM: nil)),
+            ("tunnel", .init(ring: rect(0, 0, 25, 7), heightM: 3.2, roofShape: "tunnel", kind: "greenhouse", groundElevM: nil)),
+            ("cistern", .init(ring: circle, heightM: 1.6, roofShape: nil, kind: "cistern", groundElevM: nil)),
+            ("cistern tower", .init(ring: circle, heightM: 6, roofShape: nil, kind: "cistern", groundElevM: nil)),
+            ("square tank", .init(ring: rect(0, 0, 6, 5), heightM: 1.6, roofShape: "flat", kind: "cistern", groundElevM: nil)),
+            ("church", .init(ring: rect(0, 0, 22, 10), heightM: 18, roofShape: "gabled", kind: "church", groundElevM: nil)),
+        ]
+        for (index, (label, building)) in cases.enumerated() {
+            var ring = BB.cleaned(building.ring.map { SIMD2($0[0], $0[1]) })
+            if BB.signedArea(ring) < 0 { ring.reverse() }
+            var out = BB.Output()
+            BB.emitRiviera(&out, ring: ring, area: BB.signedArea(ring), building: building, index: index, site: nil,
+                           corridor: corridor)
+            out.walls.computeNormals()
+            out.roofs.computeNormals()
+            XCTAssertGreaterThan(out.walls.triangleCount, 8, label)
+            assertChannels(out, label)
+            let glass = out.roofs.parts[BB.glassPart]
+            let glassIDs = Set(glass.map { Int(out.roofs.uv2[2 * Int($0)].rounded(.down)) })
+            let opaqueIDs = Set(out.roofs.parts[0].map { Int(out.roofs.uv2[2 * Int($0)].rounded(.down)) })
+            if label.contains("greenhouse") || label == "tunnel" {
+                XCTAssertFalse(glass.isEmpty, "\(label): no glass")
+                XCTAssertTrue(glassIDs.isSubset(of: Set((0...BB.GlassPart.spanRoof.rawValue))), "\(label): \(glassIDs)")
+                XCTAssertEqual(glassIDs.contains(BB.GlassPart.spanRoof.rawValue), label == "far greenhouse", label)
+            } else {
+                XCTAssertTrue(glass.isEmpty, "\(label): glass on a house")
+            }
+            if label == "cistern" { XCTAssertGreaterThan(out.water.triangleCount, 10, label) }
+            if label == "cistern tower" { XCTAssertEqual(out.water.triangleCount, 0, label) }
+            if label == "square tank" { XCTAssertEqual(out.water.triangleCount, 2, label) }
+            if label == "church" { XCTAssertGreaterThan(out.props.triangleCount, 200, "church without its campanile") }
+            if label == "hipped" || label == "L-shaped" {
+                XCTAssertTrue(opaqueIDs.contains(BB.RoofCover.redPantile.rawValue)
+                              || opaqueIDs.contains(BB.RoofCover.smokedPantile.rawValue), label)
+                // Roofed over the whole plan, its top at the LiDAR height.
+                let ground = ring.map { Double(corridor.terrain.height(east: $0.x, north: $0.y)) }.max()!
+                var top = -Double.infinity
+                let box = BB.orientedBox(ring)
+                for fx in stride(from: -0.9, through: 0.9, by: 0.15) {
+                    for fy in stride(from: -0.9, through: 0.9, by: 0.15) {
+                        let q = box.centre + box.long * (fx * box.halfLong) + box.short * (fy * box.halfShort)
+                        guard BB.pointInRing(q, ring) else { continue }
+                        let y = try XCTUnwrap(highestRoof(out.roofs, over: q), "\(label): no roof over \(q)")
+                        top = max(top, Double(y))
+                    }
+                }
+                XCTAssertEqual(top - ground, building.heightM, accuracy: 0.6, label)
+            }
+        }
+    }
+
+    /// A greenhouse over a terraced slope steps down it in bands across the
+    /// fall, each on its own lowest ground with its eaves 2.4 m clear of its
+    /// highest; on the level it stays one house.
+    func test_greenhouseStepsDownTheTerraces() {
+        let ring = [SIMD2(0.0, 0.0), SIMD2(30, 0), SIMD2(30, 12), SIMD2(0, 12)]
+        let b = SceneryFile.Building(ring: ring.map { [$0.x, $0.y] }, heightM: 7, roofShape: "sawtooth",
+                                     kind: "greenhouse", groundElevM: 100)
+        // 6 m up across its 12 m.
+        func slope(_ p: SIMD2<Double>) -> Double { 100 + 0.5 * p.y }
+        let bands = BB.greenhouseBands(ring, building: b, ground: slope)
+        XCTAssertEqual(bands.count, 4)
+        var area = 0.0
+        for band in bands {
+            area += BB.signedArea(band.ring)
+            let ground = band.ring.map(slope)
+            let floor = try? XCTUnwrap(band.building.groundElevM)
+            XCTAssertEqual(floor ?? 0, ground.min()!, accuracy: 1e-6)
+            let eave = min(band.building.heightM - 0.75, 4.5)
+            XCTAssertGreaterThanOrEqual(eave - (ground.max()! - (floor ?? 0)), 2.4 - 1e-6)
+        }
+        XCTAssertEqual(area, 360, accuracy: 1e-6)
+        XCTAssertEqual(BB.greenhouseBands(ring, building: b, ground: { _ in 100 }).count, 1)
+    }
+
+    /// A Riviera greenhouse whose footprint reaches over the carriageway's
+    /// edge is built behind it, on the terrace, its glass no higher than a
+    /// low house of glass (look s 2560-2615: two to three metres on the
+    /// wall); a house reaching over the edge has its walls pulled off it;
+    /// one well away is left as drawn.
+    func test_rivieraBuildingsKeepOffTheCarriageway() throws {
+        let b = try bundle("koppenberg")
+        let corridor = RoadCorridor(bundle: b, vergeWidth: 12)
+        let st = corridor.station(at: 300)
+        let right = SIMD2(st.rightE, st.rightN), along = SIMD2(-st.rightN, st.rightE)
+        let o = SIMD2(st.east, st.north)
+        func ring(_ lat0: Double, _ lat1: Double) -> [SIMD2<Double>] {
+            [o + along * -9 + right * lat0, o + along * 9 + right * lat0, o + along * 9 + right * lat1,
+             o + along * -9 + right * lat1]
+        }
+        var over = ring(st.reachRight - 0.5, st.reachRight + 12)
+        if BB.signedArea(over) < 0 { over.reverse() }
+        let pushed = BB.clearOfCarriageway(over, corridor: corridor, by: 0.7, within: 3)
+        XCTAssertTrue(pushed.roadside)
+        XCTAssertGreaterThanOrEqual(pushed.ring.count, 4)
+        for p in pushed.ring { XCTAssertGreaterThan(BB.carriagewayGap(p, corridor: corridor), 0.6) }
+        var away = ring(st.reachRight + 20, st.reachRight + 30)
+        if BB.signedArea(away) < 0 { away.reverse() }
+        let kept = BB.clearOfCarriageway(away, corridor: corridor, by: 0.7, within: 3)
+        XCTAssertFalse(kept.roadside)
+        XCTAssertEqual(kept.ring, away)
+
+        let ground = { (p: SIMD2<Double>) in Double(corridor.terrain.height(east: p.x, north: p.y)) }
+        for (index, kind) in ["greenhouse", "house"].enumerated() {
+            let building = SceneryFile.Building(ring: over.map { [$0.x, $0.y] }, heightM: kind == "house" ? 8 : 7,
+                                                roofShape: kind == "house" ? "hipped" : "sawtooth", kind: kind,
+                                                groundElevM: over.map(ground).min())
+            var out = BB.Output()
+            BB.emitRiviera(&out, ring: over, area: BB.signedArea(over), building: building, index: index, site: nil,
+                           corridor: corridor)
+            let mesh = kind == "house" ? out.walls : out.roofs
+            XCTAssertGreaterThan(mesh.triangleCount, 8, kind)
+            for i in 0..<mesh.vertexCount {
+                let p = SIMD2(Double(mesh.positions[3 * i]), Double(-mesh.positions[3 * i + 2]))
+                XCTAssertGreaterThan(BB.carriagewayGap(p, corridor: corridor), kind == "house" ? 0.1 : 0.6, kind)
+            }
+        }
+        // At the road the eaves stay at most 3.3 m over the floor (and a
+        // 0.75 m ridge), however tall the survey has it.
+        let floor = pushed.ring.map(ground).min()!
+        let tall = SceneryFile.Building(ring: pushed.ring.map { [$0.x, $0.y] }, heightM: 7, roofShape: "sawtooth",
+                                        kind: "greenhouse", groundElevM: floor)
+        var out = BB.Output()
+        BB.emitGreenhouse(&out, ring: pushed.ring, area: BB.signedArea(pushed.ring), building: tall, tunnel: false,
+                          index: 3, corridor: corridor, detail: true, groundTop: floor + 6, roadside: true)
+        let top = stride(from: 1, to: out.roofs.positions.count, by: 3).map { Double(out.roofs.positions[$0]) }.max()!
+        XCTAssertLessThan(top - floor, 4.2)
+    }
+
+    /// The highest roof triangle over a point in plan (the soffit under a
+    /// Riviera roof is the lowest), nil where there is none.
+    private func highestRoof(_ roofs: MeshBuffer, over p: SIMD2<Double>) -> Float? {
+        let x = Float(p.x), z = Float(-p.y)
+        let v = roofs.positions
+        var high: Float?
+        for part in roofs.parts {
+            for t in stride(from: 0, to: part.count - 2, by: 3) {
+                let i0 = Int(part[t]) * 3, i1 = Int(part[t + 1]) * 3, i2 = Int(part[t + 2]) * 3
+                let ax = v[i0], az = v[i0 + 2], bx = v[i1], bz = v[i1 + 2], cx = v[i2], cz = v[i2 + 2]
+                let d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
+                guard abs(d) > 1e-6 else { continue }
+                let l0 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d
+                let l1 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d
+                guard l0 >= 0, l1 >= 0, l0 + l1 <= 1 else { continue }
+                let y = l0 * v[i0 + 1] + l1 * v[i1 + 1] + (1 - l0 - l1) * v[i2 + 1]
+                high = max(high ?? y, y)
+            }
+        }
+        return high
+    }
+
+    /// Churches go up as complexes: the survey's own bell-tower footprint is
+    /// the campanile and its nave gets none; a church standing alone gets
+    /// one; a wayside chapel gets none. The tower is built on its footprint.
+    func test_rivieraChurchComplexes() throws {
+        func rect(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) -> [[Double]] {
+            [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+        }
+        let b: [SceneryFile.Building] = [
+            .init(ring: rect(0, 0, 20, 12), heightM: 12, roofShape: "gabled", kind: "church", groundElevM: nil),
+            .init(ring: rect(20.2, 0, 25.5, 5.5), heightM: 21, roofShape: "gabled", kind: "chapel", groundElevM: nil),
+            .init(ring: rect(100, 0, 116, 10), heightM: 11, roofShape: "gabled", kind: "church", groundElevM: nil),
+            .init(ring: rect(200, 0, 206, 8), heightM: 5, roofShape: "gabled", kind: "chapel", groundElevM: nil),
+        ]
+        let rings = b.map { $0.ring.map { SIMD2($0[0], $0[1]) } }
+        var kinds: [Int: String] = [:]
+        for (site, index) in BB.churchSites(Array(b.indices), rings: rings, buildings: b) {
+            let k = try XCTUnwrap(index)
+            switch site.kind {
+            case .campanile: kinds[k] = "campanile"
+            case let .churchPart(tower): kinds[k] = tower ? "nave+campanile" : "nave"
+            default: kinds[k] = "?"
+            }
+        }
+        XCTAssertEqual(kinds, [0: "nave", 1: "campanile", 2: "nave+campanile", 3: "nave"])
+
+        let course = try bundle("koppenberg")
+        let corridor = RoadCorridor(bundle: course, vergeWidth: 12)
+        let o = course.route.planar(at: 300) + SIMD2(25, 0)
+        let ring = rings[1].map { $0 + o }
+        var out = BB.Output()
+        BB.emitRiviera(&out, ring: ring, area: BB.signedArea(ring), building: b[1], index: 1,
+                       site: .campanile(naveRidge: 12), corridor: corridor)
+        out.walls.computeNormals()
+        out.roofs.computeNormals()
+        assertChannels(out, "campanile")
+        XCTAssertGreaterThan(out.props.triangleCount, 200, "campanile without its belfry and dome")
+        let ground = ring.map { Double(corridor.terrain.height(east: $0.x, north: $0.y)) }.max()!
+        let top = stride(from: 1, to: out.walls.positions.count, by: 3).map { Double(out.walls.positions[$0]) }.max()!
+        XCTAssertEqual(top - ground, 21 - 1.0, accuracy: 0.6)
+    }
+
+    /// A Riviera wall's colours ride over 128 in its code, and come apart as
+    /// the shader takes them.
+    /// A Riviera house's colours follow where it stands, not its place in
+    /// the scenery file; a pinned house takes its pinned colours, and a
+    /// footprint the Poggio's table calls gone is not built.
+    func test_rivieraColoursFollowTheFootprint() throws {
+        let b = try bundle("koppenberg")
+        let corridor = RoadCorridor(bundle: b, vergeWidth: 12)
+        let o = b.route.planar(at: 300) + SIMD2(25, 0)
+        let house = SceneryFile.Building(ring: [[o.x, o.y], [o.x + 12, o.y], [o.x + 12, o.y + 8], [o.x, o.y + 8]],
+                                         heightM: 8, roofShape: nil, kind: "house", groundElevM: nil)
+        let key = BB.rivieraKey(house)
+        XCTAssertEqual(key, BB.rivieraKey(house))
+        let a = BB.rivieraPlan(house, form: .house, area: 96, index: key, routeDistance: 20)
+        let c = BB.rivieraPlan(house, form: .house, area: 96, index: key, routeDistance: 20)
+        XCTAssertEqual(a.style.tint, c.style.tint)
+        // Built at index 3 or 900, the walls are the same.
+        func walls(index: Int, courseID: String?, building: SceneryFile.Building) -> [Float] {
+            var ring = building.ring.map { SIMD2($0[0], $0[1]) }
+            if BB.signedArea(ring) < 0 { ring.reverse() }
+            var out = BB.Output()
+            BB.emitRiviera(&out, ring: ring, area: BB.signedArea(ring), building: building, index: index, site: nil,
+                           corridor: corridor, courseID: courseID)
+            return out.walls.positions + out.walls.uv2
+        }
+        XCTAssertEqual(walls(index: 3, courseID: nil, building: house), walls(index: 900, courseID: nil, building: house))
+        // Every pin and fix of the Poggio names a distinct footprint.
+        let pins = BB.rivieraColoursByCourse["poggio"] ?? []
+        let tops = BB.rivieraTopsByCourse["poggio"] ?? []
+        XCTAssertFalse(pins.isEmpty)
+        for (i, p) in pins.enumerated() {
+            for q in pins[(i + 1)...] { XCTAssertGreaterThan(simd_distance(p.centre, q.centre), 3) }
+        }
+        // A footprint centred on a "gone" entry builds nothing on the Poggio.
+        if let gone = tops.first(where: { if case .gone = $0.top { return true } else { return false } }) {
+            let g = gone.centre
+            let shed = SceneryFile.Building(ring: [[g.x - 2, g.y - 2], [g.x + 2, g.y - 2], [g.x + 2, g.y + 2],
+                                                   [g.x - 2, g.y + 2]],
+                                            heightM: 2.6, roofShape: nil, kind: "barn", groundElevM: nil)
+            XCTAssertTrue(walls(index: 0, courseID: "poggio", building: shed).isEmpty)
+        } else {
+            XCTFail("no gone footprint in the Poggio's table")
+        }
+    }
+
+    func test_rivieraTintPacksColours() {
+        for colour in BB.RenderColour.allCases {
+            for shutter in BB.ShutterColour.allCases {
+                let code = Int(BB.wallCode(.wall, tint: BB.rivieraTint(colour, shutter, tint: 3)))
+                XCTAssertEqual(code % 128, 3)
+                XCTAssertEqual(code / 128 % 16, colour.rawValue)
+                XCTAssertEqual(code / 128 / 16, shutter.rawValue)
+            }
+        }
     }
 
     /// The domed chapel's body is a circle fitted to its footprint, clear of

@@ -29,8 +29,12 @@ struct HeightRaster: Sendable {
         self.values = values
     }
 
+    /// Raw steps per metre of each encoding: `u16le_cm` spans 655 m above
+    /// `baseM`, `u16le_dm` (a horizon ring of mountains) 6553 m.
+    static let encodingStepsPerM: [String: Float] = ["u16le_cm": 100, "u16le_dm": 10]
+
     static func load(from url: URL, header: CourseFile.RasterHeader) throws -> HeightRaster {
-        guard header.encoding == "u16le_cm" else {
+        guard let steps = encodingStepsPerM[header.encoding] else {
             throw CourseDataError.badRaster("unsupported encoding \(header.encoding) in \(header.file)")
         }
         guard header.cols > 0, header.rows > 0, header.cellM > 0 else {
@@ -54,7 +58,7 @@ struct HeightRaster: Sendable {
                 let hi = UInt16(raw[2 * i + 1])
                 let v = lo | (hi << 8)
                 if v != 0xFFFF {
-                    values[i] = base + Float(v) / 100
+                    values[i] = base + Float(v) / steps
                 }
             }
         }

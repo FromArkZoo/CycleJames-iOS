@@ -68,7 +68,9 @@ enum RoadBuilder {
             let reachL = 1 - 0.3 * flushPaving(corridor.art, strips: strips, s: s.s, side: -1)
             let reachR = 1 - 0.3 * flushPaving(corridor.art, strips: strips, s: s.s, side: 1)
             for f in roadColumns {
-                let lat = f * s.halfWidth
+                // To the reach, not the half width: they differ only inside a
+                // Riviera hairpin turning tighter than the road is wide.
+                let lat = f * (f < 0 ? s.reachLeft : s.reachRight)
                 let p = s.point(lateral: lat)
                 let y = corridor.roadHeight(s, lateral: lat)
                 mesh.vertex(Float(p.east), Float(y), Float(-p.north), 0, 1, 0, Float(lat), Float(s.s))
@@ -95,19 +97,26 @@ enum RoadBuilder {
                 meshes[target].quad(a0, a1, b1, b0)
             }
         }
+        // Riviera: tarmac on to the face of a wall at the edge.
+        let aprons = corridor.art.look.isRiviera ? RoadCorridor.edgeAprons(corridor, scenery: corridor.edgeScenery) : .none
+        if corridor.art.look.isRiviera {
+            buildRivieraAprons(corridor: corridor, stations: st, aprons: aprons, into: &meshes[0])
+        }
         for k in meshes.indices { meshes[k].computeNormals() }
         out.asphalt = meshes[0]; out.cobbles = meshes[1]; out.concrete = meshes[2]
 
-        // Verge, both sides.
+        // Verge, both sides; on the Riviera from the face of a wall at the
+        // edge (`RoadCorridor.edgeAprons`, none elsewhere).
         let terrain = corridor.terrain
         for side in [-1.0, 1.0] {
             if Task.isCancelled { return out }
             var prev: UInt32?
             for k in 0..<st.count {
                 let s = st[k]
-                let verge = side > 0 ? s.vergeRight : s.vergeLeft
+                let apron = apronWidth(aprons, s, side: side)
+                let verge = (side > 0 ? s.vergeRight : s.vergeLeft) - apron
                 let scale = verge / vergeColumns.last!
-                let edgeLat = side * s.halfWidth
+                let edgeLat = side * (s.reach(side) + apron)
                 let edgeY = corridor.roadHeight(s, lateral: edgeLat)
                 let skirt = 0.35 * smoothstepD(2, 6, verge)
                 let sunk = corridor.art.sunkenWeight(s.s)
@@ -141,7 +150,12 @@ enum RoadBuilder {
         buildGutters(corridor: corridor, into: &out.gutter)
         buildPavements(corridor: corridor, into: &out.pavements, kerb: &out.kerb)
         buildPavedVerges(corridor: corridor, stations: st, columns: vergeColumns, into: &out.pavements)
-        buildMarkings(corridor: corridor, into: &out.markings, cycleLanes: &out.cycleLanes)
+        if corridor.art.look.isRiviera {
+            buildRivieraMarkings(corridor: corridor, into: &out.markings)
+            buildRivieraEdges(corridor: corridor, aprons: aprons, gutter: &out.gutter, kerb: &out.kerb)
+        } else {
+            buildMarkings(corridor: corridor, into: &out.markings, cycleLanes: &out.cycleLanes)
+        }
         return out
     }
 
@@ -453,8 +467,15 @@ enum RoadBuilder {
             let edgeY = corridor.roadHeight(st, lateral: side * st.halfWidth)
             return blendedVerge(edgeY: edgeY, dtm: dtm, offset: o) + 0.02
         }
+        let riviera = corridor.art.look.isRiviera
         for (index, road) in sideRoadSamples(scenery: scenery).enumerated() {
             if Task.isCancelled { break }
+            // The Poggio's lanes and driveways: eased, clipped at the
+            // carriageway, with flared mouths, off the banks.
+            if riviera {
+                appendRivieraSideRoad(road, index: index, corridor: corridor, reach: reach, ground: ground, into: &m)
+                continue
+            }
             let part = road.part, hw = road.halfWidth, pts = road.points
             var prev: (UInt32, UInt32, UInt32)?
             // The setts are keyed on this distance: each road starts its own
@@ -583,7 +604,7 @@ enum RoadBuilder {
     /// columns closely enough to stand plants on.
     static func vergePoint(_ corridor: RoadCorridor, _ st: RoadCorridor.Station, side: Double,
                            offset o: Double) -> (east: Double, north: Double, y: Double, edgeY: Double) {
-        let edgeLat = side * st.halfWidth
+        let edgeLat = side * st.reach(side)
         let edgeY = corridor.roadHeight(st, lateral: edgeLat)
         let p = st.point(lateral: edgeLat + side * o)
         let dtm = Double(corridor.terrain.height(east: p.east, north: p.north))

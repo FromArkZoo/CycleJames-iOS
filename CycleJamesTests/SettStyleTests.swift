@@ -52,6 +52,8 @@ final class SettStyleTests: XCTestCase {
                 // same setts twice across the strip.
                 XCTAssertLessThan(Float(abs(us[1] - us[0])), SettFarMap.span, "\(id): paved strip \(strip.span) repeats its setts")
             }
+            // An all-asphalt course with no sett pavements (the Poggio) has no setts to search.
+            guard widestU > 0 else { continue }
             XCTAssertGreaterThan(widestU, 1, id)
             // Each course's setts repeat across the road every span: never
             // twice across one road (a pavement beyond it shows stones its
@@ -160,7 +162,9 @@ final class SettStyleTests: XCTestCase {
                 }
                 XCTAssertGreaterThan(near, 100, "\(id): \(areas[i].name) shares setts with the carriageway \(near) m off")
             }
-            if id != "paterberg" { XCTAssertFalse(areas.isEmpty, id) }
+            // Every cobbled berg but the Paterberg has sett pavements; the Poggio has no setts at all.
+            let cobbled = stride(from: 0.0, through: r.length, by: 1).contains { r.surfaceName(at: $0) == "cobbles" }
+            if id != "paterberg" && cobbled { XCTAssertFalse(areas.isEmpty, id) }
         }
     }
 

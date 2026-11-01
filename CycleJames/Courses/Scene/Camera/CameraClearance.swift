@@ -69,6 +69,12 @@ final class CameraClearance: @unchecked Sendable {
             guard !g.isNaN else { continue }
             shrubDiscs.append(.init(e: s.e, n: s.n, radius: s.radiusM * 0.85, top: g + Float(s.heightM * 0.9)))
         }
+        // The Poggio's scrub fill, built with the world just before this
+        // (VegetationBuilder.ScrubField): the moto and the orbit keep out of
+        // it and the sight lines rise over it. Nil on every other course.
+        for d in VegetationBuilder.ScrubField.current(courseID: bundle.id)?.discs ?? [] where !d.shrub {
+            shrubDiscs.append(.init(e: d.e, n: d.n, radius: Double(d.radius), top: d.top))
+        }
         shrubs = DiscGrid(discs: shrubDiscs, cell: 4)
 
         // Tree trunks up to roughly where the crown starts; the crowns

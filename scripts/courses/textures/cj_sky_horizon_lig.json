@@ -1,0 +1,9 @@
+{
+  "horizonLinear": [
+    0.3485,
+    0.4624,
+    0.5954
+  ],
+  "skyScale": 1.6,
+  "cloudCover5to35Deg": 0.023
+}

@@ -85,6 +85,12 @@ final class RoadCorridor: @unchecked Sendable {
         /// Width of the road-aligned verge mesh beyond each carriageway edge.
         var vergeLeft: Double
         var vergeRight: Double
+        /// How far the carriageway's cross-section is drawn each side of the
+        /// centreline: the half width, less only on the Riviera where the
+        /// road turns tighter than that or comes back past itself
+        /// (`RoadCorridor.clearances`).
+        var reachLeft: Double
+        var reachRight: Double
         /// Signed curvature, 1/m, positive turning right.
         var curvature: Double
         /// 0 on the route, rising to 1 at the far end of an extension.
@@ -96,9 +102,15 @@ final class RoadCorridor: @unchecked Sendable {
         func point(lateral: Double) -> (east: Double, north: Double) {
             (east + rightE * lateral, north + rightN * lateral)
         }
+
+        /// `reachLeft` or `reachRight` (side −1 or +1).
+        @inline(__always)
+        func reach(_ side: Double) -> Double { side < 0 ? reachLeft : reachRight }
     }
 
     let route: CourseRoute
+    /// The timed climb's start and summit on the route.
+    let climb: CourseFile.ClimbRange
     /// The course's art direction (sunken lane, hand-placed roadside details).
     let art: CourseArt
     let stations: [Station]
@@ -107,6 +119,13 @@ final class RoadCorridor: @unchecked Sendable {
     let terrain: TerrainSampler
     let near: NearField
     let coarse: CoarseField
+    /// Where paved side roads meet the carriageway (Riviera only; the
+    /// edge lines break there): route distance, side and the side road's
+    /// width at the mouth.
+    let junctions: [(s: Double, side: Double, width: Double)]
+    /// The scenery, for the Riviera road's paving out to the walls at the
+    /// edge (`RoadBuilder.build`, `edgeAprons`); nil elsewhere.
+    let edgeScenery: SceneryFile?
 
     /// Road crown (cross-fall per metre from the centreline) by surface.
     static func crown(surface: Int, cobbleIndex: Int?) -> Double {
@@ -115,14 +134,26 @@ final class RoadCorridor: @unchecked Sendable {
 
     init(bundle: CourseBundle, vergeWidth: Double, extensionM: Double = 70) {
         route = bundle.route
+        climb = bundle.course.climb
         art = CourseArt.make(bundle: bundle)
-        terrain = TerrainSampler(near: bundle.terrainNear, far: bundle.terrainFar)
+        // The Poggio's summit car park cut to the junction's level (the
+        // same raster elsewhere): RoadsideBuilder+PoggioSummit.swift.
+        let nearRaster = BuildingBuilder.levelledNear(bundle.terrainNear, courseID: bundle.course.id)
+        terrain = TerrainSampler(near: nearRaster, far: bundle.terrainFar)
         cobbleIndex = bundle.course.surfaces.firstIndex(of: "cobbles")
         concreteIndex = bundle.course.surfaces.firstIndex(of: "concrete")
-        stations = Self.makeStations(route: route, terrain: terrain, vergeWidth: vergeWidth, extensionM: extensionM,
-                                     roads: bundle.scenery?.roads ?? [])
-        near = NearField(stations: stations, raster: bundle.terrainNear, reach: vergeWidth + 4)
-        coarse = CoarseField(stations: stations, raster: bundle.terrainNear, cell: 4)
+        var st = Self.makeStations(route: route, terrain: terrain, vergeWidth: vergeWidth, extensionM: extensionM,
+                                   roads: bundle.scenery?.roads ?? [])
+        // The Flemish climbs never double back; the Poggio's hairpins and
+        // summit loop do.
+        let riviera = art.look.isRiviera
+        if riviera { Self.clearances(&st, vergeWidth: vergeWidth) }
+        stations = st
+        near = NearField(stations: stations, raster: nearRaster, reach: vergeWidth + 4)
+        let coarseField = CoarseField(stations: st, raster: nearRaster, cell: 4, neighbours: riviera)
+        coarse = coarseField
+        junctions = riviera ? Self.sideJunctions(stations: st, coarse: coarseField, scenery: bundle.scenery) : []
+        edgeScenery = riviera ? bundle.scenery : nil
     }
 
     /// Distance from a point to the carriageway's centreline (extensions
@@ -132,11 +163,27 @@ final class RoadCorridor: @unchecked Sendable {
         let r = terrain.near
         let col = Int(floor((east - r.originEast) / r.cellM)), row = Int(floor((r.originNorth - north) / r.cellM))
         guard let f = near.lookup(col: col, row: row) else { return nil }
-        let a = stations[f.segment], b = stations[min(f.segment + 1, stations.count - 1)]
-        let vx = b.east - a.east, vy = b.north - a.north
-        let t = min(max(((east - a.east) * vx + (north - a.north) * vy) / max(vx * vx + vy * vy, 1e-9), 0), 1)
-        let dx = east - a.east - vx * t, dy = north - a.north - vy * t
-        return ((dx * dx + dy * dy).squareRoot(), a.halfWidth + (b.halfWidth - a.halfWidth) * t)
+        func onSegment(_ i: Int) -> (dist: Double, halfWidth: Double) {
+            let a = stations[i], b = stations[min(i + 1, stations.count - 1)]
+            let vx = b.east - a.east, vy = b.north - a.north
+            let t = min(max(((east - a.east) * vx + (north - a.north) * vy) / max(vx * vx + vy * vy, 1e-9), 0), 1)
+            let dx = east - a.east - vx * t, dy = north - a.north - vy * t
+            return ((dx * dx + dy * dy).squareRoot(), a.halfWidth + (b.halfWidth - a.halfWidth) * t)
+        }
+        var best = onSegment(f.segment)
+        if coarse.neighbours {
+            // The cell's nearest segment is its centre's: near the line
+            // between two legs of a hairpin a point can be nearer the other
+            // leg, which one of the neighbouring cells holds.
+            for dr in -1...1 {
+                for dc in -1...1 where dr != 0 || dc != 0 {
+                    guard let g = near.lookup(col: col + dc, row: row + dr), g.segment != f.segment else { continue }
+                    let d = onSegment(g.segment)
+                    if d.dist < best.dist { best = d }
+                }
+            }
+        }
+        return best
     }
 
     /// Road-surface height at a lateral offset from a station's centreline.
@@ -168,6 +215,7 @@ final class RoadCorridor: @unchecked Sendable {
         st.s = mix(a.s, b.s); st.east = mix(a.east, b.east); st.north = mix(a.north, b.north)
         st.elev = mix(a.elev, b.elev); st.halfWidth = mix(a.halfWidth, b.halfWidth)
         st.vergeLeft = mix(a.vergeLeft, b.vergeLeft); st.vergeRight = mix(a.vergeRight, b.vergeRight)
+        st.reachLeft = mix(a.reachLeft, b.reachLeft); st.reachRight = mix(a.reachRight, b.reachRight)
         st.beyond = mix(a.beyond, b.beyond)
         let de = mix(a.dirE, b.dirE), dn = mix(a.dirN, b.dirN)
         let l = max(sqrt(de * de + dn * dn), 1e-9)
@@ -271,7 +319,7 @@ final class RoadCorridor: @unchecked Sendable {
             let l = max(sqrt(de * de + dn * dn), 1e-9)
             out.append(Station(s: s, east: e, north: nn, elev: elev, dirE: de / l, dirN: dn / l,
                                halfWidth: hw, surface: surf, vergeLeft: vergeWidth, vergeRight: vergeWidth,
-                               curvature: 0, beyond: ext))
+                               reachLeft: hw, reachRight: hw, curvature: 0, beyond: ext))
         }
 
         /// Unit direction from point k to point k + 1 of a run-out (from its
@@ -481,9 +529,15 @@ final class RoadCorridor: @unchecked Sendable {
         let cols: Int, rows: Int
         let nearest: [Int32]
         let stationE: [Double], stationN: [Double], stationS: [Double]
+        /// Queries also weigh the stations the eight neighbouring cells
+        /// hold: where two legs of the road run 10-14 m apart (the
+        /// Poggio's hairpins and summit loop) a 4 m cell's nearest station
+        /// can be on the other leg from a point near its edge.
+        let neighbours: Bool
 
-        init(stations: [Station], raster: HeightRaster, cell: Double) {
+        init(stations: [Station], raster: HeightRaster, cell: Double, neighbours: Bool = false) {
             self.cell = cell
+            self.neighbours = neighbours
             originEast = raster.originEast - 200
             originNorth = raster.originNorth + 200
             cols = Int(ceil((raster.widthM + 400) / cell))
@@ -543,6 +597,21 @@ final class RoadCorridor: @unchecked Sendable {
             for j in max(0, k - 6)...min(stationE.count - 1, k + 6) {
                 let d = (east - stationE[j]) * (east - stationE[j]) + (north - stationN[j]) * (north - stationN[j])
                 if d < bestD { bestD = d; bestK = j }
+            }
+            if neighbours {
+                for dr in -1...1 {
+                    for dc in -1...1 where dr != 0 || dc != 0 {
+                        let r = ri + dr, c = ci + dc
+                        guard r >= 0, c >= 0, r < rows, c < cols else { continue }
+                        let k2 = Int(nearest[r * cols + c])
+                        // Stations the first search already weighed.
+                        guard k2 >= 0, abs(k2 - k) > 6 else { continue }
+                        for j in max(0, k2 - 6)...min(stationE.count - 1, k2 + 6) {
+                            let d = (east - stationE[j]) * (east - stationE[j]) + (north - stationN[j]) * (north - stationN[j])
+                            if d < bestD { bestD = d; bestK = j }
+                        }
+                    }
+                }
             }
             return (sqrt(bestD), stationS[bestK])
         }

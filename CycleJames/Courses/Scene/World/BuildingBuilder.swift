@@ -64,9 +64,12 @@ enum BuildingBuilder {
 
     /// Material slots of `Output.props`, in `WorldMaterials.props` order.
     /// `signFace` is the sign atlas (cj_signs.png): plates, grates and the
-    /// plain paints of a few props.
+    /// plain paints of a few props. The Riviera's roadside (empty on every
+    /// Flemish course) adds its walls' stone and concrete, galvanised
+    /// steel, chain-link and shade net (`buildRivieraRoadside`).
     enum PropPart: Int, CaseIterable {
         case darkMetal = 0, lampGlass, wood, wire, whitePaint, concrete, darkWood, greyMetal, signFace
+        case masonry, galvanised, chainLink, shadeNet
     }
 
     struct Style {
@@ -99,12 +102,18 @@ enum BuildingBuilder {
 
     /// `canopy` is the LiDAR vegetation height above the ground, for the
     /// streams under the roadside bushes. Returns early, partly built, when
-    /// the task is cancelled.
-    static func build(corridor: RoadCorridor, scenery: SceneryFile?, canopy: HeightRaster? = nil) -> Output {
+    /// the task is cancelled. `courseID` picks a Riviera course's
+    /// hand-placed buildings (`rivieraSites`); `rivieraDetail` is the
+    /// tier's detail there (unused on a Flemish course).
+    static func build(corridor: RoadCorridor, scenery: SceneryFile?, canopy: HeightRaster? = nil,
+                      courseID: String? = nil, rivieraDetail: RivieraDetail = .high) -> Output {
         var out = Output()
         let terrain = corridor.terrain
         // Footprints a hand-placed landmark is built on whole.
         let landmarks = Set(domedChapelSites(corridor: corridor, scenery: scenery).map { $0.index })
+        // On the Riviera every footprint is Ligurian (BuildingBuilder+Riviera).
+        let riviera = corridor.art.look.isRiviera
+        let sites = riviera ? rivieraSites(corridor: corridor, scenery: scenery, courseID: courseID) : []
         for (index, b) in (scenery?.buildings ?? []).enumerated() {
             if Task.isCancelled { return out }
             if landmarks.contains(index) { continue }
@@ -114,6 +123,13 @@ enum BuildingBuilder {
             if signedArea(ring) < 0 { ring.reverse() }
             let area = signedArea(ring)
             guard area > 4 else { continue }
+            if riviera {
+                emitRiviera(&out, ring: ring, area: area, building: b, index: index,
+                            site: sites.first { $0.index == index }?.site.kind, corridor: corridor, tier: rivieraDetail,
+                            canopy: canopy, courseID: rivieraCourse(courseID, corridor: corridor))
+                out.count += 1
+                continue
+            }
             let place = lookPlace(ring, corridor: corridor)
             let style = chooseStyle(b, area: area, look: place.map {
                 corridor.art.houseLook(s: $0.s, routeDistance: $0.dist, side: $0.side, kind: b.kind)
@@ -128,6 +144,7 @@ enum BuildingBuilder {
             }
             out.count += 1
         }
+        if riviera { emitRivieraExtras(&out, sites: sites, corridor: corridor) }
         buildSummitWall(&out, corridor: corridor)
         buildStoneWalls(&out, corridor: corridor)
         buildLamps(&out, corridor: corridor)
@@ -137,9 +154,11 @@ enum BuildingBuilder {
         buildRails(&out, corridor: corridor, sideRoads: sideRoads)
         buildPalings(&out, corridor: corridor, sideRoads: sideRoads)
         buildPoles(&out, corridor: corridor)
-        buildSigns(&out, corridor: corridor, scenery: scenery)
-        buildGrates(&out, corridor: corridor)
-        buildFurniture(&out, corridor: corridor, scenery: scenery)
+        let cells = signCells(for: corridor.art.look)
+        buildSigns(&out, corridor: corridor, scenery: scenery, cells: cells)
+        buildGrates(&out, corridor: corridor, cells: cells)
+        buildFurniture(&out, corridor: corridor, scenery: scenery, cells: cells)
+        buildRivieraRoadside(&out, corridor: corridor, scenery: scenery, tier: rivieraDetail)
         buildWater(&out, scenery: scenery, terrain: terrain, canopy: canopy)
         out.walls.computeNormals()
         out.roofs.computeNormals()
@@ -1354,6 +1373,8 @@ enum BuildingBuilder {
             var g = MeshBuffer(parts: 1)
             emitPropBox(&g, centre: headC - SIMD3(0, 0.045, 0), x: toRoad, z: along, half: SIMD3(0.26, 0.008, 0.09))
             appendParts(&out.props, g, map: [0: PropPart.lampGlass.rawValue])
+        case .galvanisedLED, .castIron:
+            rivieraLamp(&out, corridor: corridor, at: s, side: side, style: style)
         case .postLantern:
             // A black post with a collar near its foot, and on top a
             // four-sided lantern: base plate, corner bars round the glass
@@ -1563,6 +1584,10 @@ enum BuildingBuilder {
     /// the Kwaremont).
     static func buildPoles(_ out: inout Output, corridor: RoadCorridor) {
         for run in corridor.art.poles {
+            if run.kind == .woodBundle || run.kind == .concreteBundle {
+                buildBundlePoles(&out, corridor: corridor, run: run)
+                continue
+            }
             let side = run.side
             let poleH: Float = run.kind == .concrete ? 8.5 : 7.5
             var prevTops: [SIMD3<Float>] = []
@@ -1769,12 +1794,12 @@ enum BuildingBuilder {
 
     /// One plate: its outline as a fan mapped onto its atlas cell, and a
     /// galvanised back 12 mm behind it, wound the other way.
-    private static func plate(_ face: inout MeshBuffer, _ back: inout MeshBuffer, cell: SignCell,
+    static func plate(_ face: inout MeshBuffer, _ back: inout MeshBuffer, cell: SignCell,
                               centre c: SIMD3<Float>, right r: SIMD3<Float>, normal n: SIMD3<Float>) {
         let up = simd_cross(n, r)
         let hw = Float(cell.w) / 2, hh = Float(cell.h) / 2
         let f0 = UInt32(face.vertexCount), b0 = UInt32(back.vertexCount)
-        let outline = Self.outline(cell.shape)
+        let outline = Self.outline(cell.shape, aspect: Float(cell.w / cell.h))
         for q in outline {
             let p = c + r * (q.x * hw) + up * (q.y * hh)
             let u = cell.uv[0] + (cell.uv[2] - cell.uv[0]) * (q.x * 0.5 + 0.5)
@@ -1790,8 +1815,13 @@ enum BuildingBuilder {
     }
 
     /// A plate shape's outline in -1...1, anticlockwise seen from the front.
-    private static func outline(_ shape: String) -> [SIMD2<Float>] {
+    /// "arrowR"/"arrowL": a direction arrow, its point half the plate's
+    /// height long; `aspect` is width over height.
+    private static func outline(_ shape: String, aspect: Float = 1) -> [SIMD2<Float>] {
+        let k = 1 - 1 / max(aspect, 1.01)
         switch shape {
+        case "arrowR": return [SIMD2(-1, -1), SIMD2(k, -1), SIMD2(1, 0), SIMD2(k, 1), SIMD2(-1, 1)]
+        case "arrowL": return [SIMD2(-1, 0), SIMD2(-k, -1), SIMD2(1, -1), SIMD2(1, 1), SIMD2(-k, 1)]
         case "tri": return [SIMD2(-1, -1), SIMD2(1, -1), SIMD2(0, 1)]
         case "triDown": return [SIMD2(-1, 1), SIMD2(0, -1), SIMD2(1, 1)]
         case "disc": return (0..<24).map { k in let a = Float(k) / 24 * 2 * .pi; return SIMD2(cos(a), sin(a)) }
@@ -2015,6 +2045,8 @@ enum BuildingBuilder {
                 box(&body, SIMD3(0, 4.68, 0.16), SIMD3(0.8, 0.05, 0.04))
                 box(&body, SIMD3(0, 4.82, 0.17), SIMD3(0.08, 0.1, 0.07))
                 appendParts(&out.props, body, map: [0: PropPart.whitePaint.rawValue])
+            case .riviera:
+                break  // `buildRivieraRoadside`
             case .bronzeLegs:
                 // The plinth: 2.8 m across, 0.4 m high, its top the seat.
                 var side = MeshBuffer(parts: 1), top = MeshBuffer(parts: 1)

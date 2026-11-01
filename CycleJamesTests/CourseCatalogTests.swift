@@ -32,6 +32,9 @@ final class CourseCatalogTests: XCTestCase {
         "molenberg": Published(lengthM: 430...480, avgPct: 6.5...7.8, max25Pct: 12.5...14.5, cobblesM: 240...310),
         // Roadmap 530 m, 6.6 %, max 15.8 %, 500 m of cobbles; here the setts junction to junction.
         "taaienberg": Published(lengthM: 520...570, avgPct: 6.2...7.0, max25Pct: 14.5...16.5, cobblesM: 495...570),
+        // RCS 2026 (Milano-Sanremo): 3.7 km, 24 -> 160 m, 136 m, 3.7 %, max 8 %; climbfinder 3.7 km, 3.8 %,
+        // steepest 100 m 7.3 %. All asphalt.
+        "poggio": Published(lengthM: 3650...3800, avgPct: 3.5...3.9, max25Pct: 6.5...8.5, cobblesM: 0...0),
     ]
 
     private func bundle(_ id: String) throws -> CourseBundle {
@@ -43,7 +46,7 @@ final class CourseCatalogTests: XCTestCase {
     }
 
     func test_catalogListsTheBergsInOrder() {
-        XCTAssertEqual(CourseCatalog.courseIDs, ["koppenberg", "oudekwaremont", "paterberg", "muur", "molenberg", "taaienberg"])
+        XCTAssertEqual(CourseCatalog.courseIDs, ["koppenberg", "oudekwaremont", "paterberg", "muur", "molenberg", "taaienberg", "poggio"])
         XCTAssertEqual(CourseCatalog.all.map(\.id), CourseCatalog.courseIDs)
     }
 
@@ -176,8 +179,9 @@ final class CourseCatalogTests: XCTestCase {
             // plate in the atlas. A pole stands clear of the broadcast
             // camera's moto, which keeps within about 2.35 m of the centre
             // line (`CameraRig`: the rider's 0.4 m plus a 1.95 m swing).
-            let cells = BuildingBuilder.signCells
-            XCTAssertFalse(cells.isEmpty, "cj_signs_map.json not in the bundle")
+            // The Riviera's plates are on its own atlas (cj_signs_it).
+            let cells = BuildingBuilder.signCells(for: art.look)
+            XCTAssertFalse(cells.isEmpty, "\(id): \(art.look.signAtlas)_map.json not in the bundle")
             for post in art.signs {
                 XCTAssert((0...length).contains(post.s), "\(id): sign at \(post.s)")
                 XCTAssertEqual(abs(post.side), 1, "\(id): sign at \(post.s)")

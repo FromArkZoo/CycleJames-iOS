@@ -80,6 +80,7 @@ extension WorldMaterials {
     /// included.
     var lit: [SCNMaterial] {
         [terrain, verge, cobbles, sideCobbles, pavementSetts, asphalt, sideAsphalt, kerb, concrete, gutter, cycleLane, walls]
+            + (art.look.isRiviera ? [roadsideProps[0]] : [])  // the Riviera's masonry
     }
 
     /// A live tier step: the baked sun shade starts where the new tier's

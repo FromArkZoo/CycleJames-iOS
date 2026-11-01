@@ -4,7 +4,8 @@
 # ///
 """Bake scenery.json for a CycleJames course (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check]   (or oudekwaremont, paterberg, muur, molenberg, taaienberg)
+    uv run --script scripts/courses/build_scenery.py koppenberg [--swift-check] [--out-root DIR]
+    (or oudekwaremont, paterberg, muur, molenberg, taaienberg, poggio)
 
 Reads the already-baked course folder (course.json, terrain_near.u16,
 canopy_near.u16) and the raw aerial photo build_course.py keeps out of the
@@ -27,6 +28,15 @@ to the course folder, covering the near grid:
 No conifer/deciduous signal is used: the only other mosaic ("winter" 2025)
 was flown on 29/4/2025, in leaf, and OSM has no needle-leaved woodland here,
 so every tree is "deciduous".
+
+The Poggio (EPSG:7791, Liguria) takes its footprints from Regione Liguria's
+CTR 1:5000 2007/2013 3D (WFS M1237, cached) instead of GRB: buildings
+(L3165, Z = eaves), greenhouses, sheds and cisterns (L3166), retaining walls
+and agricultural terraces (L3175) and dividing walls and fences (L3169),
+each wall with its surveyed crest. Its canopy is the 2008-2010 LiDAR (DSM
+First - DTM), checked against the summer 2022 ortho; trees get a species
+where the crown, the landuse or the CTR's woods say which (see
+med_tree_kinds). See COURSES["poggio"].
 
 Raw downloads live only in scripts/courses/.cache/<id>/ and are parsed as data.
 Debug renders go to scripts/courses/debug/<id>/.
@@ -106,6 +116,52 @@ COURSES: dict[str, dict] = {
                        186384384, 121508810],
         "osm_bbox": (50.7895, 3.6142, 50.8010, 3.6489),
         "winter_ortho": {"service": "https://geo.api.vlaanderen.be/OMW/wms", "vdc_layer": "OMWRGB25VL_vdc"},
+    },
+    # The Poggio di Sanremo: a hillside of villas, greenhouses and dry-stone terraces above the sea. Every
+    # setting here is opt-in, so the Flemish scenery files stay as they are.
+    "poggio": {
+        "route_ways": [280009642, 525886322, 502869479, 502869477, 502869476, 502869478, 28209618],
+        "osm_bbox": (43.8142, 7.8100, 43.8313, 7.8365),
+        # Footprints, walls and structures from the Liguria CTR 3D (build_course.py fetched the same box).
+        "buildings": "ctr",
+        "ctr": {
+            "url": "https://geoservizi.regione.liguria.it/geoserver/M1237/wfs",
+            "box": (404000, 4851500, 406500, 4854000),   # EPSG:7791 E0, N0, E1, N1 (contains the near grid)
+            "buildings": "M1237:L3165",      # Edificato: footprint, Z = eaves (gronda)
+            "structures": "M1237:L3166",     # Manufatto edilizio: Serra, Baracca, Cisterna, Vasca ...
+            "walls": "M1237:L3175",          # Muro di sostegno / Terrazzamento agricolo: crest (Coronamento) lines
+            "dividers": "M1237:L3169",       # Elemento divisorio: Muro in muratura, Muro a secco, Recinzione
+            "trees": "M1237:L3203",          # Albero isolato (points; used to check the LiDAR tops)
+            "crops": "M1237:L3200",          # Colture agricole: Uliveti
+            "woods": "M1237:L3196",          # Bosco: Conifere / Pini
+        },
+        # OSM tags this hillside uses that Flanders maps elsewhere or not at all.
+        "landuse_extra": {("landuse", "greenhouse_horticulture"): "greenhouse", ("landuse", "orchard"): "olive",
+                          ("landuse", "farmland"): "terraces", ("leisure", "garden"): "garden",
+                          ("landuse", "allotments"): "terraces", ("landuse", "plant_nursery"): "greenhouse"},
+        # Evergreen crowns flown in leaf (2008-2010): a light pit fill, and a crown-width allometry for
+        # Mediterranean trees (olives and pines are wider for their height than a beech of the same height).
+        "pit_fill_r": 1.0,
+        "crown_allometry": "mediterranean",
+        "shrub_far": 80.0,
+        "tree_species": "riviera",
+        # CTR footprints by the road that are gone, checked by eye against the summer 2022 ortho and the
+        # April 2024 ride (the CTR is 2007/2013): a point inside each (local metres, a strip's own point where
+        # split_by_fall cuts one). Greenhouses now dry scrub terraces, bare earth or a track: the start ramp's
+        # right (route s 345-480, 5 strips), the bank before hairpin 2 on the left (route 1290-1360, one
+        # polygon in 7 strips), the ridge's right at route 2495-2525 (2 strips). The flat-roofed "house" at
+        # route 2703-2707 right is a yard with a car and a tree in 2022, the forecourt behind a rubble pier
+        # in the 2024 frame f76 (look s 2400).
+        "ctr_gone": [(752.3, -603.1), (750.5, -598.1), (750.1, -591.4), (756.7, -584.4), (757.1, -578.4),
+                     (757.5, -572.4), (749.8, -570.0), (359.2, -421.0), (346.1, -480.4), (353.6, -466.8),
+                     (366.1, -465.6), (383.2, -515.3), (684.6, -294.8), (683.7, -288.8), (514.8, -198.6)],
+        # Footprints stop this far outside the ride's carriageway: the CTR's footprints overlap its own
+        # road area (which gives the route its width) by up to 0.5 m, and a wall on the edge line stands
+        # in the gutter.
+        "footprint_clear_m": 0.35,
+        # Debug zooms at route s: hairpin 1, the sanctuary park, the glasshouses on the road wall (look.md
+        # 2560-2600 m), the summit loop.
+        "debug_zooms_s": [("hairpin1", 660.0), ("santuario", 2279.0), ("greenhouses", 2865.0), ("summit_loop", 4160.0)],
     },
 }
 
@@ -291,6 +347,50 @@ def fetch_grb_buildings(cache: Path, x0: int, x1: int, y0: int, y1: int, log) ->
                 outv.append((f_.get("properties", {}), ext))
     log(f"[grb] {len(outv)} GRB GBG footprints ({len(d.get('features', []))} features) in the near grid box")
     return outv
+
+
+def fetch_wfs(cache: Path, url: str, typename: str, crs: str, box, log, page: int = 1000) -> list:
+    """Every feature of a WFS 2.0.0 layer in a box (E0, N0, E1, N1 in `crs`), GeoJSON reprojected by the server
+    into `crs` (Regione Liguria's own transformation, which fits the 2022 ortho), paged. Cached under the same
+    names as build_course.py's wfs_geojson, so the two scripts share the pages."""
+    from pyproj import CRS
+    x0, y0, x1, y1 = box
+    north_first = CRS.from_user_input(crs).axis_info[0].direction.lower() == "north"
+    bb = f"{y0},{x0},{y1},{x1}" if north_first else f"{x0},{y0},{x1},{y1}"
+    feats, start = [], 0
+    while True:
+        q = urllib.parse.urlencode({
+            "service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": typename,
+            "outputFormat": "application/json", "srsName": crs, "bbox": f"{bb},{crs}", "count": page,
+            "startIndex": start})
+        body = cached_fetch(cache, f"wfs_{typename.replace(':', '_')}_{x0}_{x1}_{y0}_{y1}_{start}.json", f"{url}?{q}",
+                            validate=lambda b, h: b.lstrip().startswith(b"{"), log=log, tries=4)
+        d = json.loads(body)
+        got = str(d.get("crs", {}).get("properties", {}).get("name", ""))
+        if got and not got.endswith(crs.split(":")[1]):
+            raise SystemExit(f"{typename} answered in {got}, expected {crs}")
+        f_ = d.get("features", [])
+        feats.extend(f_)
+        if len(f_) < page:
+            break
+        start += page
+    return feats
+
+
+def geom_parts(g: dict, polygons: bool) -> list[np.ndarray]:
+    """A GeoJSON geometry's exterior rings (polygons=True) or lines, as (n, 2 or 3) arrays."""
+    t, c = (g or {}).get("type"), (g or {}).get("coordinates")
+    if polygons:
+        if t == "Polygon":
+            return [np.asarray(c[0], np.float64)]
+        if t == "MultiPolygon":
+            return [np.asarray(p[0], np.float64) for p in c]
+        return []
+    if t == "LineString":
+        return [np.asarray(c, np.float64)]
+    if t == "MultiLineString":
+        return [np.asarray(x, np.float64) for x in c]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -669,24 +769,644 @@ def exg(rgb: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Liguria CTR (the Poggio): buildings, greenhouses, walls
+# ---------------------------------------------------------------------------
+
+# Manufatto edilizio (L3166) kinds that stand on the hillside. Rudere (ruins), Pensilina/tettoia (open
+# canopies), Spartitraffico, tombs and Rampa are left to the ground photo.
+CTR_STRUCTURES = {"Serra": "greenhouse", "Cisterna": "cistern", "Vasca generica": "cistern",
+                  "Vasca/piscina scoperta": "pool", "Baracca": "shed",
+                  "Cabina trasformazione energia": "cabin"}
+CTR_WALLS = {"Muri di sostegno": "retaining", "Muri d'ala": "retaining", "Terrazzamento agricolo": "terrace",
+             "Muro in muratura": "masonry", "Muro a secco": "masonry", "Recinzione generica": "fence"}
+# Marseille-tile hipped roofs on the Riviera rise at about 20-25 degrees (BuildingBuilder+Riviera.swift
+# draws 20-25); the CTR's eaves plus this rise over the footprint's half width is the ridge.
+RIVIERA_PITCH_DEG = 22.0
+# The roof colour in the summer 2022 ortho: Marseille tiles are terracotta (#c4876a, chromatic red - blue
+# ~0.13), roof terraces white or grey (#e8e2d8, ~0.04); greenhouse glass whitewashed grey-green from the air
+# (#7b8d85-#8d9e97), plastic film white (#e8edea). Thresholds from the distributions in scenery_log.txt.
+ROOF_WARM_TILES = 0.07      # chromatic (r - b) / (r + g + b) above this: a tiled roof (houses p50 0.076 here)
+ROOF_COOL_FLAT = 0.045      # below this: a terrace (or a sheet) roof (the houses' cool mode is 0.02-0.04)
+FILM_BRIGHT = 0.70          # mean sRGB brightness above this, and little colour: plastic film, not glass
+FILM_SAT = 0.10
+
+
+def _half_short(ring: np.ndarray) -> float:
+    """Half the footprint's width across its long axis."""
+    P = ring - ring.mean(axis=0)
+    _, V = np.linalg.eigh(np.cov(P.T))
+    v = P @ V[:, 0]
+    return 0.5 * float(v.max() - v.min())
+
+
+def split_by_fall(ring: np.ndarray, ce: np.ndarray, cn: np.ndarray, g: np.ndarray, rise: float) -> list:
+    """The footprint cut into strips across the ground's fall, `rise` metres of it each (a plane fitted to the
+    ground g at cell centres (ce, cn)). Strips under 15 m2 are dropped."""
+    A = np.stack([np.ones_like(ce), ce - ce.mean(), cn - cn.mean()], axis=1)
+    coef, *_ = np.linalg.lstsq(A, g.astype(np.float64), rcond=None)
+    k = math.hypot(coef[1], coef[2])
+    if k < 0.02:
+        return [ring]
+    u = np.array([coef[1], coef[2]]) / k
+    t = ring @ u
+    edges = np.arange(t.min(), t.max(), rise / k)[1:]
+    if not len(edges):
+        return [ring]
+
+    def clip(poly, t0, keep_above):
+        out = []
+        for i in range(len(poly)):
+            a, b = poly[i - 1], poly[i]
+            ta, tb = a @ u - t0, b @ u - t0
+            ina, inb = (ta >= 0) == keep_above, (tb >= 0) == keep_above
+            if inb:
+                if not ina:
+                    out.append(a + (b - a) * (ta / (ta - tb)))
+                out.append(b)
+            elif ina:
+                out.append(a + (b - a) * (ta / (ta - tb)))
+        return np.array(out).reshape(-1, 2)
+
+    pieces = []
+    for lo, hi in zip(np.concatenate([[t.min() - 1], edges]), np.concatenate([edges, [t.max() + 1]])):
+        p = clip(clip(ring, lo, True), hi, False)
+        p = clean_ring(p, nd=2) if len(p) >= 3 else None
+        if p is not None and abs(signed_area(p)) >= 15.0:
+            pieces.append(p)
+    return pieces or [ring]
+
+
+def _simple_ring(p: np.ndarray) -> bool:
+    """True if no two non-adjacent edges of the closed ring cross."""
+    n = len(p)
+    a, b = p, np.roll(p, -1, axis=0)
+    for i in range(n):
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue
+            d1 = (b[i, 0] - a[i, 0]) * (a[j, 1] - a[i, 1]) - (b[i, 1] - a[i, 1]) * (a[j, 0] - a[i, 0])
+            d2 = (b[i, 0] - a[i, 0]) * (b[j, 1] - a[i, 1]) - (b[i, 1] - a[i, 1]) * (b[j, 0] - a[i, 0])
+            d3 = (b[j, 0] - a[j, 0]) * (a[i, 1] - a[j, 1]) - (b[j, 1] - a[j, 1]) * (a[i, 0] - a[j, 0])
+            d4 = (b[j, 0] - a[j, 0]) * (b[i, 1] - a[j, 1]) - (b[j, 1] - a[j, 1]) * (b[i, 0] - a[j, 0])
+            if d1 * d2 < 0 and d3 * d4 < 0:
+                return False
+    return True
+
+
+def clear_of_carriageway(ring: np.ndarray, rtree, rdense: np.ndarray, rdense_hw: np.ndarray,
+                         margin: float) -> tuple[np.ndarray, str]:
+    """The footprint pulled back to `margin` metres outside the ride's carriageway (the route's half width).
+    The outline is walked every 0.25 m and each point inside the band is moved out along the line from its
+    nearest route point, three passes so a point pushed off one leg of a hairpin or the summit loop is checked
+    against the other; the moved run follows the carriageway's curve and the untouched walls keep their
+    corners (Douglas-Peucker at 5 cm). Returns (ring, "clear" | "clipped" | "kept"): "clear" if it already
+    is; a footprint this would fold (the route through it, or two legs closer than it is deep) is "kept" as
+    it is."""
+    closed = np.vstack([ring, ring[:1]])
+    d0, i0 = rtree.query(closed)
+    if float((d0 - rdense_hw[i0]).min()) >= margin - 0.05:
+        dp, _ = densify(closed, 0.25)
+        d1, i1 = rtree.query(dp)
+        if float((d1 - rdense_hw[i1]).min()) >= margin - 0.05:
+            return ring, "clear"
+    pts = []
+    for a, b in zip(closed[:-1], closed[1:]):
+        n = max(1, int(math.ceil(math.hypot(*(b - a)) / 0.25)))
+        pts += [a + (b - a) * t for t in np.arange(n) / n]
+    pts = np.array(pts)
+    for _ in range(3):
+        d, i = rtree.query(pts)
+        short = d - rdense_hw[i] < margin
+        if not short.any():
+            break
+        if float(d[short].min()) < 0.05:
+            return ring, "kept"
+        v = pts[short] - rdense[i[short]]
+        pts[short] = rdense[i[short]] + v * ((rdense_hw[i[short]] + margin) / d[short])[:, None]
+    # A corner pushed out past its neighbours can leave a fold of a few centimetres: a coarser
+    # simplification takes it out, as long as the outline stays clear.
+    for tol in (0.05, 0.15, 0.3):
+        p = clean_ring(simplify_line(np.vstack([pts, pts[:1]]), tol)[:-1], nd=2)
+        if p is None or not _simple_ring(p) or signed_area(p) < 0.5 * signed_area(ring):
+            continue
+        dp, _ = densify(np.vstack([p, p[:1]]), 0.25)
+        d, i = rtree.query(dp)
+        if float((d - rdense_hw[i]).min()) >= margin - 0.05:
+            return p, "clipped"
+    return ring, "kept"
+
+
+def _circle_fit(ring: np.ndarray):
+    """Least-squares circle through the vertices: (centre, radius, rms of the radial misfit)."""
+    x, y = ring[:, 0], ring[:, 1]
+    A = np.stack([x, y, np.ones_like(x)], axis=1)
+    sol, *_ = np.linalg.lstsq(A, x * x + y * y, rcond=None)
+    c = 0.5 * sol[:2]
+    r = math.sqrt(max(sol[2] + c @ c, 0.0))
+    return c, r, float(np.sqrt(np.mean((np.hypot(x - c[0], y - c[1]) - r) ** 2)))
+
+
+def ctr_buildings(ctr: dict, osm_rings: list, oE: float, oN: float, grid: tuple, dtm: np.ndarray, h: np.ndarray,
+                  photo: dict, log, gone: list | None = None):
+    """Riviera footprints from the CTR, with heights and roofs from the LiDAR and the 2022 ortho.
+
+    Edificato (L3165) polygons hold the eaves elevation (Z, constant per polygon; data.md 3.8): eavesM = Z -
+    groundElevM, where groundElevM is the lowest ground in the footprint, as everywhere. heightM is what
+    BuildingBuilder draws to (the ridge, or a flat roof's parapet): the LiDAR's p90 roof height (DSM First -
+    ground, 2008-2010) when it agrees with the CTR's eaves (between eaves - 1 m and eaves + ridge rise + 2 m:
+    a tree over the roof or a building built or raised since then fails it), else the eaves plus the rise of a
+    22 degree hipped roof (or 0.4 m of parapet on a flat one). Roofs: a LiDAR plane fit (roof_from_dsm), with
+    the ortho's roof colour as the judge (terracotta tiles are never flat, a white or grey roof with no
+    pitched fit is a terrace), hipped otherwise. Greenhouses (Serra) are "sawtooth" glass or "tunnel" film by
+    the photo's brightness; ones that are vegetation in 2022 are dropped, and so is any footprint (or strip)
+    holding one of the `gone` points (checked by eye). OSM tags (churches) come by overlap, and OSM footprints
+    the CTR lacks are added with LiDAR heights."""
+    from matplotlib.path import Path as MPath
+    gone = np.array(gone or [], np.float64).reshape(-1, 2)
+    gone_hit = np.zeros(len(gone), int)
+    gE0, gN1, cell, rows, cols = grid
+    gE1, gN0 = gE0 + cols * cell, gN1 - rows * cell
+    veg, bright, warm, sat = photo["veg"], photo["bright"], photo["warm"], photo["sat"]
+    dsm = dtm + h
+    # OSM footprints by cell, for their tags
+    olab = np.zeros((rows, cols), np.int32)
+    osm = []
+    for t, wid, g in osm_rings:
+        rg = clean_ring(g, nd=2)
+        if rg is None:
+            continue
+        rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
+        osm.append({"tags": t, "osm": wid, "ring": rg, "n": rr.size, "used": False})
+        olab[rr, cc] = len(osm)
+    cands = []
+    for f_ in ctr["buildings"]:
+        for r3 in geom_parts(f_.get("geometry"), polygons=True):
+            cands.append(("L3165", f_.get("properties") or {}, r3))
+    n_struct = {}
+    for f_ in ctr["structures"]:
+        d_ = (f_.get("properties") or {}).get("definizione")
+        n_struct[d_] = n_struct.get(d_, 0) + 1
+        if d_ in CTR_STRUCTURES:
+            for r3 in geom_parts(f_.get("geometry"), polygons=True):
+                cands.append(("L3166", f_.get("properties") or {}, r3))
+    log(f"[ctr] {len(ctr['buildings'])} Edificato polygons; Manufatto by kind {n_struct}")
+    bmask = np.zeros((rows, cols), bool)
+    tanp = math.tan(math.radians(RIVIERA_PITCH_DEG))
+    buildings = []
+    stats = {"outside": 0, "straddle": 0, "overlap": 0, "pool": 0, "greenhouse gone by 2022": 0,
+             "gone by 2022 (checked)": 0}
+    dropped = []
+    hsrc_n, gh_photo = {}, []
+
+    def lidar_cells(ring):
+        rr, cc = cells_in_polygon(ring, gE0, gN1, cell, rows, cols)
+        if rr.size == 0:
+            r1 = int(np.clip(math.floor((gN1 - ring[:, 1].mean()) / cell), 0, rows - 1))
+            c1 = int(np.clip(math.floor((ring[:, 0].mean() - gE0) / cell), 0, cols - 1))
+            rr, cc = np.array([r1]), np.array([c1])
+        ri, ci = cells_in_polygon(ring, gE0, gN1, cell, rows, cols, shrink=0.7)
+        if ri.size < 4:
+            ri, ci = rr, cc
+        return rr, cc, ri, ci
+
+    for layer, props, r3 in cands:
+        ring = clean_ring(r3[:, :2] - np.array([oE, oN]), nd=2)
+        if ring is None:
+            continue
+        inside_v = ((ring[:, 0] > gE0 + 1) & (ring[:, 0] < gE1 - 1) & (ring[:, 1] > gN0 + 1) & (ring[:, 1] < gN1 - 1))
+        if not inside_v.any():
+            stats["outside"] += 1
+            continue
+        if not inside_v.all():
+            stats["straddle"] += 1
+            continue
+        rr, cc, ri, ci = lidar_cells(ring)
+        if bmask[rr, cc].mean() > (0.5 if layer == "L3166" else 0.3):
+            stats["overlap"] += 1
+            continue
+        area = float(signed_area(ring))
+        ground = float(dtm[rr, cc].min())
+        z = float(np.median(r3[:, 2])) if r3.shape[1] > 2 else float("nan")
+        eaves = z - ground
+        p90c = float(np.percentile(h[ri, ci], 90))
+        p50c = float(np.percentile(h[ri, ci], 50))
+        measured = float(np.percentile(dsm[ri, ci], 90)) - ground
+        green = float(np.mean(veg[ri, ci] > 0.05))
+        w_roof = float(np.median(warm[ri, ci]))
+        b_roof = float(np.median(bright[ri, ci]))
+        s_roof = float(np.median(sat[ri, ci]))
+        tags = {}
+        hit = olab[rr, cc]
+        if rr.size and (hit > 0).mean() > 0.3:
+            k = int(np.bincount(hit[hit > 0]).argmax()) - 1
+            tags = osm[k]["tags"]
+            osm[k]["used"] = True
+        b = {"ring": ring, "groundElevM": round(ground, 2), "src": layer, "osm": None, "area": area,
+             "measured": measured, "p90c": p90c, "green": green, "warm": w_roof, "bright": b_roof, "sat": s_roof,
+             "ctr": props.get("def_tipo_edil") or props.get("definizione"), "btag": tags.get("building")}
+        ctr_eaves_ok = math.isfinite(eaves) and 1.8 <= eaves <= 45.0
+        if layer == "L3166":
+            what = CTR_STRUCTURES[props.get("definizione")]
+            if what == "pool":
+                c_, r_, rms_ = _circle_fit(ring)
+                if not (r_ > 2.0 and rms_ < 0.4 and len(ring) >= 8):
+                    stats["pool"] += 1   # a swimming pool: the ground photo has it
+                    continue
+                what = "cistern"
+            if what == "greenhouse":
+                glassy = float(np.mean((sat[ri, ci] < 0.16) & (bright[ri, ci] > 0.40)))
+                gh_photo.append((b_roof, s_roof, glassy, green))
+                b["glassy"] = glassy
+                # Gone by 2022: little glass- or film-like roof (grey, white or grey-green), and either
+                # vegetation or warm, earthy ground (terraces) instead (glass and film: warmth 0.0-0.06 here).
+                if glassy < 0.25 and (green > 0.6 or w_roof > 0.06):
+                    stats["greenhouse gone by 2022"] += 1
+                    dropped.append(b | {"why": "greenhouse gone by 2022"})
+                    continue
+                b["kind"] = "greenhouse"
+                b["roofShape"] = "tunnel" if b_roof > FILM_BRIGHT and s_roof < FILM_SAT else "sawtooth"
+                if p90c >= 1.8 and 2.5 <= measured <= 7.0:
+                    hm, b["hsrc"] = measured, "lidar"
+                elif 1.8 <= eaves <= 6.0:
+                    hm, b["hsrc"] = eaves + 0.8, "ctr eaves"   # Venlo spans rise ~0.8 m over the gutter
+                else:
+                    hm, b["hsrc"] = 4.0, "default"
+                b["heightM"] = round(float(np.clip(hm, 3.0, 6.0)), 1)
+                if 1.8 <= eaves <= 6.0:
+                    b["eavesM"] = round(eaves, 1)
+                g_ = dtm[rr, cc]
+                if float(np.percentile(g_, 95) - np.percentile(g_, 5)) > 2.5:
+                    # One CTR polygon over several terraces (up to 10 m of fall across 1900 m2 here): the
+                    # houses step down the slope, so it is cut into strips across the fall, 2 m of it each,
+                    # each with its own floor (its lowest ground) and its ridge >= 2.6 m over its highest.
+                    b["pieces"] = []
+                    for piece in split_by_fall(ring, gE0 + (cc + 0.5) * cell, gN1 - (rr + 0.5) * cell, g_, 2.0):
+                        pr_, pc_, pri, pci = lidar_cells(piece)
+                        fl, gmx = float(dtm[pr_, pc_].min()), float(dtm[pr_, pc_].max())
+                        mp = float(np.percentile(dsm[pri, pci], 90)) - fl
+                        hp = mp if (float(np.percentile(h[pri, pci], 90)) >= 1.8 and 2.5 <= mp <= 7.0) else 4.0
+                        b["pieces"].append(b | {"ring": piece, "groundElevM": round(fl, 2), "area": float(signed_area(piece)),
+                                                "heightM": round(float(min(max(hp, gmx - fl + 2.6), 7.0)), 1),
+                                                "hsrc": "lidar (strip)" if hp == mp else "default (strip)"})
+                        b["pieces"][-1].pop("eavesM", None)
+                    stats["greenhouses cut across their fall"] = stats.get("greenhouses cut across their fall", 0) + 1
+            elif what == "cistern":
+                b["kind"], b["roofShape"] = "cistern", "flat"
+                if p90c >= 0.5 and 0.5 <= measured <= 9.0:
+                    hm, b["hsrc"] = measured, "lidar"
+                elif math.isfinite(eaves) and 0.5 <= eaves <= 9.0:
+                    hm, b["hsrc"] = eaves, "ctr eaves"
+                else:
+                    hm, b["hsrc"] = 1.8, "default"
+                b["heightM"] = round(float(hm), 1)
+            else:   # shed (Baracca) or transformer cabin
+                b["kind"] = "barn" if what == "shed" else "other"
+                if p90c >= 1.5 and 1.8 <= measured <= 6.0 and green < 0.5:
+                    hm, b["hsrc"] = measured, "lidar"
+                elif math.isfinite(eaves) and 1.8 <= eaves <= 5.0:
+                    hm, b["hsrc"] = eaves + 0.3, "ctr eaves"
+                else:
+                    hm, b["hsrc"] = 2.6 if what == "shed" else 3.2, "default"
+                b["heightM"] = round(float(np.clip(hm, 2.2, 6.0)), 1)
+                b["roofShape"] = "flat" if w_roof < ROOF_COOL_FLAT else "unknown"
+        else:
+            tipo, uso = props.get("def_tipo_edil", ""), props.get("def_cat_uso", "")
+            if (uso == "Luogo di culto" or tipo in ("Battistero", "Campanile")
+                    or tags.get("building") in ("church", "chapel") or tags.get("amenity") == "place_of_worship"):
+                kind = "church" if area >= 120 else "chapel"
+            elif tipo == "Capannone" or uso.startswith("Industriale"):
+                kind = "barn"
+            elif tipo == "Faro":
+                kind = "other"
+            else:
+                kind = "house"
+            b["kind"] = kind
+            half = _half_short(ring)
+            rise = tanp * half
+            lidar_ok = p90c >= 2.0 and not (green >= 0.5 and p90c - p50c > 2.5)
+            if lidar_ok and ctr_eaves_ok and kind not in ("church", "chapel"):
+                lidar_ok = eaves - 1.0 <= measured <= eaves + rise + 2.0
+            if lidar_ok:
+                hm, b["hsrc"] = measured, "lidar"
+                shape, _ = roof_from_dsm(h[ri, ci].astype(np.float64), (gE0 + (ci + 0.5) * cell).astype(np.float64),
+                                         (gN1 - (ri + 0.5) * cell).astype(np.float64), ring)
+            elif ctr_eaves_ok:
+                shape = "flat" if w_roof < ROOF_COOL_FLAT else "unknown"
+                hm, b["hsrc"] = eaves + (0.4 if shape == "flat" else rise), "ctr eaves"
+            else:
+                shape = "unknown"
+                hm, b["hsrc"] = (7.5 if kind == "house" else 6.0), "default"
+            # The photo's roof colour has the last word on a roof's shape.
+            if shape == "flat" and w_roof > ROOF_WARM_TILES:
+                shape = "hipped"     # tiles: a low-pitched roof the 1 m LiDAR reads as a plane
+            elif shape == "unknown" and w_roof < ROOF_COOL_FLAT and kind != "church":
+                shape = "flat"       # a white or grey roof terrace
+            if kind in ("church", "chapel"):
+                shape = "gabled"
+                if ctr_eaves_ok:
+                    hm = max(hm, eaves + rise)
+            elif shape == "unknown" and kind != "barn":
+                shape = "hipped"     # the Riviera's default: Marseille tiles on four slopes
+            b["roofShape"] = shape
+            b["heightM"] = round(max(float(hm), 2.4), 1)
+            if ctr_eaves_ok:
+                b["eavesM"] = round(eaves, 1)
+                if kind == "house":
+                    b["levels"] = int(max(1, round((eaves - 0.3) / 3.0)))
+        pieces = b.pop("pieces", None) or [b]
+        kept = []
+        for p_ in pieces:
+            hit = MPath(np.vstack([p_["ring"], p_["ring"][:1]])).contains_points(gone) if len(gone) else []
+            if np.any(hit):
+                gone_hit += np.asarray(hit, int)
+                stats["gone by 2022 (checked)"] += 1
+                dropped.append(p_ | {"why": "gone by 2022 (checked)"})
+            else:
+                kept.append(p_)
+        if len(kept) == len(pieces):
+            bmask[rr, cc] = True
+        for b_ in kept:
+            if len(kept) < len(pieces):
+                pr_, pc_ = cells_in_polygon(b_["ring"], gE0, gN1, cell, rows, cols)
+                bmask[pr_, pc_] = True
+            b_.pop("pieces", None)
+            hsrc_n[b_["hsrc"]] = hsrc_n.get(b_["hsrc"], 0) + 1
+            buildings.append(b_)
+    # OSM footprints the CTR does not have (built since, or missed), with LiDAR heights where there are some.
+    n_osm = 0
+    for o in osm:
+        if o["used"]:
+            continue
+        ring = o["ring"]
+        if not ((ring[:, 0] > gE0 + 1) & (ring[:, 0] < gE1 - 1) & (ring[:, 1] > gN0 + 1)
+                & (ring[:, 1] < gN1 - 1)).all():
+            continue
+        rr, cc, ri, ci = lidar_cells(ring)
+        if bmask[rr, cc].mean() > 0.3:
+            continue
+        ground = float(dtm[rr, cc].min())
+        measured = float(np.percentile(dsm[ri, ci], 90)) - ground
+        p90c = float(np.percentile(h[ri, ci], 90))
+        kind = building_kind(o["tags"])
+        if kind == "other" and o["tags"].get("building") in ("yes", "house", "residential", "apartments"):
+            kind = "house"
+        w_roof = float(np.median(warm[ri, ci]))
+        if p90c >= 2.0 and 2.4 <= measured <= 25.0:
+            hm, hsrc = measured, "lidar"
+        else:
+            hm, hsrc = (7.5 if kind == "house" else DEFAULT_HEIGHT.get(kind, 4.0)), "default"
+        b = {"ring": ring, "groundElevM": round(ground, 2), "src": "osm", "osm": o["osm"], "area": float(signed_area(ring)),
+             "measured": measured, "p90c": p90c, "green": float(np.mean(veg[ri, ci] > 0.05)), "warm": w_roof,
+             "bright": float(np.median(bright[ri, ci])), "sat": float(np.median(sat[ri, ci])), "ctr": None,
+             "btag": o["tags"].get("building"), "kind": kind, "hsrc": hsrc, "heightM": round(max(hm, 2.4), 1),
+             "roofShape": "flat" if w_roof < ROOF_COOL_FLAT else "hipped"}
+        bmask[rr, cc] = True
+        hsrc_n[hsrc] = hsrc_n.get(hsrc, 0) + 1
+        buildings.append(b)
+        n_osm += 1
+    kinds, roofs = {}, {}
+    for b in buildings:
+        kinds[b["kind"]] = kinds.get(b["kind"], 0) + 1
+        roofs[b["roofShape"]] = roofs.get(b["roofShape"], 0) + 1
+    log(f"[buildings] {len(buildings)} kept ({len(buildings) - n_osm} CTR, {n_osm} OSM-only); dropped {stats}; "
+        f"kinds {kinds}")
+    if len(gone) and not (gone_hit == 1).all():
+        raise SystemExit(f"ctr_gone points {np.flatnonzero(gone_hit != 1).tolist()} matched "
+                         f"{gone_hit[gone_hit != 1].tolist()} footprints (want exactly one each)")
+    log(f"[buildings] heights from {hsrc_n}; roofs {roofs}")
+    hs_ = [b for b in buildings if b["src"] == "L3165" and b["hsrc"] == "lidar" and "eavesM" in b]
+    if hs_:
+        dd = np.array([b["heightM"] - b["eavesM"] for b in hs_])
+        log(f"[buildings] LiDAR p90 roof minus CTR eaves (houses where both agree): p10/p50/p90 "
+            f"{np.percentile(dd, 10):.1f}/{np.percentile(dd, 50):.1f}/{np.percentile(dd, 90):.1f} m (n {len(hs_)})")
+    if gh_photo:
+        a_ = np.array(gh_photo)
+        log(f"[buildings] greenhouse roofs in the 2022 ortho: brightness p10/p50/p90 "
+            + "/".join(f"{v:.2f}" for v in np.percentile(a_[:, 0], [10, 50, 90])) + ", colour "
+            + "/".join(f"{v:.3f}" for v in np.percentile(a_[:, 1], [10, 50, 90])) + ", glassy share "
+            + "/".join(f"{v:.2f}" for v in np.percentile(a_[:, 2], [10, 50, 90])))
+    for kk in ("house", "barn"):
+        ww = [b["warm"] for b in buildings if b["kind"] == kk]
+        if ww:
+            log(f"[buildings] roof colour (r - b) / sum on {kk}: p10/p50/p90 "
+                + "/".join(f"{v:.3f}" for v in np.percentile(ww, [10, 50, 90])))
+    photo["dropped_buildings"] = dropped   # for the debug render
+    return buildings, bmask
+
+
+def ctr_walls(ctr: dict, oE: float, oN: float, grid: tuple, dtm: np.ndarray, h: np.ndarray, route: dict,
+              log) -> list[dict]:
+    """The CTR's walls, each a crest polyline (east, north, crest elevation) and a typical height.
+
+    Muri di sostegno and Muri d'ala are "retaining", Terrazzamento agricolo "terrace" (L3175, the crest
+    "Coronamento" lines only); Muro in muratura and Muro a secco "masonry", Recinzione generica "fence" (L3169).
+    A masonry wall within 2.5 m of the ride's carriageway edge whose crest stands 0.3-1.4 m over the road, with
+    the ground falling away behind it, is a "parapet".
+
+    Retaining walls and terraces: the crest is the survey's Z (0.6 m precision; against the LiDAR ground it sits
+    a median 0.1 m below the upper side 1.5 m back), put back 0.15 m over the higher side where it is below the
+    lower side or more than 2.5 m over the higher one. heightM is the median of the crest over the lower side,
+    1.0 m (terraces) or 1.5 m (retaining walls) out on the 1 m DTM.
+    Dividing walls and fences: the CTR's Z is their foot (a median 0.07 m below the LiDAR ground on the line), so
+    the crest comes from the LiDAR's first returns: the highest DSM within 0.5 m of the line, between 0.4 and
+    2.5 m over the ground beside it (1.0 m for a wall, 1.5 m for a fence where the DSM shows nothing)."""
+    gE0, gN1, cell, rows, cols = grid
+    gE1, gN0 = gE0 + cols * cell, gN1 - rows * cell
+
+    def ground(e, n):
+        fc = np.clip((np.asarray(e) - gE0) / cell - 0.5, 0, cols - 1.001)
+        fr = np.clip((gN1 - np.asarray(n)) / cell - 0.5, 0, rows - 1.001)
+        c0, r0 = np.floor(fc).astype(int), np.floor(fr).astype(int)
+        tx, ty = fc - c0, fr - r0
+        top = dtm[r0, c0] * (1 - tx) + dtm[r0, c0 + 1] * tx
+        bot = dtm[r0 + 1, c0] * (1 - tx) + dtm[r0 + 1, c0 + 1] * tx
+        return top * (1 - ty) + bot * ty
+
+    walls = []
+    n_by, n_fix, n_short, n_par = {}, 0, 0, 0
+    sources = [(f_, CTR_WALLS.get((f_.get("properties") or {}).get("def_tipo"))) for f_ in ctr["walls"]
+               if (f_.get("properties") or {}).get("def_zona") == "Coronamento"]
+    sources += [(f_, CTR_WALLS.get((f_.get("properties") or {}).get("definizione"))) for f_ in ctr["dividers"]]
+    for f_, kind in sources:
+        if kind is None:
+            continue
+        for l3 in geom_parts(f_.get("geometry"), polygons=False):
+            if l3.shape[1] < 3 or len(l3) < 2:
+                continue
+            p = l3 - np.array([oE, oN, 0.0])
+            ok = (p[:, 0] > gE0 + 2) & (p[:, 0] < gE1 - 2) & (p[:, 1] > gN0 + 2) & (p[:, 1] < gN1 - 2)
+            # runs of vertices inside the grid
+            pieces, cur = [], []
+            for k in range(len(p)):
+                if ok[k]:
+                    if not cur or np.hypot(*(p[k, :2] - cur[-1][:2])) >= 0.25:
+                        cur.append(p[k])
+                else:
+                    if len(cur) >= 2:
+                        pieces.append(np.array(cur))
+                    cur = []
+            if len(cur) >= 2:
+                pieces.append(np.array(cur))
+            for q in pieces:
+                if float(np.hypot(*np.diff(q[:, :2], axis=0).T).sum()) < 2.0:
+                    n_short += 1
+                    continue
+                # vertex normals in plan
+                d_ = np.gradient(q[:, :2], axis=0)
+                d_ /= np.maximum(np.hypot(d_[:, 0], d_[:, 1]), 1e-9)[:, None]
+                nrm = np.stack([d_[:, 1], -d_[:, 0]], axis=1)
+                free = kind in ("masonry", "fence")
+                off = 0.6 if free else (1.0 if kind == "terrace" else 1.5)   # fasce are often < 2 m deep
+                gA = ground(q[:, 0] + off * nrm[:, 0], q[:, 1] + off * nrm[:, 1])
+                gB = ground(q[:, 0] - off * nrm[:, 0], q[:, 1] - off * nrm[:, 1])
+                hi, lo = np.maximum(gA, gB), np.minimum(gA, gB)
+                z = q[:, 2].copy()
+                if free:
+                    top = np.full(len(q), -np.inf)
+                    for o_ in (-0.5, 0.0, 0.5):
+                        r_ = np.clip(np.floor((gN1 - (q[:, 1] + o_ * nrm[:, 1])) / cell).astype(int), 0, rows - 1)
+                        c_ = np.clip(np.floor((q[:, 0] + o_ * nrm[:, 0] - gE0) / cell).astype(int), 0, cols - 1)
+                        top = np.maximum(top, dtm[r_, c_] + h[r_, c_])
+                    seen = top - hi
+                    dflt = 1.0 if kind == "masonry" else 1.5
+                    z = hi + np.where(seen >= 0.4, np.minimum(seen, 2.5), dflt)
+                    n_fix += int((seen < 0.4).sum())
+                else:
+                    bad = (z < lo - 0.3) | (z > hi + 2.5)
+                    if bad.any():
+                        n_fix += int(bad.sum())
+                        z[bad] = hi[bad] + 0.15
+                hgt = z - (hi if free else lo)
+                lo_, hi_ = {"retaining": (0.4, 9.0), "terrace": (0.4, 6.0), "masonry": (0.5, 4.0),
+                            "fence": (0.8, 3.0)}[kind]
+                hm = float(np.clip(np.median(hgt), lo_, hi_))
+                k_ = kind
+                if kind == "masonry":
+                    mid = q[len(q) // 2, :2]
+                    dd, ii = route["tree"].query(mid)
+                    beyond = dd - route["hw"][ii]
+                    if -0.3 <= beyond <= 2.5:
+                        road = float(np.interp(route["s"][ii], route["rs"], route["elev"]))
+                        rp = route["pts"][ii]
+                        away = (mid - rp) / max(np.hypot(*(mid - rp)), 1e-6)
+                        behind = float(ground(mid[0] + 1.5 * away[0], mid[1] + 1.5 * away[1]))
+                        if 0.3 <= float(np.median(z)) - road <= 1.4 and behind < road - 0.5:
+                            k_ = "parapet"
+                            n_par += 1
+                walls.append({"kind": k_, "points": np.column_stack([q[:, :2], z]), "heightM": round(hm, 1)})
+                n_by[k_] = n_by.get(k_, 0) + 1
+    if walls:
+        L = {}
+        for w in walls:
+            L[w["kind"]] = L.get(w["kind"], 0.0) + float(np.hypot(*np.diff(w["points"][:, :2], axis=0).T).sum())
+        hh = {k: np.median([w["heightM"] for w in walls if w["kind"] == k]) for k in n_by}
+        log(f"[walls] {len(walls)} CTR walls {n_by} ({', '.join(f'{k} {v / 1000:.1f} km' for k, v in L.items())}); "
+            f"median height " + ", ".join(f"{k} {v:.1f} m" for k, v in hh.items())
+            + f"; {n_fix} crest points put back on the LiDAR ground (or with no wall in the DSM), {n_short} pieces "
+              f"< 2 m dropped, "
+              f"{n_par} masonry walls at the road edge taken as parapets")
+    return walls
+
+
+def simplify_line(p: np.ndarray, tol: float) -> np.ndarray:
+    """Douglas-Peucker."""
+    if len(p) < 3:
+        return p
+    keep = np.zeros(len(p), bool)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(p) - 1)]
+    while stack:
+        a, b = stack.pop()
+        if b - a < 2:
+            continue
+        ab = p[b] - p[a]
+        L = math.hypot(*ab)
+        seg = p[a + 1:b] - p[a]
+        d = np.abs(seg[:, 0] * ab[1] - seg[:, 1] * ab[0]) / L if L > 1e-9 else np.hypot(seg[:, 0], seg[:, 1])
+        k = int(np.argmax(d))
+        if d[k] > tol:
+            keep[a + 1 + k] = True
+            stack += [(a, a + 1 + k), (a + 1 + k, b)]
+    return p[keep]
+
+
+def mask_rings(mask: np.ndarray, gE0: float, gN1: float, cell: float, min_area: float, tol: float = 1.5) -> list:
+    """Outer outlines of a cell mask as CCW rings in local metres (holes dropped), smoothed and simplified."""
+    import contourpy
+    from scipy import ndimage as ndi
+    rows, cols = mask.shape
+    z = ndi.gaussian_filter(np.pad(mask.astype(np.float32), 2), 1.2)
+    x = gE0 + (np.arange(-2, cols + 2) + 0.5) * cell
+    y = gN1 - (np.arange(-2, rows + 2) + 0.5) * cell
+    cg = contourpy.contour_generator(x, y, z, fill_type="OuterOffset")
+    polys, offs = cg.filled(0.5, 10.0)
+    out = []
+    for pts, off in zip(polys, offs):
+        outer = pts[off[0]:off[1]]
+        if len(outer) < 4:
+            continue
+        rg = clip_polygon_rect(simplify_line(np.vstack([outer, outer[:1]]), tol)[:-1], gE0, gN1 - rows * cell,
+                               gE0 + cols * cell, gN1)
+        rg = clean_ring(rg) if len(rg) >= 3 else None
+        if rg is not None and abs(signed_area(rg)) >= min_area:
+            out.append(rg)
+    return out
+
+
+def med_tree_kinds(h_top, crown_r, flat, dark, lu_at, woods_at) -> list:
+    """Species for the Riviera's trees from what the data can tell (else None: the app picks by its planting
+    zones, the landuse and the crown's shape).
+
+      cypress       a narrow, dark column: >= 6 m tall, crown radius <= 1.8 m, height >= 4 x the radius,
+                    <= 0.85 of the open ground's brightness;
+      pine          in the CTR's pine woods (Bosco, Conifere/Pini), or >= 12 m with a crown clearly darker
+                    than the ground round it (Aleppo and maritime pines) away from gardens;
+      umbrellaPine  >= 9 m, a crown radius >= 0.36 x the height, flat-topped (>= 30 % of the crown within
+                    15 % of the top) and dark: the stone pines of the sanctuary park and the ridge;
+      olive         <= 10 m in an olive grove (CTR Uliveti, OSM orchard), or <= 7 m with a crown >= 1.2 m
+                    and not dark (silver-green) on the terraces and among the greenhouses.
+    Palms are not guessed here: a Phoenix's crown from the 1 m LiDAR looks like any other round crown."""
+    kinds = []
+    for k in range(len(h_top)):
+        hh, rr, lu = float(h_top[k]), float(crown_r[k]), lu_at[k]
+        if hh >= 6.0 and rr <= 1.8 and hh >= 4.0 * rr and dark[k] <= 0.85:
+            kinds.append("cypress")
+        elif woods_at[k]:
+            kinds.append("pine")
+        elif hh >= 9.0 and rr >= 0.36 * hh and flat[k] >= 0.30 and dark[k] <= 0.85:
+            kinds.append("umbrellaPine")
+        elif lu == "olive" and hh <= 10.0:
+            kinds.append("olive")
+        elif lu in ("terraces", "greenhouse") and hh <= 7.0 and rr >= 1.2 and dark[k] > 0.8:
+            kinds.append("olive")
+        elif hh >= 12.0 and dark[k] <= 0.8 and lu not in ("residential", "garden"):
+            kinds.append("pine")
+        else:
+            kinds.append(None)
+    return kinds
+
+
+# ---------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------
 
 VEG_EXG_SUMMER = 0.0   # chromatic excess green above this = vegetation in the 2024 summer ortho
 
 
-def build(course_id: str, render: bool = True) -> int:
+def build(course_id: str, render: bool = True, out_root: Path | None = None) -> int:
     from pyproj import Transformer
     from scipy import ndimage as ndi
     from scipy.spatial import cKDTree
-    from PIL import Image
+    from PIL import Image, ImageDraw
 
     cfg = COURSES[course_id]
     cache = CACHE_ROOT / course_id
-    dbg = DEBUG_ROOT / course_id
-    out = OUT_ROOT / course_id
+    # --out-root: read the course folder as usual, write scenery.json and the debug files elsewhere.
+    src = OUT_ROOT / course_id
+    dbg = (out_root / "debug" / course_id) if out_root else DEBUG_ROOT / course_id
+    out = (out_root / "Courses" / course_id) if out_root else src
     pipe = PIPELINE_ROOT / course_id
-    for p in (cache, dbg):
+    for p in (cache, dbg, out):
         p.mkdir(parents=True, exist_ok=True)
     log_lines: list[str] = []
 
@@ -694,8 +1414,11 @@ def build(course_id: str, render: bool = True) -> int:
         print(msg, flush=True)
         log_lines.append(msg)
 
-    course = json.loads((out / "course.json").read_text())
-    oE72, oN72 = course["origin"]["lambert72"]
+    course = json.loads((src / "course.json").read_text())
+    # The course's projected CRS: Lambert 72 in Flanders (origin.lambert72), else origin.crs / origin.projected.
+    crs = course["origin"].get("crs", "EPSG:31370")
+    oE72, oN72 = course["origin"].get("projected") or course["origin"]["lambert72"]
+    ctr_mode = cfg.get("buildings") == "ctr"
     nh, ch, oh = course["terrain"]["near"], course["canopy"], course["ortho"]
     for k in ("originEast", "originNorth", "cellM", "cols", "rows"):
         if nh[k] != ch[k]:
@@ -706,8 +1429,8 @@ def build(course_id: str, render: bool = True) -> int:
     gE1, gN0 = gE0 + cols * cell, gN1 - rows * cell
     log(f"[grid] near grid local E {gE0:.0f}..{gE1:.0f}, N {gN0:.0f}..{gN1:.0f} ({cols}x{rows} @ {cell} m); "
         f"origin L72 ({oE72:.0f}, {oN72:.0f})")
-    dtm = load_u16(out / nh["file"], nh)
-    chm = load_u16(out / ch["file"], ch)
+    dtm = load_u16(src / nh["file"], nh)
+    chm = load_u16(src / ch["file"], ch)
     if np.isnan(dtm).any():
         raise SystemExit("terrain_near has nodata cells")
     h = np.nan_to_num(chm, nan=0.0).astype(np.float32)
@@ -722,6 +1445,14 @@ def build(course_id: str, render: bool = True) -> int:
     ortho_cell = ortho.reshape(rows, f, cols, f, 3).astype(np.float32).mean(axis=(1, 3))
     veg = exg(ortho_cell)
     bright = ortho_cell.mean(axis=-1)
+    if ctr_mode:
+        # Roof colour on the Riviera: chromatic warmth (r - b) / (r + g + b) tells terracotta tiles from roof
+        # terraces, and brightness (0-1) and colourfulness (max - min) / max tell plastic film from glass.
+        s_ = ortho_cell.sum(axis=-1) + 1e-3
+        photo = {"veg": veg, "bright": bright / 255.0,
+                 "warm": (ortho_cell[..., 0] - ortho_cell[..., 2]) / s_,
+                 "sat": (ortho_cell.max(axis=-1) - ortho_cell.min(axis=-1)) / np.maximum(ortho_cell.max(axis=-1), 1.0)}
+        del s_
     del ortho_cell
 
     # cell-centre coordinates
@@ -749,8 +1480,8 @@ def build(course_id: str, render: bool = True) -> int:
         return d, rdense_hw[i], rsd[i]
 
     # ---------------- OSM ----------------
-    to72 = Transformer.from_crs("EPSG:4326", "EPSG:31370", always_xy=True)
-    to84 = Transformer.from_crs("EPSG:31370", "EPSG:4326", always_xy=True)
+    to72 = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    to84 = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
     cx = np.array([gE0, gE1, gE0, gE1]) + oE72
     cy = np.array([gN0, gN0, gN1, gN1]) + oN72
     lon, lat = to84.transform(cx, cy)
@@ -771,6 +1502,7 @@ def build(course_id: str, render: bool = True) -> int:
 
     rect = (gE0, gN0, gE1, gN1)
     route_way_ids = set(cfg["route_ways"])
+    landuse_map = LANDUSE_MAP | cfg.get("landuse_extra", {})
     buildings_raw, landuse, roads_raw, fences, water = [], [], [], [], []
     skipped = {"landuse_kind": {}, "tunnel_streams": 0}
     for t, el, geoms, is_area in osm_features(osm, to_local):
@@ -781,7 +1513,7 @@ def build(course_id: str, render: bool = True) -> int:
         lk = None
         for key in ("landuse", "natural", "leisure"):
             if key in t:
-                lk = LANDUSE_MAP.get((key, t[key]))
+                lk = landuse_map.get((key, t[key]))
                 if lk is None and (key, t[key]) == ("landuse", "cemetery"):
                     lk = "grass"
                 if lk:
@@ -826,7 +1558,27 @@ def build(course_id: str, render: bool = True) -> int:
 
     # ---------------- side roads ----------------
     roads = []
+    off_grade = {"tunnel": 0, "deck": 0}
     for t, wid, g in roads_raw:
+        if ctr_mode and wid not in route_way_ids:
+            # The app drapes side roads on the terrain, so a way that is not at grade cannot be drawn. Under
+            # the Poggio the Aurelia Bis (SS1bis) runs in tunnel right beneath the summit loop (OSM tunnel=yes,
+            # layer=-1), and the coast cycleway uses the old railway tunnels: drop ways in a tunnel, under
+            # cover or below ground. Bridges go where the deck stands off the ground: always for viaducts,
+            # and for other bridges where the LiDAR DSM First stands >= 2.5 m over the DTM along the median
+            # metre of the way (the SS1bis junction ramps east of the town, 4.5-9 m up; a culvert bridge on
+            # a lane reads ~0).
+            if (t.get("tunnel") in ("yes", "building_passage", "culvert") or t.get("covered") == "yes"
+                    or (_num(t.get("layer")) or 0.0) < 0):
+                off_grade["tunnel"] += 1
+                continue
+            if t.get("bridge") not in (None, "no"):
+                bd, _ = densify(g, 1.0)
+                br, bc = cell_of(bd[:, 0], bd[:, 1])
+                inside = (bd[:, 0] >= gE0) & (bd[:, 0] < gE1) & (bd[:, 1] >= gN0) & (bd[:, 1] < gN1)
+                if t["bridge"] == "viaduct" or (inside.any() and np.median(h[br[inside], bc[inside]]) >= 2.5):
+                    off_grade["deck"] += 1
+                    continue
         dense, sd = densify(g, 0.5)
         d, hw, s_on = route_dist(dense)
         if wid in route_way_ids:
@@ -860,184 +1612,210 @@ def build(course_id: str, render: bool = True) -> int:
                     "surface": road_surface(t), "points": p, "osm": wid, "highway": t["highway"],
                 })
     log(f"[roads] {len(roads)} side-road pieces from {len(roads_raw)} highway ways "
-        f"(route ways trimmed to the parts beyond the ride)")
+        f"(route ways trimmed to the parts beyond the ride)"
+        + (f"; dropped {off_grade['tunnel']} ways in tunnel/below ground and {off_grade['deck']} raised "
+           f"bridge decks" if ctr_mode else ""))
 
     # ---------------- buildings ----------------
-    # Footprints: GRB "gebouw aan de grond" (Digitaal Vlaanderen, native Lambert 72) is the
-    # authoritative and complete set; OSM buildings in Flanders are imports of it
-    # (source:geometry:ref=Gbg/<OIDN>) and are used for their tags. OSM-only footprints that
-    # do not overlap a GRB building are kept as well.
-    grb = fetch_grb_buildings(cache, int(oE72 + gE0), int(oE72 + gE1), int(oN72 + gN0), int(oN72 + gN1), log)
-    osm_by_oidn, osm_other = {}, []
-    for t, wid, g in buildings_raw:
-        ref = str(t.get("source:geometry:ref", ""))
-        if ref.startswith("Gbg/") and ref[4:].isdigit():
-            osm_by_oidn.setdefault(int(ref[4:]), (t, wid, g))
-        else:
-            osm_other.append((t, wid, g))
-    cands = []
-    offs = []
-    for props, ring72 in grb:
-        ring = ring72 - np.array([oE72, oN72])
-        oidn = int(props.get("OIDN", -1))
-        t, wid = {}, None
-        if oidn in osm_by_oidn:
-            t, wid, g = osm_by_oidn.pop(oidn)
-            a_osm, a_grb = abs(signed_area(g)), abs(signed_area(ring))
-            if a_grb > 20 and abs(a_osm - a_grb) < 0.03 * a_grb:  # same geometry version
-                offs.append(_centroid(g) - _centroid(ring))
-        cands.append(("grb", t, oidn, wid, ring, props))
-    stale = list(osm_by_oidn.values())  # OSM copies of GRB objects no longer current
-    # OSM footprints without a (current) GRB reference: if one covers a GRB footprint, it is the same
-    # building drawn by hand or from an older GRB version -> give its tags to the GRB footprint.
-    glab = np.zeros((rows, cols), np.int32)
-    for k, c_ in enumerate(cands):
-        rg = clean_ring(c_[4], nd=2)
-        if rg is not None:
-            rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
-            glab[rr, cc] = k + 1
-    gcells = np.bincount(glab.ravel(), minlength=len(cands) + 1)
-    n_tagged = n_part = 0
-    for t, wid, g in osm_other + stale:
-        rg = clean_ring(g, nd=2)
-        if rg is None:
-            continue
-        rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
-        hit = glab[rr, cc]
-        if rr.size and (hit > 0).mean() > 0.3:
-            k = int(np.bincount(hit[hit > 0]).argmax()) - 1
-            # Only one covering at least 40 % of that GRB footprint is the same building: a small
-            # one inside a big GRB block is a part of it (Geraardsbergen's Oud-Hospitaal chapel
-            # in the 7500 m2 hospital block would otherwise make the whole block a church).
-            if rr.size < 0.4 * gcells[k + 1]:
-                n_part += 1
-            elif not cands[k][1]:
-                cands[k] = (cands[k][0], t, cands[k][2], wid, cands[k][4], cands[k][5])
-                n_tagged += 1
-            continue  # duplicate of a GRB footprint
-        cands.append(("osm", t, None, wid, g, {}))
-    del glab
-    log(f"[buildings] {n_tagged} GRB footprints took tags from an overlapping OSM building without a Gbg ref; "
-        f"{n_part} smaller OSM buildings inside a GRB block left it untagged")
-    if offs:
-        offs = np.array(offs)
-        log(f"[buildings] OSM (projected with pyproj) minus GRB (native L72) centroid offset over {len(offs)} "
-            f"matched footprints: median dE {np.median(offs[:, 0]):+.2f} m, dN {np.median(offs[:, 1]):+.2f} m, "
-            f"median |d| {np.median(np.hypot(offs[:, 0], offs[:, 1])):.2f} m")
-    dsm = dtm + h
-    bmask = np.zeros((rows, cols), bool)
-    buildings = []
-    n_out = n_straddle = n_dup = 0
-    order = sorted(range(len(cands)), key=lambda k: cands[k][0] != "grb")  # GRB first
-    for k in order:
-        src0, t, oidn, wid, g, props = cands[k]
-        ring = clean_ring(g, nd=2)
-        if ring is None:
-            continue
-        inside_v = ((ring[:, 0] > gE0 + 1) & (ring[:, 0] < gE1 - 1) & (ring[:, 1] > gN0 + 1) & (ring[:, 1] < gN1 - 1))
-        if not inside_v.any():
-            n_out += 1
-            continue
-        if not inside_v.all():
-            n_straddle += 1
-            continue
-        rr, cc = cells_in_polygon(ring, gE0, gN1, cell, rows, cols)
-        if rr.size == 0:
-            r1, c1 = cell_of(*ring.mean(axis=0))
-            rr, cc = np.array([r1]), np.array([c1])
-        if src0 == "osm" and bmask[rr, cc].mean() > 0.3:
-            n_dup += 1
-            continue
-        bmask[rr, cc] = True
-        ri, ci = cells_in_polygon(ring, gE0, gN1, cell, rows, cols, shrink=0.7)
-        if ri.size < 4:
-            ri, ci = rr, cc
-        area = float(signed_area(ring))
-        ground = float(dtm[rr, cc].min())
-        p90c = float(np.percentile(h[ri, ci], 90))
-        p50c = float(np.percentile(h[ri, ci], 50))
-        measured = float(np.percentile(dsm[ri, ci], 90)) - ground
-        green = float(np.mean(veg[ri, ci] > 0.05))
-        if t.get("building"):
-            kind = building_kind(t)
-        elif props.get("LBLTYPE") == "hoofdgebouw":
-            kind = "house" if area <= 300 else "other"
-        else:
-            kind = "other"
-        cap = HEIGHT_CAP[kind] if kind != "other" else (7.0 if area < 60 else 10.0 if area < 300 else 15.0)
-        # Tiny footprints under a tree pick up its crown height from the LiDAR whatever the ortho
-        # shows, and would stand as 8-27 m towers. A real cottage this small (the Paterberg's
-        # summit cottage, 22 m2) measures about 5 m.
-        small_cap = 6.5 if area < 25 else 8.0 if area < 60 else None
-        if p90c < 2.0:
-            why = "not in the 2015 LiDAR"
-        elif small_cap and kind in ("house", "other") and not t.get("height") and measured > small_cap:
-            why = f"LiDAR {measured:.1f} m > {small_cap} m plausible for {area:.0f} m2"
-            if area < 25:
-                kind = "other"   # a 'hoofdgebouw' this small under a crown is a shed, not a house
-        elif measured > cap and green >= 0.25:   # a visible roof (little green) keeps its LiDAR height
-            why = f"LiDAR {measured:.1f} m > {cap:.0f} m plausible for {kind}"
-        elif green >= 0.5 and p90c - p50c > 2.5:
-            why = "roof under tree canopy"
-        else:
-            why = ""
-        buildings.append({
-            "ring": ring, "kind": kind, "groundElevM": round(ground, 2), "measured": measured, "why": why,
-            "src": src0, "oidn": oidn, "osm": wid, "p90c": p90c, "p50c": p50c, "green": green, "area": area,
-            "btag": t.get("building") or props.get("LBLTYPE"), "roof_tag": ROOF_TAG_MAP.get(t.get("roof:shape", "")),
-            "tag_h": _num(t.get("height")), "levels": _num(t.get("building:levels")),
-            "cells": (ri, ci),
-        })
-    # fallback heights: OSM height / levels, else the median LiDAR height of reliable buildings of that kind
-    by_kind = {}
-    for b in buildings:
-        if not b["why"]:
-            by_kind.setdefault(b["kind"], []).append(b["measured"])
-    kind_median = {k: float(np.median(v)) for k, v in by_kind.items() if len(v) >= 5}
-    n_fallback = 0
-    reasons = {}
-    for b in buildings:
-        if not b["why"]:
-            hm, b["hsrc"] = b["measured"], "lidar"
-        else:
-            n_fallback += 1
-            key = b["why"].split(" ")[0] if not b["why"].startswith("LiDAR") else "LiDAR too high"
-            reasons[key] = reasons.get(key, 0) + 1
-            if b["tag_h"]:
-                hm, b["hsrc"] = b["tag_h"], "osm height"
-            elif b["levels"]:
-                hm, b["hsrc"] = b["levels"] * 3 + 2, "osm levels"
-            elif b["kind"] in kind_median:
-                hm, b["hsrc"] = kind_median[b["kind"]], f"median LiDAR {b['kind']}"
+    if ctr_mode:
+        # Footprints from the Liguria CTR 3D (Edificato with its eaves, Manufatto: greenhouses, sheds,
+        # cisterns), heights from the LiDAR checked against the eaves, OSM for its tags (ctr_buildings).
+        ctr = {k: fetch_wfs(cache, cfg["ctr"]["url"], cfg["ctr"][k], crs, cfg["ctr"]["box"], log)
+               for k in ("buildings", "structures", "walls", "dividers", "trees", "crops", "woods")}
+        log("[ctr] " + ", ".join(f"{cfg['ctr'][k]} {len(v)}" for k, v in ctr.items()) + " features in the box")
+        buildings, bmask = ctr_buildings(ctr, buildings_raw, oE72, oN72, (gE0, gN1, cell, rows, cols), dtm, h,
+                                         photo, log, cfg.get("ctr_gone"))
+        if cfg.get("footprint_clear_m"):
+            # Nothing stands on the ride's carriageway or in its gutter (both legs of a hairpin and of the
+            # summit loop count: the whole route is in rtree).
+            n_st = {"clear": 0, "clipped": 0, "kept": 0}
+            for b_ in buildings:
+                b_["ring"], st_ = clear_of_carriageway(b_["ring"], rtree, rdense, rdense_hw, cfg["footprint_clear_m"])
+                n_st[st_] += 1
+                if st_ == "kept":
+                    log(f"[buildings] WARN {b_['kind']} at {_centroid(b_['ring']).round(1).tolist()} could not be "
+                        f"pulled {cfg['footprint_clear_m']} m clear of the carriageway")
+            log(f"[buildings] pulled {n_st['clipped']} footprints back to {cfg['footprint_clear_m']} m outside the "
+                f"ride's carriageway ({n_st['kept']} could not be)")
+        (dbg / "scenery_buildings.json").write_text(json.dumps([
+            {k: (round(v, 2) if isinstance(v, float) else v) for k, v in b_.items() if k != "ring"}
+            | {"centroid": [round(float(x), 1) for x in _centroid(b_["ring"])]} for b_ in buildings], indent=1))
+    else:
+        # Footprints: GRB "gebouw aan de grond" (Digitaal Vlaanderen, native Lambert 72) is the
+        # authoritative and complete set; OSM buildings in Flanders are imports of it
+        # (source:geometry:ref=Gbg/<OIDN>) and are used for their tags. OSM-only footprints that
+        # do not overlap a GRB building are kept as well.
+        grb = fetch_grb_buildings(cache, int(oE72 + gE0), int(oE72 + gE1), int(oN72 + gN0), int(oN72 + gN1), log)
+        osm_by_oidn, osm_other = {}, []
+        for t, wid, g in buildings_raw:
+            ref = str(t.get("source:geometry:ref", ""))
+            if ref.startswith("Gbg/") and ref[4:].isdigit():
+                osm_by_oidn.setdefault(int(ref[4:]), (t, wid, g))
             else:
-                hm, b["hsrc"] = DEFAULT_HEIGHT[b["kind"]], "default"
-        b["heightM"] = round(max(hm, 2.0), 1)
-        ri, ci = b.pop("cells")
-        if b["roof_tag"]:
-            b["roofShape"], b["rms"] = b["roof_tag"], {}
-        elif b["hsrc"] == "lidar":
-            b["roofShape"], b["rms"] = roof_from_dsm(h[ri, ci].astype(np.float64), ce[ci].astype(np.float64),
-                                                     cn[ri].astype(np.float64), b["ring"])
-        else:
-            b["roofShape"], b["rms"] = "unknown", {}
-    kinds = {}
-    for b in buildings:
-        kinds[b["kind"]] = kinds.get(b["kind"], 0) + 1
-    log(f"[buildings] {len(buildings)} kept ({sum(b['src'] == 'grb' for b in buildings)} GRB, "
-        f"{sum(b['src'] == 'osm' for b in buildings)} OSM-only); {n_out} outside the grid, {n_straddle} straddling "
-        f"its edge (dropped), {n_dup} OSM duplicates of GRB; kinds {kinds}")
-    log(f"[buildings] {n_fallback} heights not from LiDAR {reasons}; kind medians "
-        + ", ".join(f"{k} {v:.1f} m" for k, v in sorted(kind_median.items())))
-    roof_counts = {}
-    for b in buildings:
-        roof_counts[b["roofShape"]] = roof_counts.get(b["roofShape"], 0) + 1
-    log(f"[buildings] roof shapes {roof_counts}")
-    (dbg / "scenery_buildings.json").write_text(json.dumps([
-        {k: (round(v, 2) if isinstance(v, float) else v) for k, v in b_.items() if k not in ("ring",)}
-        | {"rms": {k: round(v, 2) for k, v in b_["rms"].items()},
-           "centroid": [round(float(x), 1) for x in _centroid(b_["ring"])]}
-        for b_ in buildings], indent=1))
-    del dsm
+                osm_other.append((t, wid, g))
+        cands = []
+        offs = []
+        for props, ring72 in grb:
+            ring = ring72 - np.array([oE72, oN72])
+            oidn = int(props.get("OIDN", -1))
+            t, wid = {}, None
+            if oidn in osm_by_oidn:
+                t, wid, g = osm_by_oidn.pop(oidn)
+                a_osm, a_grb = abs(signed_area(g)), abs(signed_area(ring))
+                if a_grb > 20 and abs(a_osm - a_grb) < 0.03 * a_grb:  # same geometry version
+                    offs.append(_centroid(g) - _centroid(ring))
+            cands.append(("grb", t, oidn, wid, ring, props))
+        stale = list(osm_by_oidn.values())  # OSM copies of GRB objects no longer current
+        # OSM footprints without a (current) GRB reference: if one covers a GRB footprint, it is the same
+        # building drawn by hand or from an older GRB version -> give its tags to the GRB footprint.
+        glab = np.zeros((rows, cols), np.int32)
+        for k, c_ in enumerate(cands):
+            rg = clean_ring(c_[4], nd=2)
+            if rg is not None:
+                rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
+                glab[rr, cc] = k + 1
+        gcells = np.bincount(glab.ravel(), minlength=len(cands) + 1)
+        n_tagged = n_part = 0
+        for t, wid, g in osm_other + stale:
+            rg = clean_ring(g, nd=2)
+            if rg is None:
+                continue
+            rr, cc = cells_in_polygon(rg, gE0, gN1, cell, rows, cols)
+            hit = glab[rr, cc]
+            if rr.size and (hit > 0).mean() > 0.3:
+                k = int(np.bincount(hit[hit > 0]).argmax()) - 1
+                # Only one covering at least 40 % of that GRB footprint is the same building: a small
+                # one inside a big GRB block is a part of it (Geraardsbergen's Oud-Hospitaal chapel
+                # in the 7500 m2 hospital block would otherwise make the whole block a church).
+                if rr.size < 0.4 * gcells[k + 1]:
+                    n_part += 1
+                elif not cands[k][1]:
+                    cands[k] = (cands[k][0], t, cands[k][2], wid, cands[k][4], cands[k][5])
+                    n_tagged += 1
+                continue  # duplicate of a GRB footprint
+            cands.append(("osm", t, None, wid, g, {}))
+        del glab
+        log(f"[buildings] {n_tagged} GRB footprints took tags from an overlapping OSM building without a Gbg ref; "
+            f"{n_part} smaller OSM buildings inside a GRB block left it untagged")
+        if offs:
+            offs = np.array(offs)
+            log(f"[buildings] OSM (projected with pyproj) minus GRB (native L72) centroid offset over {len(offs)} "
+                f"matched footprints: median dE {np.median(offs[:, 0]):+.2f} m, dN {np.median(offs[:, 1]):+.2f} m, "
+                f"median |d| {np.median(np.hypot(offs[:, 0], offs[:, 1])):.2f} m")
+        dsm = dtm + h
+        bmask = np.zeros((rows, cols), bool)
+        buildings = []
+        n_out = n_straddle = n_dup = 0
+        order = sorted(range(len(cands)), key=lambda k: cands[k][0] != "grb")  # GRB first
+        for k in order:
+            src0, t, oidn, wid, g, props = cands[k]
+            ring = clean_ring(g, nd=2)
+            if ring is None:
+                continue
+            inside_v = ((ring[:, 0] > gE0 + 1) & (ring[:, 0] < gE1 - 1) & (ring[:, 1] > gN0 + 1) & (ring[:, 1] < gN1 - 1))
+            if not inside_v.any():
+                n_out += 1
+                continue
+            if not inside_v.all():
+                n_straddle += 1
+                continue
+            rr, cc = cells_in_polygon(ring, gE0, gN1, cell, rows, cols)
+            if rr.size == 0:
+                r1, c1 = cell_of(*ring.mean(axis=0))
+                rr, cc = np.array([r1]), np.array([c1])
+            if src0 == "osm" and bmask[rr, cc].mean() > 0.3:
+                n_dup += 1
+                continue
+            bmask[rr, cc] = True
+            ri, ci = cells_in_polygon(ring, gE0, gN1, cell, rows, cols, shrink=0.7)
+            if ri.size < 4:
+                ri, ci = rr, cc
+            area = float(signed_area(ring))
+            ground = float(dtm[rr, cc].min())
+            p90c = float(np.percentile(h[ri, ci], 90))
+            p50c = float(np.percentile(h[ri, ci], 50))
+            measured = float(np.percentile(dsm[ri, ci], 90)) - ground
+            green = float(np.mean(veg[ri, ci] > 0.05))
+            if t.get("building"):
+                kind = building_kind(t)
+            elif props.get("LBLTYPE") == "hoofdgebouw":
+                kind = "house" if area <= 300 else "other"
+            else:
+                kind = "other"
+            cap = HEIGHT_CAP[kind] if kind != "other" else (7.0 if area < 60 else 10.0 if area < 300 else 15.0)
+            # Tiny footprints under a tree pick up its crown height from the LiDAR whatever the ortho
+            # shows, and would stand as 8-27 m towers. A real cottage this small (the Paterberg's
+            # summit cottage, 22 m2) measures about 5 m.
+            small_cap = 6.5 if area < 25 else 8.0 if area < 60 else None
+            if p90c < 2.0:
+                why = "not in the 2015 LiDAR"
+            elif small_cap and kind in ("house", "other") and not t.get("height") and measured > small_cap:
+                why = f"LiDAR {measured:.1f} m > {small_cap} m plausible for {area:.0f} m2"
+                if area < 25:
+                    kind = "other"   # a 'hoofdgebouw' this small under a crown is a shed, not a house
+            elif measured > cap and green >= 0.25:   # a visible roof (little green) keeps its LiDAR height
+                why = f"LiDAR {measured:.1f} m > {cap:.0f} m plausible for {kind}"
+            elif green >= 0.5 and p90c - p50c > 2.5:
+                why = "roof under tree canopy"
+            else:
+                why = ""
+            buildings.append({
+                "ring": ring, "kind": kind, "groundElevM": round(ground, 2), "measured": measured, "why": why,
+                "src": src0, "oidn": oidn, "osm": wid, "p90c": p90c, "p50c": p50c, "green": green, "area": area,
+                "btag": t.get("building") or props.get("LBLTYPE"), "roof_tag": ROOF_TAG_MAP.get(t.get("roof:shape", "")),
+                "tag_h": _num(t.get("height")), "levels": _num(t.get("building:levels")),
+                "cells": (ri, ci),
+            })
+        # fallback heights: OSM height / levels, else the median LiDAR height of reliable buildings of that kind
+        by_kind = {}
+        for b in buildings:
+            if not b["why"]:
+                by_kind.setdefault(b["kind"], []).append(b["measured"])
+        kind_median = {k: float(np.median(v)) for k, v in by_kind.items() if len(v) >= 5}
+        n_fallback = 0
+        reasons = {}
+        for b in buildings:
+            if not b["why"]:
+                hm, b["hsrc"] = b["measured"], "lidar"
+            else:
+                n_fallback += 1
+                key = b["why"].split(" ")[0] if not b["why"].startswith("LiDAR") else "LiDAR too high"
+                reasons[key] = reasons.get(key, 0) + 1
+                if b["tag_h"]:
+                    hm, b["hsrc"] = b["tag_h"], "osm height"
+                elif b["levels"]:
+                    hm, b["hsrc"] = b["levels"] * 3 + 2, "osm levels"
+                elif b["kind"] in kind_median:
+                    hm, b["hsrc"] = kind_median[b["kind"]], f"median LiDAR {b['kind']}"
+                else:
+                    hm, b["hsrc"] = DEFAULT_HEIGHT[b["kind"]], "default"
+            b["heightM"] = round(max(hm, 2.0), 1)
+            ri, ci = b.pop("cells")
+            if b["roof_tag"]:
+                b["roofShape"], b["rms"] = b["roof_tag"], {}
+            elif b["hsrc"] == "lidar":
+                b["roofShape"], b["rms"] = roof_from_dsm(h[ri, ci].astype(np.float64), ce[ci].astype(np.float64),
+                                                         cn[ri].astype(np.float64), b["ring"])
+            else:
+                b["roofShape"], b["rms"] = "unknown", {}
+        kinds = {}
+        for b in buildings:
+            kinds[b["kind"]] = kinds.get(b["kind"], 0) + 1
+        log(f"[buildings] {len(buildings)} kept ({sum(b['src'] == 'grb' for b in buildings)} GRB, "
+            f"{sum(b['src'] == 'osm' for b in buildings)} OSM-only); {n_out} outside the grid, {n_straddle} straddling "
+            f"its edge (dropped), {n_dup} OSM duplicates of GRB; kinds {kinds}")
+        log(f"[buildings] {n_fallback} heights not from LiDAR {reasons}; kind medians "
+            + ", ".join(f"{k} {v:.1f} m" for k, v in sorted(kind_median.items())))
+        roof_counts = {}
+        for b in buildings:
+            roof_counts[b["roofShape"]] = roof_counts.get(b["roofShape"], 0) + 1
+        log(f"[buildings] roof shapes {roof_counts}")
+        (dbg / "scenery_buildings.json").write_text(json.dumps([
+            {k: (round(v, 2) if isinstance(v, float) else v) for k, v in b_.items() if k not in ("ring",)}
+            | {"rms": {k: round(v, 2) for k, v in b_["rms"].items()},
+               "centroid": [round(float(x), 1) for x in _centroid(b_["ring"])]}
+            for b_ in buildings], indent=1))
+        del dsm
 
     # ---------------- exclusion masks ----------------
     bmask_d = ndi.binary_dilation(bmask, structure=disk(BUILDING_DILATE_M / cell))
@@ -1074,17 +1852,81 @@ def build(course_id: str, render: bool = True) -> int:
             log(f"    summer ExG on {lab}: p10/p50/p90 = "
                 + "/".join(f"{v:.3f}" for v in np.percentile(veg[m], [10, 50, 90])))
 
+    # ---------------- walls and the Riviera's landuse (CTR) ----------------
+    walls = []
+    if ctr_mode:
+        walls = ctr_walls(ctr, oE72, oN72, (gE0, gN1, cell, rows, cols), dtm, h,
+                          {"tree": rtree, "hw": rdense_hw, "s": rsd, "rs": rs, "elev": np.array(R["elev"]),
+                           "pts": rdense}, log)
+        sea = dtm < course.get("sea", {}).get("levelM", 0.0) - 0.5
+        n0 = len(landuse)
+        # The CTR's olive groves (Colture agricole: Uliveti) and pine woods (Bosco: Conifere, Pini).
+        woods_rings = []
+        for key, kind_, want in (("crops", "olive", ("definizione", "Uliveti")), ("woods", "forest", None)):
+            for f_ in ctr[key]:
+                pr = f_.get("properties") or {}
+                if want and pr.get(want[0]) != want[1]:
+                    continue
+                for r3 in geom_parts(f_.get("geometry"), polygons=True):
+                    c = clip_polygon_rect(r3[:-1, :2] - np.array([oE72, oN72]), *rect)
+                    ring = clean_ring(c) if len(c) >= 3 else None
+                    if ring is not None:
+                        landuse.append({"kind": kind_, "ring": ring, "osm": None})
+                        if key == "woods" and pr.get("def_essenze") == "Pini":
+                            woods_rings.append(ring)
+        # Gardens round the villas: within 12 m of a house, closed over 8 m gaps (OSM maps two residential
+        # areas here; the plants and the ground maps need the gardens).
+        houses = np.zeros((rows, cols), bool)
+        for b in buildings:
+            if b["kind"] in ("house", "church", "chapel") and b["area"] >= 30:
+                rr_, cc_ = cells_in_polygon(b["ring"], gE0, gN1, cell, rows, cols)
+                houses[rr_, cc_] = True
+        gard = ndi.binary_closing(ndi.binary_dilation(houses, structure=disk(12.0 / cell)), structure=disk(8.0 / cell))
+        gard &= ~sea
+        for ring in mask_rings(gard, gE0, gN1, cell, min_area=600.0):
+            landuse.append({"kind": "residential", "ring": ring, "osm": None})
+        # Terraced slopes (fasce): within 6 m of the CTR's agricultural terrace walls, closed over 10 m.
+        terr = np.zeros((rows, cols), bool)
+        for w in walls:
+            if w["kind"] == "terrace":
+                dp, _ = densify(w["points"][:, :2], 0.5)
+                r_, c_ = cell_of(dp[:, 0], dp[:, 1])
+                terr[r_, c_] = True
+        terr = ndi.binary_closing(ndi.binary_dilation(terr, structure=disk(6.0 / cell)), structure=disk(10.0 / cell))
+        terr &= ~sea
+        for ring in mask_rings(terr, gE0, gN1, cell, min_area=1500.0):
+            landuse.append({"kind": "terraces", "ring": ring, "osm": None})
+        del houses, gard, terr
+        # The app takes the first polygon that holds a point: the specific kinds first, the derived gardens
+        # and terraces last.
+        rank = {"greenhouse": 0, "olive": 1, "forest": 2, "scrub": 3, "garden": 4, "grass": 5, "farmland": 6,
+                "orchard": 6, "meadow": 6}
+        landuse.sort(key=lambda l_: (rank.get(l_["kind"], 7), l_["osm"] is None and l_["kind"] == "terraces"))
+        lk_n = {}
+        for l_ in landuse:
+            lk_n[l_["kind"]] = lk_n.get(l_["kind"], 0) + 1
+        log(f"[landuse] {len(landuse) - n0} CTR / derived rings added (olive groves, pine woods, gardens within 12 m "
+            f"of a house, terraced slopes within 6 m of a terrace wall); landuse now {lk_n}")
+
     # ---------------- trees ----------------
-    wdate = fetch_winter_date(cache, cfg["winter_ortho"], oE72, oN72, log)
-    log(f"[trees] newest 'winter' mosaic flown {wdate or '?'} at the course: in leaf in late April, so it cannot "
-        f"separate evergreens; no other conifer signal -> all trees 'deciduous'")
+    if cfg.get("winter_ortho"):
+        wdate = fetch_winter_date(cache, cfg["winter_ortho"], oE72, oN72, log)
+        log(f"[trees] newest 'winter' mosaic flown {wdate or '?'} at the course: in leaf in late April, so it cannot "
+            f"separate evergreens; no other conifer signal -> all trees 'deciduous'")
     # The LiDAR was flown leaf-off (25/1/2015): deciduous crowns are full of pits where pulses went
     # through the bare branches. A grey closing (r = 2 m) gives a pit-free canopy model (it fills
-    # holes narrower than ~3 m but keeps crown outlines), then a light Gaussian.
-    hf = ndi.grey_closing(h, footprint=disk(PIT_FILL_R / cell), mode="nearest").astype(np.float32)
+    # holes narrower than ~3 m but keeps crown outlines), then a light Gaussian. (The Poggio's evergreen
+    # crowns, flown in leaf, need only a light fill: r 1 m keeps a row of cypresses apart.)
+    hf = ndi.grey_closing(h, footprint=disk(cfg.get("pit_fill_r", PIT_FILL_R) / cell),
+                          mode="nearest").astype(np.float32)
     hs = ndi.gaussian_filter(hf, CHM_SMOOTH_SIGMA / cell).astype(np.float32)
-    # Variable window: Popescu & Wynne (2004) crown width for deciduous trees, CW = 3.09632 + 0.00895 h^2
-    cw = 3.09632 + 0.00895 * hs * hs
+    if cfg.get("crown_allometry") == "mediterranean":
+        # Olives, holm oaks and pines spread wider for their height than a beech: CW = 2.0 + 0.35 h
+        # (an olive 5 m tall ~3.8 m across, a stone pine 15 m ~7 m), within the same radius bins.
+        cw = 2.0 + 0.35 * hs
+    else:
+        # Variable window: Popescu & Wynne (2004) crown width for deciduous trees, CW = 3.09632 + 0.00895 h^2
+        cw = 3.09632 + 0.00895 * hs * hs
     rad = np.clip(0.5 * cw, 1.5, 6.0)
     radii = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0]
     cand = hs >= TREE_MIN_H
@@ -1142,6 +1984,33 @@ def build(course_id: str, render: bool = True) -> int:
     drop(green_frac < 0.25, "crown not vegetation in the 2024 ortho")
     log(f"[trees] {nonveg_open} of the non-vegetation tops are away from buildings "
         f"(trees felled since 2015, or unmapped structures)")
+    if ctr_mode:
+        # The 2008-2010 LiDAR still holds greenhouses and sheds pulled down since, and the CTR misses a few:
+        # a top 2.5-6.5 m high whose crown is over 30 m2 and mostly within 0.4 m of the top is a roof, not a tree.
+        ncell = np.maximum(area / (cell * cell), 1)
+        top_lab = top_hs[np.clip(lbl - 1, 0, npk - 1)]
+        level = np.bincount(lbl[in_crown & (hs >= top_lab - 0.4)], minlength=npk + 1)[1:] / ncell
+        flat15 = np.bincount(lbl[in_crown & (hs >= 0.85 * top_lab)], minlength=npk + 1)[1:] / ncell
+        # Crown brightness against the open ground round it (bare or grassy, no building, not the sea: 31 m,
+        # or 101 m inside a wood): in this photo green does not tell a crown from the dry ground (ExG on
+        # open ground p50 0.07, on crowns 0.04), shade does. Kept crowns 0.6-1.0 (p50 0.82), open ground
+        # 0.76-1.22 (p10-p90).
+        open_g = ((h < 0.5) & ~bmask & (dtm > course.get("sea", {}).get("levelM", 0.0) - 0.5)).astype(np.float32)
+        ref_b = ndi.uniform_filter(bright, size=101, mode="nearest")
+        for size, min_share in ((101, 0.05), (31, 0.1)):
+            den = ndi.uniform_filter(open_g, size=size, mode="nearest")
+            num = ndi.uniform_filter(bright * open_g, size=size, mode="nearest")
+            ref_b = np.where(den > min_share, num / np.maximum(den, 1e-3), ref_b)
+        del open_g, den, num
+        dark = (np.bincount(lbl[in_crown], weights=bright[in_crown], minlength=npk + 1)[1:] / ncell
+                / np.maximum(np.bincount(lbl[in_crown], weights=ref_b[in_crown], minlength=npk + 1)[1:] / ncell, 1.0))
+        del top_lab
+        drop((area > 30.0) & (top_hs < 6.5) & (level > 0.6), "flat roof-like top (greenhouse/shed in the 2008-10 LiDAR)")
+        # ExG does not separate crowns from the ground in this photo; a crown felled since 2008-2010 is no
+        # darker than the ground round it.
+        log(f"[trees] crown brightness / open ground round it: p10/p50/p90 "
+            + "/".join(f"{v:.2f}" for v in np.percentile(dark[keep], [10, 50, 90])))
+        drop(dark > 0.95, "crown no darker than the open ground round it in the 2022 ortho (felled since the LiDAR)")
     # Tops over a building or a road: a roof ridge, or a crown reaching over the roof / carriageway.
     # If the top's own crown has enough green cells clear of buildings and roads, the trunk goes to
     # the nearest of them (the crown keeps the area clear of buildings); otherwise it is dropped.
@@ -1193,6 +2062,40 @@ def build(course_id: str, render: bool = True) -> int:
         trees.append({"e": round(float(tr_e[k]), 1), "n": round(float(tr_n[k]), 1),
                       "heightM": round(float(max(top_h[k], top_hs[k])), 1),
                       "crownRadiusM": round(r_, 1), "kind": "deciduous"})
+    if cfg.get("tree_species") == "riviera" and trees:
+        # Species where the data can tell (med_tree_kinds); the rest are left to the app ("kind" omitted).
+        lu_img = Image.new("I", (cols, rows), 0)
+        dr_ = ImageDraw.Draw(lu_img)
+        lu_kinds = sorted({l_["kind"] for l_ in landuse})
+        for l_ in reversed(landuse):    # the first polygon holding a point wins, as in the app
+            dr_.polygon([((x - gE0) / cell, (gN1 - y) / cell) for x, y in l_["ring"]], fill=lu_kinds.index(l_["kind"]) + 1)
+        lu_r = np.asarray(lu_img, np.int32)
+        wd_img = Image.new("L", (cols, rows), 0)
+        dw_ = ImageDraw.Draw(wd_img)
+        for ring in woods_rings:
+            dw_.polygon([((x - gE0) / cell, (gN1 - y) / cell) for x, y in ring], fill=1)
+        wd_r = np.asarray(wd_img) > 0
+        tr_, tc_ = cell_of([t["e"] for t in trees], [t["n"] for t in trees])
+        lu_at = [lu_kinds[v - 1] if v > 0 else None for v in lu_r[tr_, tc_]]
+        kinds_ = med_tree_kinds([t["heightM"] for t in trees], [t["crownRadiusM"] for t in trees], flat15[kidx],
+                                dark[kidx], lu_at, wd_r[tr_, tc_])
+        for t, k_ in zip(trees, kinds_):
+            if k_:
+                t["kind"] = k_
+            else:
+                del t["kind"]
+        del lu_img, lu_r, wd_img, wd_r
+        cnt = {}
+        for k_ in kinds_:
+            cnt[k_ or "(app picks)"] = cnt.get(k_ or "(app picks)", 0) + 1
+        # The CTR's surveyed single trees (2007/2013) against the LiDAR's crowns.
+        ctr_t = np.array([c[:2] for f_ in ctr["trees"] for c in [((f_.get("geometry") or {}).get("coordinates") or [])]
+                          if len(c) >= 2], np.float64).reshape(-1, 2) - np.array([oE72, oN72])
+        ins = (ctr_t[:, 0] > gE0) & (ctr_t[:, 0] < gE1) & (ctr_t[:, 1] > gN0) & (ctr_t[:, 1] < gN1)
+        if ins.any():
+            dct, _ = cKDTree(np.array([[t["e"], t["n"]] for t in trees])).query(ctr_t[ins])
+            log(f"[trees] species {cnt}; CTR single trees in the grid: {int(ins.sum())}, "
+                f"{int((dct < 3.0).sum())} within 3 m of a LiDAR tree kept here")
     # Hand-placed rows the LiDAR misses (young or freshly pollarded trees), from the photo survey:
     # (from s, to s, side -1 left / +1 right, metres beyond the carriageway edge, spacing, height, crown).
     route_hw_at = lambda sv: float(np.interp(sv, rsd, rdense_hw))
@@ -1217,8 +2120,34 @@ def build(course_id: str, render: bool = True) -> int:
     # ---------------- shrubs ----------------
     # On the pit-free model, so gaps inside leaf-off tree crowns do not become shrubs.
     crown_cells = seg_valid & (hf >= CROWN_MIN_H)
-    shrub_ok = ((hf >= SHRUB_MIN_H) & (hf < SHRUB_MAX_H) & (veg > VEG_EXG_SUMMER) & ~bmask_d & ~road_mask
-                & ~crown_cells)
+    if ctr_mode:
+        # The Poggio's photo is green-tinted all over (ExG on open ground p50 0.07, on crowns 0.04), so a
+        # shrub is low canopy clearly darker than the open ground round it (< 0.88 of it, as for the crowns
+        # above; low canopy runs 0.67-1.25, kept shrubs 0.59-0.89). Not along the walls (the
+        # LiDAR ground rounds their steps off, which leaves 0.6-3 m "canopy" at every crest), and not in flat
+        # slabs (greenhouses and sheds standing in 2008-2010, gone since: > 25 cells within a 0.3 m spread).
+        wall_m = np.zeros((rows, cols), bool)
+        for w in walls:
+            if w["kind"] != "fence":
+                dp, _ = densify(w["points"][:, :2], 0.5)
+                wall_m[cell_of(dp[:, 0], dp[:, 1])] = True
+        wall_m = ndi.binary_dilation(wall_m, structure=disk(0.8 / cell))
+        vegd = bright < 0.88 * ref_b
+        shrub_ok = ((hf >= SHRUB_MIN_H) & (hf < SHRUB_MAX_H) & vegd & ~bmask_d & ~road_mask & ~crown_cells
+                    & ~wall_m)
+        slab, nsl = ndi.label((hf >= SHRUB_MIN_H) & (hf < SHRUB_MAX_H) & ~crown_cells, structure=np.ones((3, 3)))
+        idx = np.arange(1, nsl + 1)
+        n_ = ndi.sum(np.ones_like(hf), slab, idx)
+        sd_ = np.sqrt(np.maximum(ndi.mean(hf * hf, slab, idx) - ndi.mean(hf, slab, idx) ** 2, 0))
+        flat_lab = np.concatenate([[False], (n_ > 25) & (sd_ < 0.3)])
+        n_slab = int(flat_lab.sum())
+        shrub_ok &= ~flat_lab[slab]
+        del wall_m, vegd, slab, idx, n_, sd_, flat_lab, ref_b
+        log(f"[shrubs] Riviera: vegetation = darker than the ground round it; {n_slab} flat slabs (old greenhouses, "
+            f"sheds) and the cells within 0.8 m of a wall left out")
+    else:
+        shrub_ok = ((hf >= SHRUB_MIN_H) & (hf < SHRUB_MAX_H) & (veg > VEG_EXG_SUMMER) & ~bmask_d & ~road_mask
+                    & ~crown_cells)
     # Tiny blobs (1-3 cells) of low "vegetation" on green ground are mostly fence posts, grazing
     # animals or bales in the January LiDAR; keep them only where the 2024 ortho shows a darker
     # crown than the surrounding ground (young orchard trees, solitary bushes).
@@ -1237,6 +2166,20 @@ def build(course_id: str, render: bool = True) -> int:
     SE, SN = np.meshgrid(se, sn)
     sr, sc = cell_of(SE.ravel(), SN.ravel())
     sel = shrub_ok[sr, sc]
+    far_lat = None
+    if cfg.get("shrub_far"):
+        # Beyond `far_m` from the ride only every other lattice point in each direction (twice the spacing),
+        # the shrubs grown to cover the same ground: what keeps a 3.5 km2 grid's scenery.json under 4 MB.
+        far_m = cfg["shrub_far"]
+        dfar, _ = rtree.query(np.stack([SE.ravel(), SN.ravel()], axis=1), k=1, distance_upper_bound=far_m)
+        ii, jj = np.meshgrid(np.arange(len(sn)), np.arange(len(se)), indexing="ij")
+        coarse = ((ii % 2 == 0) & (jj % 2 == 0)).ravel()
+        far_lat = ~np.isfinite(dfar)
+        n_thin = int((sel & far_lat & ~coarse).sum())
+        sel &= ~far_lat | coarse
+        far_lat = far_lat[sel]
+        del dfar, ii, jj, coarse
+        log(f"[shrubs] beyond {far_m:.0f} m from the ride on a {2 * SHRUB_SPACING} m lattice ({n_thin} points thinned)")
     sr, sc = sr[sel], sc[sel]
     spt_e, spt_n = SE.ravel()[sel], SN.ravel()[sel]
     del SE, SN
@@ -1260,6 +2203,8 @@ def build(course_id: str, render: bool = True) -> int:
     for k in range(len(sr)):
         hh = float(hf[sr[k], sc[k]])
         rad_ = float(np.clip(0.45 + 0.2 * hh, 0.6, 1.0))
+        if far_lat is not None and far_lat[k]:
+            rad_ = float(np.clip(0.7 + 0.3 * hh, 0.9, 1.6))
         clear = float(sclear[k]); sclr = float(side_clear[k])
         if clear < ROUTE_CLEAR_M + 0.03:
             n_route_drop += 1
@@ -1286,7 +2231,9 @@ def build(course_id: str, render: bool = True) -> int:
     scen = {
         "schemaVersion": 1,
         "buildings": [{"ring": pts(b["ring"]), "heightM": b["heightM"], "roofShape": b["roofShape"],
-                       "kind": b["kind"], "groundElevM": b["groundElevM"]} for b in buildings],
+                       "kind": b["kind"], "groundElevM": b["groundElevM"]}
+                      | ({k: b[k] for k in ("eavesM", "levels") if b.get(k) is not None} if ctr_mode else {})
+                      for b in buildings],
         "trees": trees,
         "shrubs": shrubs,
         "landuse": [{"kind": l["kind"], "ring": pts(l["ring"])} for l in landuse],
@@ -1295,6 +2242,10 @@ def build(course_id: str, render: bool = True) -> int:
         "fences": [{"kind": f_["kind"], "points": pts(f_["points"])} for f_ in fences],
         "water": [{"kind": w["kind"], "points": pts(w["points"]), "closed": w["closed"]} for w in water],
     }
+    if walls:
+        scen["walls"] = [{"kind": w["kind"], "points": [[round(float(x), 1), round(float(y), 1), round(float(z), 1)]
+                                                        for x, y, z in w["points"]], "heightM": w["heightM"]}
+                         for w in walls]
     # re-clean rings after rounding to 0.1 m (rounding can create duplicates)
     for key, fld in (("buildings", "ring"), ("landuse", "ring")):
         kept = []
@@ -1315,7 +2266,7 @@ def build(course_id: str, render: bool = True) -> int:
 
     ctx = dict(course=course, gE0=gE0, gE1=gE1, gN0=gN0, gN1=gN1, cell=cell, ortho=ortho, h=hf, hs=hs,
                route=rpts, rhw=rhw, buildings=buildings, landuse=landuse, roads=roads, fences=fences,
-               water=water, trees=trees, shrubs=shrubs, oh=oh)
+               water=water, trees=trees, shrubs=shrubs, oh=oh, walls=walls, zooms_s=cfg.get("debug_zooms_s"))
     ok = self_check(out, ctx, log)
     if render:
         render_debug(dbg, ctx, log)
@@ -1331,9 +2282,9 @@ def build(course_id: str, render: bool = True) -> int:
 SCENERY_SCHEMA = {  # field -> (type, optional)
     "SceneryFile": {"schemaVersion": ("int", False), "buildings": ("[Building]", True), "trees": ("[Tree]", True),
                     "shrubs": ("[Shrub]", True), "landuse": ("[Landuse]", True), "roads": ("[Road]", True),
-                    "fences": ("[Fence]", True), "water": ("[Water]", True)},
+                    "fences": ("[Fence]", True), "water": ("[Water]", True), "walls": ("[Wall]", True)},
     "Building": {"ring": ("[[num]]", False), "heightM": ("num", False), "roofShape": ("str", True),
-                 "kind": ("str", True), "groundElevM": ("num", True)},
+                 "kind": ("str", True), "groundElevM": ("num", True), "eavesM": ("num", True), "levels": ("int", True)},
     "Tree": {"e": ("num", False), "n": ("num", False), "heightM": ("num", False), "crownRadiusM": ("num", False),
              "kind": ("str", True)},
     "Shrub": {"e": ("num", False), "n": ("num", False), "heightM": ("num", False), "radiusM": ("num", False)},
@@ -1341,15 +2292,19 @@ SCENERY_SCHEMA = {  # field -> (type, optional)
     "Road": {"name": ("str", True), "widthM": ("num", True), "surface": ("str", True), "points": ("[[num]]", False)},
     "Fence": {"kind": ("str", False), "points": ("[[num]]", False)},
     "Water": {"kind": ("str", False), "points": ("[[num]]", False), "closed": ("bool", True)},
+    "Wall": {"kind": ("str", False), "points": ("[[num]]", False), "heightM": ("num", True)},
 }
 ENUMS = {
-    ("Building", "roofShape"): {"gabled", "hipped", "flat", "unknown"},
-    ("Building", "kind"): {"house", "farm", "barn", "church", "chapel", "other"},
-    ("Tree", "kind"): {"deciduous", "conifer"},
-    ("Landuse", "kind"): {"farmland", "meadow", "forest", "residential", "orchard", "scrub", "grass"},
+    ("Building", "roofShape"): {"gabled", "hipped", "flat", "unknown", "sawtooth", "tunnel"},
+    ("Building", "kind"): {"house", "farm", "barn", "church", "chapel", "other", "greenhouse", "cistern"},
+    ("Tree", "kind"): {"deciduous", "conifer", "pine", "umbrellaPine", "cypress", "palm", "fanPalm", "olive",
+                       "araucaria"},
+    ("Landuse", "kind"): {"farmland", "meadow", "forest", "residential", "orchard", "scrub", "grass",
+                          "greenhouse", "olive", "terraces", "garden"},
     ("Road", "surface"): {"asphalt", "cobbles", "gravel", "unpaved"},
     ("Fence", "kind"): {"fence", "wall", "hedge"},
     ("Water", "kind"): {"stream", "pond"},
+    ("Wall", "kind"): {"retaining", "terrace", "masonry", "parapet", "fence"},
 }
 
 
@@ -1424,12 +2379,14 @@ def self_check(out: Path, ctx: dict, log) -> bool:
         if item.get("closed"):
             if np.allclose(rg[0], rg[-1]) or signed_area(rg) <= 0:
                 errs.append(f"water[{k}]: closed ring must be CCW without a repeated point")
-    for key in ("roads", "fences", "water"):
+    for key in ("roads", "fences", "water", "walls"):
         for k, item in enumerate(d.get(key, [])):
             if len(item["points"]) < 2:
                 errs.append(f"{key}[{k}]: fewer than 2 points")
             if not all(inside(p) for p in item["points"]):
                 errs.append(f"{key}[{k}]: leaves the near grid")
+            if key == "walls" and any(len(p) != 3 for p in item["points"]):
+                errs.append(f"walls[{k}]: points must be [east, north, crest elevation]")
     # vegetation must stay off the ride
     rp = ctx["route"]
     dense, sd = densify(rp, 0.1)
@@ -1491,13 +2448,14 @@ def self_check(out: Path, ctx: dict, log) -> bool:
                 warns.append(f"{int((tc_ < 0).sum())} tree trunks on a side-road carriageway")
     # buildings must not stand on the ride's carriageway
     from matplotlib.path import Path as MPath
-    intr = []
+    intr, gaps = [], []
     for b_ in d.get("buildings", []):
         rg = np.array(b_["ring"], float)
         dp, _ = densify(np.vstack([rg, rg[:1]]), 0.25)
         dd, ii = tr.query(dp)
         inside_pts = MPath(np.vstack([rg, rg[:1]])).contains_points(dense[::5])
         m = float((dhw[ii] - dd).max())
+        gaps.append(-m)
         if m > 0 or inside_pts.any():
             intr.append(max(m, 0.0) if not inside_pts.any() else 99.0)
     if intr:
@@ -1505,6 +2463,10 @@ def self_check(out: Path, ctx: dict, log) -> bool:
                      f"(max {max(intr):.2f} m{' / centreline inside a footprint' if max(intr) >= 99 else ''})")
     else:
         log("[check] no building footprint reaches the ride's carriageway")
+    if gaps:
+        gaps = np.array(gaps)
+        log(f"[check] buildings: min clearance from the carriageway edge {gaps.min():.2f} m; "
+            f"{int((gaps < 0.3).sum())} within 0.3 m, {int((gaps < 1.0).sum())} within 1 m")
     for m in warns:
         log(f"[check] WARN {m}")
     for m in errs[:40]:
@@ -1518,7 +2480,10 @@ def self_check(out: Path, ctx: dict, log) -> bool:
 # ---------------------------------------------------------------------------
 
 LANDUSE_COLORS = {"farmland": "#e8c547", "meadow": "#7fdc5a", "grass": "#b6f28a", "forest": "#1f7a1f",
-                  "orchard": "#d36bd3", "scrub": "#9a7b3c", "residential": "#ff7f50"}
+                  "orchard": "#d36bd3", "scrub": "#9a7b3c", "residential": "#ff7f50", "greenhouse": "#e0f4ff",
+                  "olive": "#b5c27a", "terraces": "#d8a050", "garden": "#59e0a0"}
+WALL_COLORS = {"retaining": "#ff9a00", "terrace": "#ffd27a", "masonry": "#ff4fd8", "parapet": "#ffffff",
+               "fence": "#9fd0ff"}
 
 
 def render_debug(dbg: Path, ctx: dict, log):
@@ -1549,8 +2514,12 @@ def render_debug(dbg: Path, ctx: dict, log):
         for f_ in ctx["fences"]:
             p = np.asarray(f_["points"])
             ax.plot(p[:, 0], p[:, 1], color="#ff00ff", lw=1.2 * lw)
+        for w in ctx.get("walls") or []:
+            p = np.asarray(w["points"])
+            ax.plot(p[:, 0], p[:, 1], color=WALL_COLORS[w["kind"]], lw=0.9 * lw)
         polys = [np.asarray(b["ring"]) for b in ctx["buildings"]]
-        ax.add_collection(PolyCollection(polys, facecolors="none", edgecolors="#ff2020", linewidths=1.0 * lw))
+        ecol = [{"greenhouse": "#00e5ff", "cistern": "#0040ff"}.get(b["kind"], "#ff2020") for b in ctx["buildings"]]
+        ax.add_collection(PolyCollection(polys, facecolors="none", edgecolors=ecol, linewidths=1.0 * lw))
         sh = ctx["shrubs"]
         if sh:
             P = np.array([[s["e"], s["n"]] for s in sh])
@@ -1607,6 +2576,10 @@ def render_debug(dbg: Path, ctx: dict, log):
               float(np.interp(course["climb"]["endS"], s, route[:, 1])), 90, 60),
              ("forest", 330.0, 160.0, 90, 60), ("orchard", -640.0, 190.0, 90, 60),
              ("steep_tight", se_, sn_, 30, 20)]
+    if ctx.get("zooms_s"):   # per-course zooms at route s instead of the Koppenberg's forest and orchard
+        zooms = [z for z in zooms if z[0] not in ("forest", "orchard")] + [
+            (nm, float(np.interp(sv, s, route[:, 0])), float(np.interp(sv, s, route[:, 1])), 90, 60)
+            for nm, sv in ctx["zooms_s"]]
     oE0, oN1 = ctx["oh"]["originEast"], ctx["oh"]["originNorth"]
     mpp = ctx["oh"]["widthM"] / ctx["oh"]["pixelsWide"]
     for name, ze, zn, hx, hy in zooms:
@@ -1653,7 +2626,7 @@ do {
     let s = try JSONDecoder().decode(SceneryFile.self, from: Data(contentsOf: dir.appendingPathComponent(name)))
     print("swift decode OK: schema \(s.schemaVersion), buildings \(s.buildings?.count ?? -1), trees \(s.trees?.count ?? -1), " +
           "shrubs \(s.shrubs?.count ?? -1), landuse \(s.landuse?.count ?? -1), roads \(s.roads?.count ?? -1), " +
-          "fences \(s.fences?.count ?? -1), water \(s.water?.count ?? -1)")
+          "fences \(s.fences?.count ?? -1), water \(s.water?.count ?? -1), walls \(s.walls?.count ?? -1)")
 } catch {
     print("swift decode FAILED: \(error)")
     exit(1)
@@ -1685,9 +2658,12 @@ def main(argv=None) -> int:
     ap.add_argument("--no-render", action="store_true", help="skip the debug PNGs")
     ap.add_argument("--swift-check", action="store_true",
                     help="after building, compile the app's CourseData.swift with swiftc and decode scenery.json")
+    ap.add_argument("--out-root", type=Path, default=None,
+                    help="write scenery.json to DIR/Courses/<id>/ and the debug files to DIR/debug/<id>/ "
+                         "(byte-identity checks); the course folder is read as usual")
     args = ap.parse_args(argv)
-    rc = build(args.course, render=not args.no_render)
-    if rc == 0 and args.swift_check:
+    rc = build(args.course, render=not args.no_render, out_root=args.out_root)
+    if rc == 0 and args.swift_check and args.out_root is None:
         rc = swift_check(args.course)
     return rc
 

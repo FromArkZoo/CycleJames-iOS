@@ -54,7 +54,8 @@ enum WorldDebugShots {
     static func run(scene: SCNScene, route: CourseRoute, quality: GraphicsQuality,
                     configure: (SCNCamera) -> Void, frame: FrameUpdater, dir: String,
                     terrainHeight: (Float, Float) -> Float,
-                    light: LightProfile = .open, setExposure: (Float) -> Void = { _ in }) {
+                    light: LightProfile = .open, setExposure: (Float) -> Void = { _ in },
+                    partNames: [ObjectIdentifier: String] = [:]) {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let renderer = SCNRenderer(device: device, options: nil)
         renderer.scene = scene
@@ -183,8 +184,15 @@ enum WorldDebugShots {
             let target: SIMD3<Float>
             switch spec.view {
             case "broadcast":
-                eye = pose.position + right * 6.5 + fwdH * 5 + SIMD3(0, 1.9, 0)
                 target = pose.position + SIMD3(0, 1.0, 0) - fwdH * 1.5
+                // Over or out of the Poggio's scrub and shrubs (no field
+                // elsewhere: unchanged): up to 2.5 m higher, else on the
+                // road's right edge as the ride's moto (pulled in along the
+                // line, the 2400 station ended behind the edge wall's top).
+                let station = pose.position + right * 6.5 + fwdH * 5 + SIMD3(0, 1.9, 0)
+                let moto = route.pose(at: spec.s + 5, lateral: 2.4).position + SIMD3(0, 1.9, 0)
+                eye = VegetationBuilder.ScrubField.current(routeLength: route.length)?
+                    .clearSight(eye: station, target: target, maxRaise: 2.5, fallback: moto) ?? station
             case "back":
                 eye = route.pose(at: spec.s + 6, lateral: 0.2).position + SIMD3(0, 2.4, 0)
                 target = route.pose(at: spec.s - 60).position + SIMD3(0, 3, 0)
@@ -252,10 +260,22 @@ enum WorldDebugShots {
             if let data = img.pngData() {
                 try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
             }
-            report += "\(name): ~\(visibleTriangles(scene: scene, renderer: renderer, camera: camNode)) triangles in view, exposure \(String(format: "%+.2f", ev)) EV\n"
+            let seen = visibleStats(scene: scene, renderer: renderer, camera: camNode)
+            let roots = seen.byRoot.sorted { $0.key < $1.key }
+                .map { "\($0.key) \($0.value.triangles / 1000)k/\($0.value.draws)" }.joined(separator: ", ")
+            report += "\(name): ~\(seen.triangles) triangles in view, \(seen.draws) draws, exposure \(String(format: "%+.2f", ev)) EV (\(roots))\n"
+            // The props in view by material (`partNames`).
+            if !partNames.isEmpty {
+                let parts = seen.byMaterial.compactMap { k, v in partNames[k].map { ($0, v) } }.sorted { $0.1 > $1.1 }
+                report += "  props by part: " + parts.map { "\($0.0) \($0.1 / 1000)k" }.joined(separator: ", ") + "\n"
+            }
         }
         setExposure(0)
         camNode.removeFromParentNode()
+        let all = sceneStats(scene: scene)
+        report = "scene: \(all.nodes) nodes with geometry, \(all.draws) draws if all in view\n" + report
+        let footprint = WorldBuildLog.footprintMB()
+        report += "memory footprint after the shots \(footprint.now) MB, peak so far \(footprint.peak) MB\n"
         try? report.write(to: URL(fileURLWithPath: dir).appendingPathComponent("triangles_\(quality.rawValue)\(tag).txt"),
                           atomically: true, encoding: .utf8)
     }
@@ -337,23 +357,61 @@ enum WorldDebugShots {
         return node
     }
 
-    /// Triangles SceneKit would draw from this camera: nodes whose bounds
-    /// meet the frustum, at the level of detail their distance selects.
-    static func visibleTriangles(scene: SCNScene, renderer: SCNRenderer, camera: SCNNode) -> Int {
-        var total = 0
+    /// Triangles and draw calls SceneKit would issue from this camera (the
+    /// main pass, not the shadow cascades): nodes whose bounds meet the
+    /// frustum, at the level of detail their distance selects (a level
+    /// without geometry draws nothing), one draw per element.
+    static func visibleStats(scene: SCNScene, renderer: SCNRenderer, camera: SCNNode)
+        -> (triangles: Int, draws: Int, byRoot: [String: (triangles: Int, draws: Int)], byMaterial: [ObjectIdentifier: Int]) {
+        var total = 0, draws = 0
+        var byRoot: [String: (triangles: Int, draws: Int)] = [:]
+        var byMaterial: [ObjectIdentifier: Int] = [:]
         let eye = camera.simdWorldPosition
-        scene.rootNode.enumerateHierarchy { node, _ in
-            guard let g = node.geometry, !node.isHidden, renderer.isNode(node, insideFrustumOf: camera) else { return }
-            let (c, _) = node.boundingSphere
-            let centre = node.simdConvertPosition(SIMD3(Float(c.x), Float(c.y), Float(c.z)), to: nil)
-            let d = CGFloat(simd_distance(centre, eye))
-            var geo = g
-            for lod in g.levelsOfDetail ?? [] where d >= lod.worldSpaceDistance {
-                if let lg = lod.geometry { geo = lg }
+        for root in scene.rootNode.childNodes {
+            root.enumerateHierarchy { node, _ in
+                guard let g = node.geometry, !node.isHidden, renderer.isNode(node, insideFrustumOf: camera) else { return }
+                let (c, _) = node.boundingSphere
+                let centre = node.simdConvertPosition(SIMD3(Float(c.x), Float(c.y), Float(c.z)), to: nil)
+                let d = CGFloat(simd_distance(centre, eye))
+                var geo: SCNGeometry? = g
+                var level = 0
+                for (k, lod) in (g.levelsOfDetail ?? []).enumerated() where d >= lod.worldSpaceDistance {
+                    geo = lod.geometry
+                    level = k + 1
+                }
+                guard let geo else { return }
+                let t = geo.elements.reduce(0) { $0 + $1.primitiveCount }
+                for (k, e) in geo.elements.enumerated() where k < geo.materials.count {
+                    byMaterial[ObjectIdentifier(geo.materials[k]), default: 0] += e.primitiveCount
+                }
+                total += t
+                draws += geo.elements.count
+                // Unnamed nodes by their root: terrain chunks by size (near
+                // 128 m, far 640 m, horizon), plant clusters by level.
+                var key = node.name.map { "\(root.name ?? "?")/\($0)" } ?? root.name ?? "?"
+                if node.name == nil, root.name == "terrain" {
+                    let r = node.boundingSphere.radius
+                    key += r < 200 ? "/near" : r < 1200 ? "/far" : "/horizon"
+                } else if node.name == nil, root.name == "vegetation" {
+                    key += "/L\(level)"
+                }
+                byRoot[key, default: (0, 0)].triangles += t
+                byRoot[key, default: (0, 0)].draws += geo.elements.count
             }
-            total += geo.elements.reduce(0) { $0 + $1.primitiveCount }
         }
-        return total
+        return (total, draws, byRoot, byMaterial)
+    }
+
+    /// Every node with geometry in the scene and its elements (the draws if
+    /// everything were in view at full detail).
+    static func sceneStats(scene: SCNScene) -> (nodes: Int, draws: Int) {
+        var nodes = 0, draws = 0
+        scene.rootNode.enumerateHierarchy { node, _ in
+            guard let g = node.geometry else { return }
+            nodes += 1
+            draws += g.elements.count
+        }
+        return (nodes, draws)
     }
 }
 #endif

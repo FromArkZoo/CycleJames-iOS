@@ -88,6 +88,38 @@ struct CourseArt: Sendable {
     /// section, side and width beyond the carriageway edge (the
     /// Taaienberg's summit corner, paved round its sculpture in 2023).
     var clearings: [(span: Span, side: Double, width: Double)] = []
+    /// Retaining walls and parapets at the carriageway edge on the Riviera
+    /// (the Poggio's honey sandstone, grey squared stone and concrete),
+    /// built by `BuildingBuilder.buildRivieraRoadside`. Where the regional
+    /// map's walls (scenery `walls`) stand at the edge, they give the wall's
+    /// line and crest and these only its look and what stands on it.
+    var masonry: [Masonry] = []
+    /// Galvanised W-beam guardrail ("doppia onda") on C-posts, its rail top
+    /// 0.75 m above the road: section, side and the posts' distance beyond
+    /// the carriageway edge.
+    var guardrails: [(span: Span, side: Double, offset: Double)] = []
+    /// Railings, fences and screens standing on the verge (not on a wall):
+    /// section, side, distance beyond the edge and kind.
+    var railings: [(span: Span, side: Double, offset: Double, kind: Railing)] = []
+    /// Words painted big on a wall's road face (the "IL POGGIO" on the
+    /// dark wall below the top): middle at route distance `s`, side, the
+    /// text and the letters' height.
+    var paintedWords: [(s: Double, side: Double, text: String, height: Double)] = []
+    /// Black plates with a white chevron on a hairpin's outside wall, at
+    /// route distance `s`, pointing the way the road turns.
+    var chevrons: [(s: Double, side: Double, pointsLeft: Bool)] = []
+    /// A trolleybus line's overhead: two pairs of contact wires over the
+    /// road on span wires between steel poles either side (the Via Aurelia
+    /// at the Poggio's foot, the Sanremo-Taggia filobus).
+    var trolleyWires: [Span] = []
+    /// Riviera furniture placed by its map position (course east and north,
+    /// metres) rather than along the route, facing `facing` degrees
+    /// clockwise from north: things standing well off a tight corner, where
+    /// a route distance and offset would swing with the road's heading (the
+    /// Poggio's piazza, from its OSM nodes).
+    var placed: [(prop: RivieraProp, east: Double, north: Double, facing: Double)] = []
+    /// The region the course is drawn as (`WorldLook`).
+    var look: WorldLook = .flanders
 
     /// Plates on one galvanised pole (or a wall bracket), top to bottom:
     /// keys of the sign atlas (cj_signs_map.json, baked by
@@ -146,6 +178,10 @@ struct CourseArt: Sendable {
             /// round plinth of pale concrete that serves as a seat (the
             /// sculpture at the top of the Taaienberg, 2023).
             case bronzeLegs
+            /// The Riviera's street furniture and landmarks (the Poggio's
+            /// summit, jersey blocks, vans), built by
+            /// `BuildingBuilder.buildRivieraRoadside`.
+            case riviera(RivieraProp)
         }
 
         var kind: Kind
@@ -213,6 +249,12 @@ struct CourseArt: Sendable {
         /// Black post with a four-sided lantern on top (the Muur's park
         /// and the chapel).
         case postLantern
+        /// Tall galvanised post, 8.5 m, one straight arm and a flat LED
+        /// head (the SP55 and the Poggio's summit).
+        case galvanisedLED
+        /// Dark-grey cast-iron post with a lantern (Piazza della Libertà,
+        /// 2026).
+        case castIron
     }
 
     enum RailPaint: Sendable {
@@ -240,6 +282,11 @@ struct CourseArt: Sendable {
         case concrete
         /// Creosoted timber poles.
         case wood
+        /// The Riviera's timber poles: no cross-arm, a black twisted
+        /// low-voltage bundle and a thin telephone line, sagging well.
+        case woodBundle
+        /// The Riviera's round, tapered concrete poles with the same lines.
+        case concreteBundle
     }
 
     struct HouseLook: Sendable {
@@ -296,7 +343,16 @@ struct CourseArt: Sendable {
     /// none.
     func pavedWidth(_ s: Double, side: Double) -> Double {
         max(pavementWidth(s, side: side),
-            pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0)
+            pavedVerges.filter { $0.side * side > 0 && $0.span.contains(s) }.map(\.width).max() ?? 0,
+            masonryWidth(s, side: side))
+    }
+
+    /// Width a Riviera wall at the edge takes on a side at `s` (its road
+    /// face's offset and its thickness); 0 where none. No verge grass grows
+    /// in front of it or out of it.
+    func masonryWidth(_ s: Double, side: Double) -> Double {
+        guard !masonry.isEmpty else { return 0 }
+        return masonry.filter { $0.side * side > 0 && $0.span.contains(s) }.map { $0.offset + $0.thickness }.max() ?? 0
     }
 
     /// Whether a point `beyondEdge` metres past the carriageway edge on
@@ -345,8 +401,18 @@ struct CourseArt: Sendable {
     }
 
     static func make(bundle: CourseBundle) -> CourseArt {
-        if let known = byCourseID[bundle.id] { return known }
-        return CourseArt(sunkenLane: detectSunkenLane(route: bundle.route, terrain: bundle.terrainNear))
+        var art = byCourseID[bundle.id]
+            ?? CourseArt(sunkenLane: detectSunkenLane(route: bundle.route, terrain: bundle.terrainNear))
+        #if DEBUG
+        if let look = WorldLook.launchOverride { art.look = look }
+        // -rivieraRoadsideSample (with -courseLook riviera): a sample of the
+        // Riviera's walls, railings, signs and furniture up a course that has
+        // none, to judge them on a familiar road.
+        if art.look.isRiviera, ProcessInfo.processInfo.arguments.contains("-rivieraRoadsideSample") {
+            art.addRivieraSample(climb: bundle.climb.startS...bundle.climb.endS, length: bundle.route.length)
+        }
+        #endif
+        return art
     }
 
     // MARK: Hand-placed
@@ -789,6 +855,8 @@ struct CourseArt: Sendable {
             // photos, the trees behind the paling).
             clearings: [(834...856, -1, 8.0)]
         ),
+        // Milano-Sanremo's last climb, drawn as the Riviera (`CourseArt+Poggio`).
+        "poggio": .poggio,
     ]
 
     // MARK: Found in the terrain

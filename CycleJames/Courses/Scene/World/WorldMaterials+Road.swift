@@ -92,12 +92,63 @@ extension WorldMaterials {
     func makeCobbles() -> SCNMaterial { setts(geometry: WorldShaders.settGeometry, surface: 0) }
 
     func makeAsphalt() -> SCNMaterial {
-        paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail",
-              tileU: 2, tileV: 2, mud: 0.3, normal: 0.7,
-              fallback: UIColor(white: 0.30, alpha: 1))
+        if art.look.isRiviera { return rivieraRoad(surface: WorldShaders.rivieraAsphaltSurface) }
+        return paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail",
+                     tileU: 2, tileV: 2, mud: 0.3, normal: 0.7,
+                     fallback: UIColor(white: 0.30, alpha: 1))
     }
 
-    func makeSideAsphalt() -> SCNMaterial { draped(asphalt) }
+    func makeSideAsphalt() -> SCNMaterial {
+        guard art.look.isRiviera else { return draped(asphalt) }
+        let m = asphalt.copy() as! SCNMaterial
+        if m.shaderModifiers != nil {
+            m.shaderModifiers = [.geometry: WorldShaders.rivieraDrapedGeometry,
+                                 .surface: WorldShaders.rivieraSideAsphaltSurface]
+            // The lanes and driveways are older and dustier than the SP55,
+            // resurfaced for the race (a pale lane read as a slab on the verge).
+            m.diffuse.intensity = 5.2
+            setAsphaltK(m, intensity: 5.2)
+        }
+        return m
+    }
+
+    /// The fine tarmac texture's mean luminance (linear, Rec. 709), measured
+    /// from cj_asphalt_fine_albedo.jpg: 0.0582 (median 0.054, p99 0.12).
+    static let fineAsphaltMean = 0.0582
+
+    /// `rivieraAsphaltCore`'s uniforms: the grain's mean at this intensity,
+    /// about which the chips' contrast is compressed, and the route distance
+    /// before which no patch repair is laid: the first 60 m above the fork,
+    /// evenly surfaced in the 2024 POV (f0 to f2, look 0-66 m).
+    func setAsphaltK(_ m: SCNMaterial, intensity: Double) {
+        let k = SCNVector4(Float(Self.fineAsphaltMean * intensity), Float(bundle.climb.startS + 60), 0, 0)
+        m.setValue(NSValue(scnVector4: k), forKey: "asphaltK")
+    }
+
+    /// The SP55's tarmac (`WorldShaders.rivieraAsphaltCore`) and the paint
+    /// on it, which shows the same tarmac where it has worn through. Fine
+    /// limestone-chip tarmac (`cj_asphalt_fine_*`, bake_materials.py, 1.6 m
+    /// tile, 0.058 linear) at 5.9 times: about 0.32 linear, sun-bleached.
+    /// Lit by the course's sun it renders sunlit lanes at #a4a4a2-#b0b0ae
+    /// (look bible: #a4a6a1 sunlit, phone; the summit photo #9fa09d-
+    /// #b4b5b0), nearly as bright as the sandstone walls beside it, as in
+    /// the 2024 frames (wall to road about 1.0; the GoPro's #807c7e is
+    /// about 1 EV under). At 2.55 times (0.15, the bible's paint base) it
+    /// read as a dark brownish band 1.4-1.6 times darker than the walls.
+    func rivieraRoad(surface: String) -> SCNMaterial {
+        let m = pbr(UIColor(white: 0.42, alpha: 1), roughness: 0.75)
+        guard let img = textures.image("cj_asphalt_fine_albedo") else { return m }
+        m.diffuse.tiled(img)
+        m.diffuse.contentsTransform = Self.scale(1 / 1.6, 1 / 1.6)
+        m.diffuse.intensity = 5.9
+        bind(m, "detailTex", textures.metal("cj_asphalt_fine_detail", srgb: false)
+             ?? textures.metal(image: WorldTextures.solid(UIColor(red: 0.5, green: 0.5, blue: 0.7, alpha: 1)), srgb: false))
+        m.setValue(NSNumber(value: 0.55), forKey: "normalStrength")
+        setAsphaltK(m, intensity: 5.9)
+        bindLight(m)
+        m.shaderModifiers = [.geometry: WorldShaders.rivieraGeometry, .surface: surface]
+        return m
+    }
     /// Draped cobbled side roads, each laid from its own origin
     /// (`RoadBuilder.buildSideRoads`). Not `draped(_:)`: its geometry
     /// modifier doesn't pass the setts' road coordinates on.
@@ -122,7 +173,19 @@ extension WorldMaterials {
 
     /// Pale granite or concrete edge stones with a joint every metre:
     /// paler than the setts beside them (photos of all three climbs).
-    func makeKerb() -> SCNMaterial { concrete(slabM: 1.0, tile: 0.8, mud: 0.7, brightness: 1.75) }
+    func makeKerb() -> SCNMaterial {
+        if art.look.isRiviera { return rivieraConcrete(slabM: 1.0, tile: 0.8, brightness: 1.5) }
+        return concrete(slabM: 1.0, tile: 0.8, mud: 0.7, brightness: 1.75)
+    }
+
+    /// The Riviera's concrete kerbs and gutters: warmer and darker than the
+    /// Flemish stones, sun-faded and dusty (look.md: gutters #8f877b, kerbs
+    /// sunlit #877a6e-#9e9388), with no mud.
+    func rivieraConcrete(slabM: Float, tile: Float, brightness: CGFloat) -> SCNMaterial {
+        let m = concrete(slabM: slabM, tile: tile, mud: 0, brightness: brightness)
+        if m.shaderModifiers != nil { m.shaderModifiers?[.surface] = WorldShaders.rivieraConcreteSurface }
+        return m
+    }
 
     /// Pale, weathered concrete with dark joints every `slabM` metres along
     /// the road: concrete-plate lanes (the Stooktestraat) and precast
@@ -138,7 +201,10 @@ extension WorldMaterials {
         return m
     }
 
-    func makeRoadPaint() -> SCNMaterial { pbr(UIColor(white: 0.78, alpha: 1), roughness: 0.6) }
+    func makeRoadPaint() -> SCNMaterial {
+        if art.look.isRiviera { return rivieraRoad(surface: WorldShaders.rivieraPaintSurface) }
+        return pbr(UIColor(white: 0.78, alpha: 1), roughness: 0.6)
+    }
 
     func makeCycleLane() -> SCNMaterial {
         let m = paved(albedo: "cj_asphalt_albedo", detail: "cj_asphalt_detail", tileU: 2, tileV: 2, mud: 0.2,
@@ -152,5 +218,8 @@ extension WorldMaterials {
     }
 
     func makeConcrete() -> SCNMaterial { concrete(slabM: 5, tile: 2, mud: 0.25) }
-    func makeGutter() -> SCNMaterial { concrete(slabM: 1, tile: 0.8, mud: 0.5, brightness: 1.5) }
+    func makeGutter() -> SCNMaterial {
+        if art.look.isRiviera { return rivieraConcrete(slabM: 1, tile: 0.8, brightness: 1.15) }
+        return concrete(slabM: 1, tile: 0.8, mud: 0.5, brightness: 1.5)
+    }
 }

@@ -5,11 +5,14 @@
 """Fit the leaf-card hulls and pick the hedge-core texels for cj_foliage.png.
 
     uv run --script scripts/courses/textures/fit_hulls.py [path/to/cj_foliage.png]
+    uv run --script scripts/courses/textures/fit_hulls.py --med [path/to/cj_foliage_med.png]
 
 Run it after re-baking the foliage atlas (bake_materials.py --only foliage)
 and paste its output over the constants in TreeArchetypes.swift; the test
 `TreeArchetypeTests.test_hullsEncloseTheirLeaves` fails until they match the
-atlas.
+atlas. With `--med`, the same for the Riviera atlas (bake_riviera_plants.py
+--only foliage) and the `med*` constants in TreeArchetypes+Riviera.swift,
+checked by `test_medHullsEncloseTheirLeaves`.
 
 For each quadrant `TreeArchetype.card` draws (broad, poplar, ivy), in card
 units as `card` maps them (-1...1 over the quadrant's inset uv rect, x right,
@@ -40,12 +43,29 @@ from scipy.ndimage import minimum_filter, uniform_filter
 ROOT = Path(__file__).resolve().parents[3]
 ATLAS = ROOT / "CycleJames/Resources/CourseTextures/cj_foliage.png"
 SWIFT = ROOT / "CycleJames/Courses/Scene/World/TreeArchetypes.swift"
+ATLAS_MED = ROOT / "CycleJames/Resources/CourseTextures/cj_foliage_med.png"
+SWIFT_MED = ROOT / "CycleJames/Courses/Scene/World/TreeArchetypes+Riviera.swift"
 
 # TreeArchetype's quadrants (u0, v0, u1, v1), v down; keep in step.
 QUADS = {
     "broad": (0.005, 0.005, 0.495, 0.495),
     "poplar": (0.505, 0.005, 0.995, 0.495),
     "ivy": (0.005, 0.505, 0.495, 0.995),
+}
+
+
+def med_cell(col: int, row: int) -> tuple:
+    """A 512 px cell of the 2048 px Riviera atlas, inset 5 px (TreeArchetype.medCell)."""
+    i = 5 / 2048
+    return (col * 0.25 + i, row * 0.25 + i, (col + 1) * 0.25 - i, (row + 1) * 0.25 - i)
+
+
+# The Riviera atlas's cells drawn as trimmed cards (TreeArchetype.medHull);
+# names as the Swift constants' (`medAleppoHull`, ...).
+QUADS_MED = {
+    "medAleppo": med_cell(0, 0), "medPinea": med_cell(1, 0), "medOlive": med_cell(2, 0), "medEvergreen": med_cell(3, 0),
+    "medCypress": med_cell(0, 1), "medOleander": med_cell(2, 1), "medBougainvillea": med_cell(3, 1),
+    "medFan": med_cell(0, 3), "medDeadFan": med_cell(1, 3), "medIceplant": med_cell(2, 3), "medReed": med_cell(3, 3),
 }
 FIT_ALPHA = 0.3
 CUT_ALPHA = 0.42
@@ -80,11 +100,11 @@ def fit(px: np.ndarray, py: np.ndarray, texel: float) -> np.ndarray:
     return best[1]
 
 
-def current_hulls() -> dict:
-    """The hulls TreeArchetypes.swift holds now, by quadrant name."""
-    text = SWIFT.read_text()
+def current_hulls(swift: Path, quads: dict) -> dict:
+    """The hulls the Swift file holds now, by quadrant name."""
+    text = swift.read_text() if swift.exists() else ""
     out = {}
-    for name in QUADS:
+    for name in quads:
         m = re.search(rf"static let {name}Hull: \[SIMD2<Float>\] = \[(.*?)\]", text, re.S)
         if m:
             out[name] = [(float(a), float(b)) for a, b in re.findall(r"SIMD2\(([-\d.]+), ([-\d.]+)\)", m.group(1))]
@@ -92,7 +112,10 @@ def current_hulls() -> dict:
 
 
 def main() -> int:
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else ATLAS
+    args = [a for a in sys.argv[1:] if a != "--med"]
+    med = "--med" in sys.argv[1:]
+    quads, swift = (QUADS_MED, SWIFT_MED) if med else (QUADS, SWIFT)
+    path = Path(args[0]) if args else (ATLAS_MED if med else ATLAS)
     im = np.asarray(Image.open(path).convert("RGBA"), np.float32) / 255
     H, W = im.shape[:2]
     a = im[..., 3]
@@ -103,8 +126,8 @@ def main() -> int:
     sd7 = np.sqrt(np.maximum(uniform_filter(lum * lum, 7) - mean7 * mean7, 0))
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
     U, V = (xs + 0.5) / W, (ys + 0.5) / H
-    old = current_hulls()
-    for name, (u0, v0, u1, v1) in QUADS.items():
+    old = current_hulls(swift, quads)
+    for name, (u0, v0, u1, v1) in quads.items():
         sel = (U >= u0) & (U <= u1) & (V >= v0) & (V <= v1)
         tx = (U - u0) / (u1 - u0) * 2 - 1
         ty = (v1 - V) / (v1 - v0) * 2 - 1

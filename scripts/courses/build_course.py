@@ -4,18 +4,29 @@
 # ///
 """Bake a CycleJames climb course from open data (see scripts/courses/FORMAT.md).
 
-    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg, muur, molenberg, taaienberg)
+    uv run --script scripts/courses/build_course.py koppenberg   (or oudekwaremont, paterberg, muur, molenberg,
+                                                                  taaienberg, poggio)
+    ... [--out-root DIR] [--near-source auto|lidar|ctr] [--swift-check]
 
 Sources (all fetched once and cached under scripts/courses/.cache/<id>/):
   * OpenStreetMap via Overpass  -> route centreline, surface, names
-  * Digitaal Vlaanderen DHM Vlaanderen II (WCS, DTM + DSM 1 m, Lambert 72/TAW)
-  * Digitaal Vlaanderen orthophoto mosaic (WMS, summer flight)
+  * The Flemish bergs (Lambert 72, EPSG:31370):
+    - Digitaal Vlaanderen DHM Vlaanderen II (WCS, DTM + DSM 1 m, Lambert 72/TAW)
+    - Digitaal Vlaanderen orthophoto mosaic (WMS, summer flight)
+  * The Poggio di Sanremo (RDN2008 / UTM 32N, EPSG:7791; heights above the Genova 1942 datum):
+    - Regione Liguria LiDAR DTM/DSM 1 m when the user has downloaded them (e-mail delivery) into
+      .cache/poggio/lidar/, else a 1 m DTM shaped from the Carta Tecnica Regionale 1:5000 3D survey
+      (WFS: road areas, centrelines, walls, contours, spot heights) over INGV TINITALY 10 m
+    - INGV TINITALY/1.1 (WCS, 10 m) for the far grid and the skyline (horizon) raster
+    - Regione Liguria Ortofoto 2022 (WMS, EPSG:7791), Linea di costa 2022 (WFS) for the sea
 
 Outputs go to CycleJames/Resources/Courses/<id>/ (shipped in the app), the
 raw aerial photo, which only build_scenery.py and
 textures/bake_course_maps.py read, to scripts/courses/pipeline/<id>/, and
-debug renders to scripts/courses/debug/<id>/. Everything downloaded is
-treated as data only.
+debug renders to scripts/courses/debug/<id>/. --out-root DIR writes all
+three under DIR instead (DIR/Courses, DIR/pipeline, DIR/debug, and
+DIR/CourseTextures for a course's far photo), e.g. to compare a rebuild
+with the shipped files. Everything downloaded is treated as data only.
 
 Memory: everything is float32 and tiled; the far grid is built one 1 km
 tile at a time. Peak RSS is printed at the end.
@@ -48,6 +59,16 @@ OUT_ROOT = REPO / "CycleJames" / "Resources" / "Courses"
 # Outputs the app never reads: the folder above is a folder reference, so
 # everything in it ships. See FORMAT.md, "Pipeline-only data".
 PIPELINE_ROOT = REPO / "scripts" / "courses" / "pipeline"
+# Per-course textures the app ships beside the baked ground maps (the Poggio's far photo).
+TEXTURE_ROOT = REPO / "CycleJames" / "Resources" / "CourseTextures"
+
+
+def set_out_root(root: Path):
+    """--out-root: write the shipped, pipeline-only, debug and texture outputs under `root` (the cache is shared)."""
+    global OUT_ROOT, PIPELINE_ROOT, DEBUG_ROOT, TEXTURE_ROOT
+    OUT_ROOT, PIPELINE_ROOT, DEBUG_ROOT = root / "Courses", root / "pipeline", root / "debug"
+    TEXTURE_ROOT = root / "CourseTextures"
+
 
 USER_AGENT = "CycleJames-course-builder/1.0 (offline course baking; contact via repo owner)"
 
@@ -164,11 +185,15 @@ COURSES: dict[str, dict] = {
     },
 }
 
-# Pipeline tunables the other bergs share with the Koppenberg (see the comments above).
-_SHARED = {k: COURSES["koppenberg"][k] for k in (
+# Pipeline tunables every course shares with the Koppenberg (see the comments above).
+_TUNABLES = {k: COURSES["koppenberg"][k] for k in (
     "bank_limit_width", "bank_tol_m", "min_width_m", "bank_limit_max_nominal_m", "near_margin_m", "far_size_m", "far_cell_m",
     "smooth_sigma_m", "xy_smooth_sigma_m", "low_percentile", "despike_window_m", "despike_min_m",
-    "refine_centreline", "refine_sigma_m", "refine_max_m", "validation_ortho", "ortho", "scenery_sources")}
+    "refine_centreline", "refine_sigma_m", "refine_max_m")}
+# The Digitaal Vlaanderen sources every Flemish berg shares with the Koppenberg. A course with no "crs"
+# is in Lambert 72 (EPSG:31370) and also takes its DTM/DSM from DHM Vlaanderen II (DHMV_WCS below).
+_FLANDERS = {k: COURSES["koppenberg"][k] for k in ("validation_ortho", "ortho", "scenery_sources")}
+_SHARED = {**_TUNABLES, **_FLANDERS}
 _SURFACE_CRR = {"asphalt": 0.0040, "cobbles": 0.0090, "concrete": 0.0045}
 
 COURSES["oudekwaremont"] = {
@@ -470,6 +495,177 @@ COURSES["taaienberg"] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Courses outside Flanders name their CRS and their data sources. Regione Liguria's GeoServer
+# answers WMS, WFS and WCS for every layer below; its layers are CC BY 4.0 unless noted.
+# ---------------------------------------------------------------------------
+LIGURIA_GS = "https://geoservizi.regione.liguria.it/geoserver"
+# INGV TINITALY/1.1: a bare-earth DEM of Italy from the regional technical maps, 10 m cells with edges on
+# multiples of 10 m in WGS 84 / UTM 32N (the same grid as RDN2008 / UTM 32N to well under a metre), float32,
+# the sea is nodata -9999. One 5 km request is ~0.5 MB with DEFLATE.
+TINITALY = {
+    "kind": "wcs_geotiff", "url": "https://tinitaly.pi.ingv.it/TINItaly_1_1/wcs",
+    "coverage": "TINItaly_1_1__tinitaly_dem", "axes": ("E", "N"), "crs": "EPSG:32632", "cell_m": 10.0,
+    "name": "TINITALY/1.1 DEM 10 m (INGV)", "url_info": "https://doi.org/10.13127/tinitaly/1.1",
+    "attribution": "INGV – TINITALY/1.1 (Tarquini et al. 2023, doi:10.13127/tinitaly/1.1), CC BY 4.0",
+}
+# Carta Tecnica Regionale 1:5000 2007/2013 II Ed. 3D / DB Topografico (map 1237): every vertex carries its
+# orthometric height (0.6 m precision). Asked for in EPSG:7791, so Regione Liguria's own Monte Mario
+# transformation is applied by their server (pyproj's default one is ~2.1 m off here).
+CTR_WFS = {
+    "url": f"{LIGURIA_GS}/M1237/wfs",
+    "road_area": "M1237:L3150",       # Area stradale: carriageway polygons
+    "road_line": "M1237:L3152",       # Elemento stradale: centrelines
+    "walls": "M1237:L3175",           # Muro di sostegno e ritenuta del terreno: crest lines (retaining walls, terraces)
+    "spot": "M1237:L3190",            # Punti quotati: spot heights
+    "contours": "M1237:L3189",        # Curve di livello
+    "name": "Regione Liguria – Carta Tecnica Regionale 1:5000 2007/2013 II Ed. 3D / DB Topografico (M1237)",
+    "attribution": "Regione Liguria – Carta Tecnica Regionale 1:5000 2007/2013 II Ed. 3D / DB Topografico, CC BY 4.0",
+}
+
+COURSES["poggio"] = {
+    **_TUNABLES,
+    "name": "Poggio di Sanremo",
+    "region": "Sanremo, Imperia · Liguria",
+    # RDN2008 / UTM zone 32N with east, north axes (EPSG:7791): the CRS of the 2022 ortho, in which Regione
+    # Liguria's servers deliver every other layer. Heights are orthometric (Genova 1942 tide gauge).
+    "crs": "EPSG:7791",
+    "vertical_datum": "Genova 1942",
+    # Race order from the Milano-Sanremo 2026 course GPX (cyclingstage.com), matched way by way (<= 0.7 m), and
+    # the same in 2025: westbound on the Via Aurelia (SS1) -> right fork into Via Duca d'Aosta (SP55) -> Poggio,
+    # Piazza della Libertà -> sharp left into Via Val d'Olivi, round the summit loop and onto the descent.
+    "ways": [
+        280009642,  # Corso Giuseppe Mazzini = SS1 Via Aurelia; only from node 2691462545 to the fork (way_slices)
+        525886322,  # Via Duca d'Aosta, SP55: the whole climb, 3730.8 m (ridden against the OSM order)
+        502869479,  # Via Val d'Olivi (summit junction -> south)
+        502869477,  # Via Val d'Olivi
+        502869476,  # Via Val d'Olivi: the summit loop (south 140 m, hairpin right, north 70 m)
+        502869478,  # Via Val d'Olivi
+        28209618,   # Via Val d'Olivi: the descent (the trimmed route ends ~45 m in)
+    ],
+    # The fork (node 255430522) is node 39 of the 75 of the Aurelia's way: the race leaves the SS1 there,
+    # mid-way, so only that part of the way is chained.
+    "way_slices": {280009642: (2691462545, 255430522)},
+    "way_names": {280009642: "Via Aurelia"},   # OSM's name is the Sanremo street name, Corso Giuseppe Mazzini
+    # Node 255430522, 43.818572 N 7.825583 E: the turn off the Via Aurelia (IGM point 102705 "Bivio per Poggio"
+    # is 7 m away), RCS 24 m. Node 255430336, 43.828347 N 7.814871 E: Piazza della Libertà, RCS 160 m.
+    "climb_start": ("way_start", 525886322),
+    "climb_end": ("way_end", 525886322),
+    "approach_m": 300.0,
+    "exit_m": 300.0,          # 200 would end inside the summit loop; 300 is ~45 m into the descent
+    "osm_bbox": (43.8149, 7.8107, 43.8306, 7.8358),
+    # No OSM width tags on any route way. Medians of the CTR carriageway polygons measured across the route every
+    # metre (build_log.txt), rounded to 0.25 m; cross-sections of Esri z19 imagery (0.2 m/px, measurement only)
+    # agree on the SP55 (median ~5.8 m). RCS: "slightly narrowed carriageway".
+    "width_m": {
+        280009642: 8.25,  # SS1, two lanes: CTR 8.21 m (p10 7.18, p90 9.01); 9.7-11 m of asphalt with the shoulders
+        525886322: 5.75,  # SP55: CTR 5.88 m (p10 5.15, p90 6.96)
+        502869479: 7.0,   # the summit junction: an open piazza and car park (inside the summit's smoothing window)
+        502869477: 6.0,
+        502869476: 6.25,  # the summit loop between houses: CTR 6.31 m, cars parked along it
+        502869478: 6.75,  # CTR 6.88 m
+        28209618: 5.5,
+    },
+    "default_width_m": 5.5,
+    # Local exceptions to the 2 m centreline smoothing (OSM node, Gaussian sigma, half-width of the window
+    # along the route; the window eases in over its outer 15 m):
+    "xy_smooth_local": [
+        # The fork: OSM draws the ramp as an ~8 m sideways step within 13 m (segments at 21, 6, 322, 299 and
+        # 289 degrees after the Aurelia's 290); on the ground it splits off parallel to the Aurelia, so the
+        # rider drifts from the Aurelia's right lane onto it.
+        {"node": 255430522, "sigma_m": 10.0, "half_m": 50.0},
+        # The summit hairpin, ~150 degrees left with a 3.6 m OSM radius, through an open junction ~10-12 m
+        # wide (zebra crossings, a traffic island, the car park): the racing line swings round the island's tip
+        # at ~6 m radius, on the junction's asphalt (2022 ortho, CTR road areas), not through the parked cars
+        # inside the V (sigma 12-15 m would).
+        {"node": 255430336, "sigma_m": 9.0, "half_m": 40.0},
+    ],
+    # Wider carriageway: (OSM node, width, metres either side at full width, metres to ease back).
+    "width_local": [
+        {"node": 255430522, "width_m": 9.0, "half_m": 4.0, "ramp_m": 26.0},    # the ramp splitting off the SS1
+        {"node": 255430336, "width_m": 11.0, "half_m": 12.0, "ramp_m": 10.0},  # Piazza della Libertà
+    ],
+    # The road is a level shelf in a hillside of walls and terraces: it is laid into the near DTM level across
+    # (burn_road), so the profile is sampled on the carriageway only (a margin beyond the edge would pull it
+    # down on the valley side).
+    "road_burn": True,
+    "profile_margin_m": 0.0,
+    # Centre the route on the surveyed carriageway (CTR road-area polygons), as the GRB edges do in Flanders.
+    "road_edges": "ctr_road_area",
+    "edge_max_shift_m": 3.0,
+    "refine_centreline": False,
+    "bank_limit_width": False,   # a hillside road between retaining walls, not a sunken lane
+    "surface_crr": _SURFACE_CRR,  # all asphalt
+    "village": "Sanremo",
+    "climb_start_name": "Poggio – turn off the Via Aurelia",
+    "summit_name": "Poggio – Piazza della Libertà",
+    "streets": "Via Aurelia (SS1), Via Duca d'Aosta (SP55), Via Val d'Olivi",
+    # Places along the climb (route.md research, OSM ids there): placed at the nearest route point within
+    # 80 m of `near_s` (route s from the OSM geometry with a 300 m run-in).
+    "extra_landmarks": [
+        {"at": (43.820502, 7.823418), "near_s": 665, "kind": "note", "name": "Hairpin 1, right"},
+        {"at": (43.819943, 7.832425), "near_s": 1683, "kind": "note", "name": "Hairpin 2, left, above Capo Verde"},
+        {"at": (43.818793, 7.829521), "near_s": 2023, "kind": "note", "name": "Hairpin 3, right"},
+        {"at": (43.819533, 7.831579), "near_s": 2239, "kind": "note", "name": "Sharp left onto the Capo Verde ridge"},
+        {"at": (43.819386, 7.830966), "near_s": 2288, "kind": "note",
+         "name": "Santuario di Nostra Signora della Guardia, left"},
+        {"at": (43.820350, 7.830367), "near_s": 2383, "kind": "junction",
+         "name": "Incrocio N.S. della Guardia (RCS 113 m)"},
+        {"at": (43.825169, 7.820472), "near_s": 3376, "kind": "junction", "name": "Via Firenze, left: Poggio begins"},
+        {"at": (43.826827, 7.819999), "near_s": 3567, "kind": "note", "name": "Monte Calvo on the left; flat to the top"},
+        {"at": (43.828120, 7.815363), "near_s": 3982, "kind": "junction", "name": "Via Firenze rejoins, left"},
+        {"at": (43.828025, 7.815130), "near_s": 4068, "kind": "note", "name": "Bar and pharmacy, left"},
+        {"at": (43.827057, 7.814957), "near_s": 4179, "kind": "note", "name": "Hairpin right, the summit loop"},
+    ],
+    "roadbook": {
+        "name": "Milano-Sanremo 2026 course GPX (cyclingstage.com) + RCS 2026 Poggio profile (milanosanremo.it)",
+        "url": "https://cdn.cyclingstage.com/images/milan-san-remo/2026/route.gpx",
+        "retrieved": "2026-10-29",
+        "notes": "Race direction and streets: Via Aurelia (SS1), Via Duca d'Aosta (SP55), Via Val d'Olivi. Poggio di "
+                 "Sanremo 3.7 km, 136 m, 3.7 % average, max 8 %, from 24 m (SS1 Aurelia) to 160 m; 4 hairpins in "
+                 "the first 2 km (RCS, milanosanremo.it/en/tappe/milano-sanremo-2026/).",
+    },
+    # ---- data sources ----
+    # Near grid. "lidar": Regione Liguria's DTM (map 1909) and DSM First (map 1913) from the 2008-2010 PST LiDAR,
+    # 1 m, CC BY 4.0, delivered only by e-mail from the download service; drop the GeoTIFFs (any CRS) into
+    # .cache/poggio/lidar/dtm/ and .cache/poggio/lidar/dsm_first/ and rebuild. "ctr": without them, a 1 m DTM
+    # shaped from the CTR 3D survey over TINITALY, with the carriageway burned in level across at the CTR
+    # heights and no canopy (trees come from build_scenery). "auto" takes the LiDAR when it is there.
+    "near_source": "auto",
+    "lidar": {"dtm_dir": "lidar/dtm", "dsm_dir": "lidar/dsm_first",
+              "name": "Regione Liguria – DTM e DSM First derivati da LiDAR (maps 1909, 1913), 1 m",
+              "url": "https://srvcarto.regione.liguria.it/geoservices/apps/viewer/pages/apps/download/index.html?id=1909",
+              "attribution": "Regione Liguria – DTM e DSM First derivati da LiDAR (Piano Straordinario di "
+                             "Telerilevamento, MATTM 2008–2010), CC BY 4.0"},
+    "ctr": CTR_WFS,
+    "far_dtm": TINITALY,
+    # The skyline beyond the far grid: the Alpi Liguri behind Sanremo (Monte Bignone 1299 m, 8 km; Monte Ceppo
+    # 1627 m, 15 km) and the coast from Bordighera (Capo Sant'Ampelio, 12 km west) to Capo Berta (OSM cape,
+    # 43.8950 N 8.0776 E, 21 km east), as coarse land in a 44 x 44 km box.
+    "horizon": {"source": TINITALY, "size_m": 44000.0, "cell_m": 50.0, "tile_m": 10000},
+    # The sea: TINITALY's nodata, cut along Regione Liguria's 2022 coastline (map 2274) on the near grid.
+    # Terrain over it holds level_m - 1 m, the canopy 0.
+    "sea": {"level_m": 0.0, "coast_wfs": f"{LIGURIA_GS}/M2274/wfs", "coast_layer": "M2274:L10350",
+            "name": "Regione Liguria – Linea di costa 2022 (M2274:L10350)",
+            "attribution": "Regione Liguria – Linea di costa 2022, CC BY 4.0"},
+    "ortho": {
+        "service": f"{LIGURIA_GS}/M2555/wms",
+        "layer": "M2555:L10401",
+        "crs": "EPSG:7791",
+        "format": "image/jpeg",
+        "season": "summer",
+        "year": 2022,
+        "title": "Ortofoto a colori 2022 sc. 1:5000 (AGEA), Regione Liguria",
+        "m_per_px": 0.5,
+        "notes": "AGEA flight, summer 2022, native 0.2 m (sharp to ~0.4 m); shadows fall to the north-west "
+                 "(a morning flight). INSPIRE: no conditions apply.",
+        "attribution": "Regione Liguria – Ortofoto a colori 2022 sc. 1:5000 (AGEA)",
+    },
+    # The same photo over the whole far grid, for the land beyond the near grid (CourseTextures, shipped).
+    "ortho_far": {"m_per_px": 2.5, "file": "poggio_ortho_far.jpg", "quality": 85},
+    "scenery_sources": [],
+}
+
 DHMV_WCS = "https://geo.api.vlaanderen.be/DHMV/wcs"
 DHMV_WMS = "https://geo.api.vlaanderen.be/DHMV/wms"
 OVERPASS_ENDPOINTS = [
@@ -556,11 +752,29 @@ def fetch_osm(cfg: dict, cache: Path, log) -> dict:
         except FetchError as err:
             log(f"    overpass endpoint {ep} gave up: {err}")
     if body is None:
-        raise FetchError("all Overpass endpoints failed")
+        if not cfg.get("crs"):
+            raise FetchError("all Overpass endpoints failed")
+        return fetch_osm_api(cfg, cache, log)
     d = json.loads(body)
     d["_cache_file"] = name
     d["_query"] = q
     return d
+
+
+def fetch_osm_api(cfg: dict, cache: Path, log) -> dict:
+    """The route ways alone from the OSM API (way/<id>/full.json), when every Overpass instance is overloaded,
+    as Overpass-style way elements with geometry. build_course needs no side roads."""
+    els = []
+    for wid in cfg["ways"]:
+        body = cached_fetch(cache, f"osmapi_way_{wid}.json", f"https://api.openstreetmap.org/api/0.6/way/{wid}/full.json",
+                            validate=lambda b, h: b.lstrip().startswith(b"{"), log=log, tries=4)
+        d = json.loads(body)
+        nodes = {e["id"]: e for e in d["elements"] if e["type"] == "node"}
+        w = next(e for e in d["elements"] if e["type"] == "way" and e["id"] == wid)
+        els.append({"type": "way", "id": wid, "nodes": w["nodes"], "tags": w.get("tags", {}),
+                    "geometry": [{"lat": nodes[n]["lat"], "lon": nodes[n]["lon"]} for n in w["nodes"]]})
+    log(f"[osm] Overpass unavailable: {len(els)} route ways from the OSM API instead")
+    return {"elements": els, "_cache_file": "osmapi_way_*.json", "_query": "OSM API 0.6 way/<id>/full.json"}
 
 
 @dataclass
@@ -582,9 +796,14 @@ def build_chain(cfg: dict, osm: dict) -> Chain:
             raise SystemExit(f"OSM way {wid} missing from Overpass result")
         ways.append(by_id[wid])
     oriented = []
+    slices = cfg.get("way_slices", {})
     for k, w in enumerate(ways):
         nodes = list(w["nodes"])
         geom = [(p["lat"], p["lon"]) for p in w["geometry"]]
+        if w["id"] in slices:
+            # Only the part of the way between two of its nodes is ridden (a turn off it mid-way).
+            a, b = sorted((nodes.index(slices[w["id"]][0]), nodes.index(slices[w["id"]][1])))
+            nodes, geom = nodes[a:b + 1], geom[a:b + 1]
         if k == 0:
             nxt = ways[1]["nodes"]
             if nodes[-1] in (nxt[0], nxt[-1]):
@@ -710,10 +929,28 @@ def far_grid(cache: Path, x0: int, x1: int, y0: int, y1: int, cell: int, log, ti
     return out
 
 
-def fill_nans(a: np.ndarray, max_iter: int = 200) -> tuple[np.ndarray, int]:
-    """Fill NaN holes (e.g. under buildings) by nearest valid neighbour + light diffusion."""
+def fill_nans(a: np.ndarray, max_iter: int = 200, sea: np.ndarray | None = None) -> tuple[np.ndarray, int]:
+    """Fill NaN holes (e.g. under buildings) by nearest valid neighbour + light diffusion.
+
+    With a `sea` mask (cells already set to the sea's level), only land fills a hole: an inland hole on the
+    shore takes the beach's height, not the water's."""
     from scipy import ndimage
 
+    if sea is not None:
+        land = np.isfinite(a) & ~sea
+        mask = ~np.isfinite(a) & ~sea
+        n = int(mask.sum())
+        if n == 0 or not land.any():
+            return a, 0
+        idx = ndimage.distance_transform_edt(~land, return_distances=False, return_indices=True)
+        filled = a.astype(np.float32).copy()
+        filled[mask] = a[tuple(i[mask] for i in idx)]
+        del idx
+        den = np.maximum(ndimage.uniform_filter((~sea).astype(np.float32), size=3, mode="nearest"), 1e-6)
+        for _ in range(min(max_iter, 50)):
+            sm = ndimage.uniform_filter(np.where(sea, 0.0, filled).astype(np.float32), size=3, mode="nearest") / den
+            filled[mask] = sm[mask]
+        return filled, n
     mask = ~np.isfinite(a)
     n = int(mask.sum())
     if n == 0:
@@ -726,6 +963,206 @@ def fill_nans(a: np.ndarray, max_iter: int = 200) -> tuple[np.ndarray, int]:
         filled[mask] = sm[mask]
     del idx
     return filled, n
+
+
+# ---------------------------------------------------------------------------
+# Plain GeoTIFF, WCS, WFS (courses outside Flanders: Regione Liguria's GeoServer, INGV)
+# ---------------------------------------------------------------------------
+
+# Monte Mario / Italy zone 1 (EPSG:3003) as Regione Liguria transforms it, minus pyproj's default ("Inverse of
+# Monte Mario to WGS 84 (4)", 4 m accuracy): +1.49..+1.66 m east, +1.40..+1.43 m north over the 5 km box round
+# the Poggio (their REST transform_point at five points; an edge fit of the CTR on the 2022 ortho agrees).
+CRS_SHIFT_M = {"EPSG:3003": (1.57, 1.42)}
+
+
+def ogc_bbox(crs: str, x0, y0, x1, y1) -> str:
+    """A BBOX in the CRS's own axis order (WMS 1.3.0, WFS 2.0): east first for EPSG:31370 and 7791, north
+    first for EPSG:6707 (RDN2008 / UTM 32N N-E)."""
+    from pyproj import CRS
+    north_first = CRS.from_user_input(crs).axis_info[0].direction.lower() == "north"
+    return f"{y0},{x0},{y1},{x1}" if north_first else f"{x0},{y0},{x1},{y1}"
+
+
+def to_source_xy(course_crs: str, src_crs: str):
+    """f(E, N) -> (x, y) from the course CRS into a source raster's CRS, with CRS_SHIFT_M applied."""
+    from pyproj import CRS, Transformer
+    if CRS.from_user_input(course_crs) == CRS.from_user_input(src_crs):
+        return lambda e, n: (np.asarray(e, np.float64), np.asarray(n, np.float64))
+    tr = Transformer.from_crs(course_crs, src_crs, always_xy=True)
+    dx, dy = CRS_SHIFT_M.get(src_crs, (0.0, 0.0))
+
+    def f(e, n):
+        x, y = tr.transform(np.asarray(e, np.float64), np.asarray(n, np.float64))
+        return np.asarray(x) + dx, np.asarray(y) + dy
+    return f
+
+
+@dataclass
+class GeoRaster:
+    """A north-up raster: a[r, c] covers x in west + c*dx .. +dx, y in north - r*dy .. -dy. NaN = nodata."""
+    a: np.ndarray
+    west: float
+    north: float
+    dx: float
+    dy: float
+    epsg: int | None = None
+    has_nodata: bool = True     # the file declares a nodata value (GDAL_NODATA)
+
+    def sample(self, x, y, min_weight: float = 0.5):
+        """Bilinear between cell centres; nodata neighbours drop out and the rest are re-weighted, NaN when
+        less than `min_weight` of the weight is valid (so the sea edge stays where the source puts it)."""
+        x = np.asarray(x, np.float64); y = np.asarray(y, np.float64)
+        rows, cols = self.a.shape
+        fc = (x - self.west) / self.dx - 0.5
+        fr = (self.north - y) / self.dy - 0.5
+        c0 = np.floor(fc).astype(np.int64); r0 = np.floor(fr).astype(np.int64)
+        tx = fc - c0; ty = fr - r0
+        num = np.zeros(x.shape); den = np.zeros(x.shape)
+        for dr, dc, w in ((0, 0, (1 - tx) * (1 - ty)), (0, 1, tx * (1 - ty)), (1, 0, (1 - tx) * ty), (1, 1, tx * ty)):
+            rr = np.clip(r0 + dr, 0, rows - 1); cc = np.clip(c0 + dc, 0, cols - 1)
+            v = self.a[rr, cc]
+            ok = np.isfinite(v) & (r0 + dr >= 0) & (r0 + dr < rows) & (c0 + dc >= 0) & (c0 + dc < cols)
+            num += np.where(ok, v, 0.0) * w * ok
+            den += w * ok
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(den >= min_weight, num / np.maximum(den, 1e-12), np.nan).astype(np.float32)
+
+
+def read_geotiff(body: bytes) -> GeoRaster:
+    """A plain single-band GeoTIFF (GeoServer WCS, a LiDAR delivery): georeference from ModelTransformationTag
+    or tie point + pixel scale, PixelIsPoint moved to cell corners, GDAL_NODATA and values < -1000 to NaN."""
+    import tifffile
+    with tifffile.TiffFile(io.BytesIO(body)) as tf:
+        pg = tf.pages[0]
+        a = pg.asarray()
+        tags = {t.name: t.value for t in pg.tags.values()}
+    if a.ndim != 2:
+        raise ValueError(f"GeoTIFF is not a single-band raster (shape {a.shape}): a rendering, not heights?")
+    keys = {}
+    gk = tags.get("GeoKeyDirectoryTag")
+    if gk:
+        for i in range(4, 4 + 4 * int(gk[3]), 4):
+            keys[int(gk[i])] = int(gk[i + 3])
+    if "ModelTransformationTag" in tags:
+        m = tags["ModelTransformationTag"]
+        if abs(m[1]) > 1e-9 or abs(m[4]) > 1e-9:
+            raise ValueError("rotated GeoTIFF")
+        dx, dy, west, north = float(m[0]), -float(m[5]), float(m[3]), float(m[7])
+    else:
+        tp, sc = tags["ModelTiepointTag"], tags["ModelPixelScaleTag"]
+        dx, dy = float(sc[0]), float(sc[1])
+        west, north = float(tp[3]) - float(tp[0]) * dx, float(tp[4]) + float(tp[1]) * dy
+    if keys.get(1025) == 2:   # GTRasterTypeGeoKey = PixelIsPoint: the tie point is a cell centre
+        west -= dx / 2; north += dy / 2
+    a = a.astype(np.float32, copy=False)
+    nod = tags.get("GDAL_NODATA")
+    if nod not in (None, ""):
+        try:
+            a = np.where(a == np.float32(float(str(nod).strip("\x00 "))), np.nan, a).astype(np.float32)
+        except ValueError:
+            pass
+    a[a < -1000] = np.nan
+    return GeoRaster(a, west, north, dx, dy, keys.get(3072) or keys.get(2048), nod not in (None, ""))
+
+
+def wcs_geotiff(cache: Path, spec: dict, x0, x1, y0, y1, log) -> GeoRaster:
+    """WCS 2.0.1 GetCoverage of a box in the coverage's own CRS and axis labels, plain GeoTIFF, DEFLATE."""
+    ax, ay = spec.get("axes", ("E", "N"))
+    url = (f"{spec['url']}?service=WCS&version=2.0.1&request=GetCoverage&coverageId={spec['coverage']}"
+           f"&format=image/tiff&subset={ax}({x0},{x1})&subset={ay}({y0},{y1})&geotiff:compression=DEFLATE")
+    name = f"wcs_{spec['coverage']}_{ax}{x0}_{x1}_{ay}{y0}_{y1}.tif"
+    empty = cache / (name + ".empty")
+    if not empty.exists():
+        try:
+            body = cached_fetch(cache, name, url, validate=lambda b, h: b[:4] in (b"II*\x00", b"MM\x00*"), log=log,
+                                tries=3)
+        except FetchError as err:
+            if "Unable to read a coverage" not in str(err):
+                raise
+            # No granule of the mosaic in the box (TINITALY's open sea): GeoServer refuses rather than answering
+            # nodata. Remembered, so the next build does not ask again.
+            empty.write_text(str(err)[:500])
+    if empty.exists():
+        c = float(spec["cell_m"])
+        nx, ny = max(int(round((x1 - x0) / c)), 1), max(int(round((y1 - y0) / c)), 1)
+        return GeoRaster(np.full((ny, nx), np.nan, dtype=np.float32), float(x0), float(y1), c, c, None, True)
+    g = read_geotiff(body)
+    if not g.has_nodata and np.nanmin(g.a) == np.nanmax(g.a):
+        # Wholly outside the coverage (TINITALY's open sea): GeoServer fills it with one value, 0, and no nodata tag.
+        g.a[:] = np.nan
+    return g
+
+
+def raster_on_grid(cache: Path, spec: dict, crs: str, x0: int, x1: int, y0: int, y1: int, cell: float, log,
+                   tile_m: int = 5000, min_valid: float = 0.5) -> np.ndarray:
+    """A source raster on the course grid with NW corner (x0, y1), rows north->south: sampled bilinearly at the
+    centres of sub-cells no larger than the source cell, then block-averaged to `cell` where at least
+    `min_valid` of the sub-cells hold data (else NaN: the sea, for TINITALY). Fetched in tile_m tiles."""
+    src_cell = float(spec["cell_m"])
+    k = max(1, int(round(cell / src_cell)))
+    sub = cell / k
+    to_src = to_source_xy(crs, spec["crs"])
+    rows, cols = int(round((y1 - y0) / cell)), int(round((x1 - x0) / cell))
+    out = np.full((rows, cols), np.nan, dtype=np.float32)
+    step = max(int(tile_m // cell), 1)
+    for r0 in range(0, rows, step):
+        for c0 in range(0, cols, step):
+            r1, c1 = min(r0 + step, rows), min(c0 + step, cols)
+            ce = x0 + (c0 * k + np.arange((c1 - c0) * k) + 0.5) * sub
+            cn = y1 - (r0 * k + np.arange((r1 - r0) * k) + 0.5) * sub
+            EE, NN = np.meshgrid(ce, cn)
+            sx, sy = to_src(EE, NN)
+            # asked for on a 250 m lattice, so a route that moves a little keeps the cached tiles
+            pad, q = 2 * src_cell, 250.0
+            bx0 = int(math.floor((sx.min() - pad) / q) * q)
+            bx1 = int(math.ceil((sx.max() + pad) / q) * q)
+            by0 = int(math.floor((sy.min() - pad) / q) * q)
+            by1 = int(math.ceil((sy.max() + pad) / q) * q)
+            g = wcs_geotiff(cache, spec, bx0, bx1, by0, by1, log)
+            v = g.sample(sx, sy)
+            del g, EE, NN, sx, sy
+            blk = v.reshape(r1 - r0, k, c1 - c0, k)
+            cnt = np.isfinite(blk).sum(axis=(1, 3))
+            sums = np.nansum(blk, axis=(1, 3), dtype=np.float64)
+            out[r0:r1, c0:c1] = np.where(cnt >= min_valid * k * k, sums / np.maximum(cnt, 1), np.nan)
+            del v, blk
+    return out
+
+
+def wfs_geojson(cache: Path, url: str, typename: str, crs: str, x0, y0, x1, y1, log, page: int = 1000) -> list:
+    """Every feature of a WFS 2.0.0 layer in a box, GeoJSON reprojected by the server into `crs`, paged."""
+    feats, start = [], 0
+    while True:
+        q = urllib.parse.urlencode({
+            "service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": typename,
+            "outputFormat": "application/json", "srsName": crs, "bbox": f"{ogc_bbox(crs, x0, y0, x1, y1)},{crs}",
+            "count": page, "startIndex": start})
+        body = cached_fetch(cache, f"wfs_{typename.replace(':', '_')}_{x0}_{x1}_{y0}_{y1}_{start}.json", f"{url}?{q}",
+                            validate=lambda b, h: b.lstrip().startswith(b"{"), log=log, tries=4)
+        d = json.loads(body)
+        got = str(d.get("crs", {}).get("properties", {}).get("name", ""))
+        if got and not got.endswith(crs.split(":")[1]):
+            raise SystemExit(f"{typename} answered in {got}, expected {crs}")
+        f_ = d.get("features", [])
+        feats.extend(f_)
+        if len(f_) < page:
+            break
+        start += page
+    return feats
+
+
+def geom_lines(g: dict) -> list[np.ndarray]:
+    """The vertex arrays (x, y[, z]) of a GeoJSON geometry's lines or rings."""
+    t, c = (g or {}).get("type"), (g or {}).get("coordinates")
+    if t == "Point":
+        return [np.asarray([c], np.float64)]
+    if t in ("LineString", "MultiPoint"):
+        return [np.asarray(c, np.float64)]
+    if t in ("MultiLineString", "Polygon"):
+        return [np.asarray(x, np.float64) for x in c]
+    if t == "MultiPolygon":
+        return [np.asarray(x, np.float64) for p in c for x in p]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -760,6 +1197,15 @@ def resample_polyline(x: np.ndarray, y: np.ndarray, step: float):
 def gaussian1d(v: np.ndarray, sigma_samples: float) -> np.ndarray:
     from scipy.ndimage import gaussian_filter1d
     return gaussian_filter1d(v.astype(np.float64), sigma_samples, mode="nearest")
+
+
+def min_radius(x: np.ndarray, y: np.ndarray, step: float, where: np.ndarray, over_m: float = 4.0) -> float:
+    """Smallest turning radius of a polyline sampled every `step` m, from the heading change over `over_m`."""
+    h = np.unwrap(np.arctan2(np.diff(y), np.diff(x)))
+    k = max(int(round(over_m / step / 2)), 1)
+    dh = np.abs(h[2 * k:] - h[:-2 * k])
+    m = where[k:len(h) - k]
+    return float((2 * k * step) / max(dh[m].max(), 1e-9)) if m.any() else float("inf")
 
 
 def tangents(e: np.ndarray, n: np.ndarray, half: int = 2):
@@ -847,10 +1293,12 @@ def sample_rgb(arr: np.ndarray, oE, oN, mpp, e, n):
     return np.stack([bilinear(arr[..., c].astype(np.float32), oE, oN, mpp, e, n) for c in range(3)], axis=-1)
 
 
-def fetch_wms_mosaic(cache: Path, service: str, layer: str, gx0, gx1, gy0, gy1, mpp, log, tile_m=1000):
+def fetch_wms_mosaic(cache: Path, service: str, layer: str, gx0, gx1, gy0, gy1, mpp, log, tile_m=1000,
+                     crs: str = "EPSG:31370", fmt: str = "image/png"):
     from PIL import Image
     pw, ph = int(round((gx1 - gx0) / mpp)), int(round((gy1 - gy0) / mpp))
     img = Image.new("RGB", (pw, ph))
+    ext = "png" if fmt == "image/png" else "jpg"
     for ty0 in range(gy0, gy1, tile_m):
         ty1 = min(ty0 + tile_m, gy1)
         for tx0 in range(gx0, gx1, tile_m):
@@ -858,10 +1306,11 @@ def fetch_wms_mosaic(cache: Path, service: str, layer: str, gx0, gx1, gy0, gy1, 
             tw, th = int(round((tx1 - tx0) / mpp)), int(round((ty1 - ty0) / mpp))
             q = urllib.parse.urlencode({
                 "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetMap", "LAYERS": layer,
-                "STYLES": "", "CRS": "EPSG:31370", "BBOX": f"{tx0},{ty0},{tx1},{ty1}",
-                "WIDTH": tw, "HEIGHT": th, "FORMAT": "image/png"})
-            body = cached_fetch(cache, f"wms_{layer}_{tx0}_{tx1}_{ty0}_{ty1}_{mpp}.png", f"{service}?{q}",
-                                validate=lambda b, h: b[:8] == b"\x89PNG\r\n\x1a\n", log=log)
+                "STYLES": "", "CRS": crs, "BBOX": ogc_bbox(crs, tx0, ty0, tx1, ty1),
+                "WIDTH": tw, "HEIGHT": th, "FORMAT": fmt})
+            body = cached_fetch(cache, f"wms_{layer.replace(':', '_')}_{tx0}_{tx1}_{ty0}_{ty1}_{mpp}.{ext}",
+                                f"{service}?{q}",
+                                validate=lambda b, h: b[:8] == b"\x89PNG\r\n\x1a\n" or b[:3] == b"\xff\xd8\xff", log=log)
             im = Image.open(io.BytesIO(body)).convert("RGB")
             if im.size != (tw, th):
                 raise RuntimeError(f"{layer} tile size {im.size} != {(tw, th)}")
@@ -940,20 +1389,531 @@ def grb_carriageway(segs, e, n, ne_, nn_, width_nom, reach=1.5):
 
 
 # ---------------------------------------------------------------------------
+# Near terrain outside Flanders: the sea, the LiDAR delivery, or a DTM from the CTR 3D survey
+# ---------------------------------------------------------------------------
+
+
+def vector_box(gx0: int, gx1: int, gy0: int, gy1: int, margin: int = 100, snap: int = 500) -> tuple[int, int, int, int]:
+    """The near grid plus a margin, snapped out to `snap` metres: the box asked of the WFS layers
+    (x0, y0, x1, y1), so a small change of the route keeps the cached answers."""
+    return (int(math.floor((gx0 - margin) / snap) * snap), int(math.floor((gy0 - margin) / snap) * snap),
+            int(math.ceil((gx1 + margin) / snap) * snap), int(math.ceil((gy1 + margin) / snap) * snap))
+
+
+def densify(a: np.ndarray, step: float, closed: bool = False) -> np.ndarray:
+    """Vertices (x, y[, z]) every <= `step` metres along a line or ring, z interpolated linearly."""
+    if closed and len(a) > 2 and np.any(a[0, :2] != a[-1, :2]):
+        a = np.vstack([a, a[:1]])
+    if len(a) < 2:
+        return a
+    d = np.hypot(np.diff(a[:, 0]), np.diff(a[:, 1]))
+    s = np.concatenate([[0.0], np.cumsum(d)])
+    ss = np.unique(np.concatenate([s, np.arange(0.0, s[-1], step)]))
+    return np.column_stack([np.interp(ss, s, a[:, j]) for j in range(a.shape[1])])
+
+
+def coast_sea_mask(cache: Path, cfg: dict, x0: int, x1: int, y0: int, y1: int, cell: float, src_sea: np.ndarray,
+                   log) -> np.ndarray:
+    """Sea cells of a grid (NW corner (x0, y1)): the coastline (Linea di costa 2022) drawn as a barrier splits
+    the grid into regions, and a region is sea where most of it is the source DTM's nodata. Without coastline
+    in the box, the source's nodata."""
+    from scipy import ndimage
+    sc = cfg["sea"]
+    bx = vector_box(x0, x1, y0, y1)
+    feats = wfs_geojson(cache, sc["coast_wfs"], sc["coast_layer"], cfg["crs"], *bx, log)
+    rows, cols = src_sea.shape
+    wall = np.zeros((rows, cols), dtype=bool)
+    nlines = 0
+    for f_ in feats:
+        for a in geom_lines(f_.get("geometry")):
+            p = densify(a[:, :2], cell / 4)
+            c = np.floor((p[:, 0] - x0) / cell).astype(int); r = np.floor((y1 - p[:, 1]) / cell).astype(int)
+            ok = (r >= 0) & (r < rows) & (c >= 0) & (c < cols)
+            wall[r[ok], c[ok]] = True
+            nlines += 1
+    if not wall.any():
+        log(f"[sea] no coastline in the grid: the sea is the source's nodata ({100 * src_sea.mean():.1f} %)")
+        return src_sea.copy()
+    lab, n = ndimage.label(~wall)                      # 4-connected: a diagonal step of the line still parts them
+    frac = ndimage.mean(src_sea.astype(np.float32), lab, index=np.arange(1, n + 1))
+    is_sea = np.concatenate([[False], np.asarray(frac) > 0.5])
+    sea = is_sea[lab]
+    log(f"[sea] {cell:g} m grid: coastline ({nlines} lines) splits it into {n} regions; sea {100 * sea.mean():.1f} % "
+        f"of the cells (source nodata {100 * src_sea.mean():.1f} %, {int((sea & ~src_sea).sum())} cells of source "
+        f"land now sea, {int((~sea & src_sea).sum())} of source sea now land)")
+    return sea
+
+
+def lidar_near(cfg: dict, cache: Path, kind: str, gx0: int, gx1: int, gy0: int, gy1: int, log) -> np.ndarray | None:
+    """The user's LiDAR GeoTIFFs (.cache/<id>/<dir>/*.tif, any CRS) on the 1 m near grid, sampled bilinearly
+    at the cell centres one file at a time; NaN where no file covers a cell. None when there are no files."""
+    from pyproj import CRS
+    d = cache / cfg["lidar"][f"{kind}_dir"]
+    files = sorted(p for p in d.glob("*") if p.suffix.lower() in (".tif", ".tiff")) if d.is_dir() else []
+    if not files:
+        return None
+    from pyproj import Transformer
+    crs = cfg["crs"]
+    rows, cols = gy1 - gy0, gx1 - gx0
+    out = np.full((rows, cols), np.nan, dtype=np.float32)
+    for p in files:
+        g = read_geotiff(p.read_bytes())
+        src = f"EPSG:{g.epsg}" if g.epsg else crs
+        to_src = to_source_xy(crs, src)
+        # the near-grid window the file can reach (its corners in the course CRS, 2 cells of slack)
+        w_, e_ = g.west, g.west + g.a.shape[1] * g.dx
+        s_, n_ = g.north - g.a.shape[0] * g.dy, g.north
+        dx_, dy_ = CRS_SHIFT_M.get(src, (0.0, 0.0))
+        cx, cy = Transformer.from_crs(src, crs, always_xy=True).transform(
+            np.array([w_, e_, w_, e_]) - dx_, np.array([s_, s_, n_, n_]) - dy_)
+        c0 = max(int(math.floor(min(cx) - gx0)) - 2, 0); c1 = min(int(math.ceil(max(cx) - gx0)) + 2, cols)
+        r0 = max(int(math.floor(gy1 - max(cy))) - 2, 0); r1 = min(int(math.ceil(gy1 - min(cy))) + 2, rows)
+        n_in = 0
+        ce = gx0 + 0.5 + np.arange(c0, c1)
+        for ra in range(r0, r1, 250):           # 250-row strips keep the temporaries small
+            rb = min(ra + 250, r1)
+            EE, NN = np.meshgrid(ce, gy1 - 0.5 - np.arange(ra, rb))
+            sx, sy = to_src(EE, NN)
+            v = g.sample(sx, sy)
+            ok = np.isfinite(v)
+            out[ra:rb, c0:c1] = np.where(ok, v, out[ra:rb, c0:c1])
+            n_in += int(ok.sum())
+            del EE, NN, sx, sy, v, ok
+        log(f"[lidar] {kind} {p.name}: {CRS.from_user_input(src).name}, {g.a.shape[1]}x{g.a.shape[0]} cells of "
+            f"{g.dx:g} m, data for {n_in} near-grid cells")
+        del g
+    return out
+
+
+def near_terrain(cfg: dict, cache: Path, gx0: int, gx1: int, gy0: int, gy1: int, near_source: str, log):
+    """The 1 m near grid outside Flanders: (DTM, DSM or None, sea mask, "lidar" or "ctr", the CTR features).
+    The sea (cut along the coastline) holds the sea level - 1 m before any hole is filled, and holes are
+    filled from the land only."""
+    level = cfg["sea"]["level_m"]
+    base = raster_on_grid(cache, cfg["far_dtm"], cfg["crs"], gx0, gx1, gy0, gy1, 1.0, log, tile_m=1000)
+    sea = coast_sea_mask(cache, cfg, gx0, gx1, gy0, gy1, 1.0, ~np.isfinite(base), log)
+    base[sea] = level - 1.0
+    base, nb = fill_nans(base, sea=sea)
+    log(f"[near] {cfg['far_dtm']['name']} bilinear to 1 m as the base; {nb} land cells between its sea edge and "
+        f"the coastline filled from the land")
+    feats = ctr_features(cfg, cache, vector_box(gx0, gx1, gy0, gy1), log)
+    choice = near_source if near_source != "auto" else cfg.get("near_source", "auto")
+    if choice == "auto":
+        d = cache / cfg["lidar"]["dtm_dir"]
+        choice = "lidar" if d.is_dir() and any(p.suffix.lower() in (".tif", ".tiff") for p in d.iterdir()) else "ctr"
+    log(f"[near] source: {choice}")
+    if choice == "lidar":
+        dtm = lidar_near(cfg, cache, "dtm", gx0, gx1, gy0, gy1, log)
+        if dtm is None:
+            raise SystemExit(f"--near-source lidar: no GeoTIFFs in {cache / cfg['lidar']['dtm_dir']}")
+        dsm = lidar_near(cfg, cache, "dsm", gx0, gx1, gy0, gy1, log)
+        # Vertical datum: the LiDAR against the CTR's road areas (orthometric, 0.6 m precision).
+        P = np.vstack([a[:, :3] for f_ in feats["road_area"] if ctr_ground_road(f_["properties"])
+                       for a in geom_lines(f_["geometry"]) if a.shape[1] >= 3])
+        dz = P[:, 2] - GeoRaster(dtm, gx0, gy1, 1.0, 1.0).sample(P[:, 0], P[:, 1])
+        dz = dz[np.isfinite(dz)]
+        log(f"[lidar] CTR road-area vertices - LiDAR DTM: median {np.median(dz):+.2f} m, MAD "
+            f"{np.median(np.abs(dz - np.median(dz))):.2f} m (n {dz.size}); a datum offset would show as a median "
+            f"beyond +-0.3 m")
+        # Land the LiDAR does not cover: large gaps take the base, small holes are filled later.
+        from scipy import ndimage
+        gap = ~np.isfinite(dtm) & ~sea
+        lab, n = ndimage.label(gap)
+        if n:
+            big = np.concatenate([[False], np.bincount(lab.ravel(), minlength=n + 1)[1:] > 400])[lab]
+            dtm[big] = base[big]
+            if dsm is not None:
+                dsm[big & ~np.isfinite(dsm)] = dtm[big & ~np.isfinite(dsm)]
+            log(f"[lidar] {int(gap.sum())} land cells without LiDAR, {int(big.sum())} of them in gaps > 400 m² "
+                f"(TINITALY there)")
+        dtm[sea] = level - 1.0
+        if dsm is not None:
+            dsm[sea] = level - 1.0
+        return dtm, dsm, sea, "lidar", feats
+    dtm = ctr_near_dtm(cfg, cache, feats, gx0, gx1, gy0, gy1, base, log)
+    dtm[sea] = level - 1.0
+    return dtm, None, sea, "ctr", feats
+
+
+def ctr_features(cfg: dict, cache: Path, box, log) -> dict:
+    """The CTR 3D layers in the box (EPSG:7791 from the server), with their heights."""
+    ctr = cfg["ctr"]
+    return {k: wfs_geojson(cache, ctr["url"], ctr[k], cfg["crs"], *box, log)
+            for k in ("road_area", "road_line", "walls", "spot", "contours")}
+
+
+def ctr_ground_road(p: dict) -> bool:
+    """A CTR road area or centreline on the ground: not a bridge deck, an overpass or a tunnel."""
+    sede, liv = str(p.get("def_sede", "")).lower(), str(p.get("def_livello", "")).lower()
+    return "ponte" not in sede and "galleria" not in sede and not liv.startswith("in sovra")
+
+
+def ctr_road_edges(feats: dict, oE: float, oN: float) -> np.ndarray:
+    """Carriageway-edge segments (x0, y0, x1, y1, local metres) from the CTR road-area polygons: every ring
+    edge except those two polygons share (the joins between consecutive pieces of one road)."""
+    from collections import Counter
+    segs = []
+    for f_ in feats["road_area"]:
+        if not ctr_ground_road(f_.get("properties", {})):
+            continue
+        for ring in geom_lines(f_.get("geometry")):
+            r = ring[:, :2]
+            if len(r) > 2 and np.any(r[0] != r[-1]):
+                r = np.vstack([r, r[:1]])
+            segs.extend(np.hstack([r[:-1], r[1:]]))
+    segs = np.asarray(segs).reshape(-1, 4)
+    key = [tuple(sorted(((round(a, 2), round(b, 2)), (round(c, 2), round(d, 2))))) for a, b, c, d in segs]
+    cnt = Counter(key)
+    keep = np.array([cnt[k] == 1 for k in key], dtype=bool)
+    return segs[keep] - np.array([oE, oN, oE, oN])
+
+
+def ctr_near_dtm(cfg: dict, cache: Path, feats: dict, gx0: int, gx1: int, gy0: int, gy1: int, base: np.ndarray,
+                 log) -> np.ndarray:
+    """A 1 m DTM from the CTR 1:5000 3D survey over a smooth base (TINITALY 10 m, bilinear; no NaN).
+
+    The base follows the CTR contours (median -0.01 m, MAD 0.24 m at their vertices round the Poggio) but is
+    10 m smooth, so the survey's own heights are added as a residual surface (a linear TIN of height - base)
+    through: contour vertices, ground spot heights, the ground road areas (edges every 1 m) and centrelines,
+    and both sides of every retaining wall and terrace wall. A wall's crest line carries its height (Z); its
+    upper ground is 0.45 m uphill of the line at the crest, its foot 0.45 m downhill, mirrored about the base
+    (crests stand a median 1.1-1.4 m above it) to a 0.6-3.5 m wall, or at the road where a road edge is
+    within 1.5 m. Away from the survey (more than 12 m from any of it) the residual is held at 0, and it eases
+    to 0 over the grid's outer 50 m so the near grid meets the far one."""
+    from scipy import ndimage
+    from scipy.interpolate import LinearNDInterpolator
+    from scipy.spatial import cKDTree
+
+    rows, cols = base.shape
+    G = GeoRaster(base, gx0, gy1, 1.0, 1.0)
+    pts = {}
+
+    def stack(arrs):
+        return np.vstack(arrs) if arrs else np.zeros((0, 3))
+
+    # contours and spot heights
+    pts["contours"] = stack([a[:, :3] for f_ in feats["contours"] for a in geom_lines(f_["geometry"]) if a.shape[1] >= 3])
+    spot_ok = ("al suolo", "su vetta", "su strada")
+    pts["spot heights"] = stack([a[:, :3] for f_ in feats["spot"]
+                                 if str(f_["properties"].get("definizione", "")).lower().startswith(spot_ok)
+                                 for a in geom_lines(f_["geometry"]) if a.shape[1] >= 3])
+    # roads on the ground
+    pts["road areas"] = stack([densify(a[:, :3], 1.0, closed=True) for f_ in feats["road_area"]
+                               if ctr_ground_road(f_["properties"]) for a in geom_lines(f_["geometry"]) if a.shape[1] >= 3])
+    pts["road centrelines"] = stack([densify(a[:, :3], 2.0) for f_ in feats["road_line"]
+                                     if ctr_ground_road(f_["properties"]) for a in geom_lines(f_["geometry"])
+                                     if a.shape[1] >= 3])
+    # walls: crest and foot either side of the crest line
+    gy_, gx_ = np.gradient(ndimage.gaussian_filter(base, 5.0))
+    gN = GeoRaster(-gy_.astype(np.float32), gx0, gy1, 1.0, 1.0); gE = GeoRaster(gx_.astype(np.float32), gx0, gy1, 1.0, 1.0)
+    road_xyz = pts["road areas"]
+    road_tree = cKDTree(road_xyz[:, :2]) if len(road_xyz) else None
+    crest, foot, n_flat, n_road, heights = [], [], 0, 0, []
+    for f_ in feats["walls"]:
+        p_ = f_["properties"]
+        if p_.get("def_zona") != "Coronamento" or p_.get("def_tipo") not in ("Muri di sostegno", "Terrazzamento agricolo",
+                                                                             "Muri d'ala"):
+            continue
+        for a in geom_lines(f_["geometry"]):
+            if a.shape[1] < 3 or len(a) < 2:
+                continue
+            d = densify(a[:, :3], 1.0)
+            t = np.gradient(d[:, :2], axis=0)
+            t /= np.maximum(np.hypot(t[:, 0], t[:, 1]), 1e-9)[:, None]
+            nrm = np.column_stack([t[:, 1], -t[:, 0]])
+            up = nrm[:, 0] * gE.sample(d[:, 0], d[:, 1]) + nrm[:, 1] * gN.sample(d[:, 0], d[:, 1])
+            ok = np.abs(up) >= 0.03        # skip walls on the flat or running straight down the slope
+            n_flat += int((~ok).sum())
+            sgn = np.sign(up)[:, None]
+            cu = d[:, :2] + 0.45 * sgn * nrm; cd = d[:, :2] - 0.45 * sgn * nrm
+            b = G.sample(d[:, 0], d[:, 1])
+            h = np.clip(2.0 * (d[:, 2] - b), 0.6, 3.5)
+            zf = d[:, 2] - h
+            if road_tree is not None:
+                dist, j = road_tree.query(cd, distance_upper_bound=1.5)
+                near = np.isfinite(dist) & (j < len(road_xyz))
+                zr = road_xyz[np.minimum(j, len(road_xyz) - 1), 2]
+                at_road = near & (zr < d[:, 2] - 0.3)
+                zf = np.where(at_road, zr, zf)
+                n_road += int((at_road & ok).sum())
+            ok &= np.isfinite(b)
+            crest.append(np.column_stack([cu[ok], d[ok, 2]]))
+            foot.append(np.column_stack([cd[ok], zf[ok]]))
+            heights.append(d[ok, 2] - zf[ok])
+    pts["wall crests"] = stack(crest)
+    pts["wall feet"] = stack(foot)
+    hh = np.concatenate(heights) if heights else np.zeros(0)
+    P = np.vstack([v for v in pts.values() if len(v)])
+    inside = (P[:, 0] > gx0) & (P[:, 0] < gx1) & (P[:, 1] > gy0) & (P[:, 1] < gy1)
+    P = P[inside]
+    r = P[:, 2] - G.sample(P[:, 0], P[:, 1])
+    okr = np.isfinite(r)
+    P, r = P[okr], r[okr]
+    for k, v in pts.items():
+        if len(v):
+            vi = (v[:, 0] > gx0) & (v[:, 0] < gx1) & (v[:, 1] > gy0) & (v[:, 1] < gy1)
+            rv = v[vi, 2] - G.sample(v[vi, 0], v[vi, 1])
+            rv = rv[np.isfinite(rv)]
+            if rv.size:
+                log(f"[ctr] {k}: {rv.size} points, height - TINITALY median {np.median(rv):+.2f} m "
+                    f"(p10 {np.percentile(rv, 10):+.2f}, p90 {np.percentile(rv, 90):+.2f})")
+    if hh.size:
+        log(f"[ctr] walls: {hh.size} 1 m stations, height crest - foot median {np.median(hh):.2f} m (p10 "
+            f"{np.percentile(hh, 10):.2f}, p90 {np.percentile(hh, 90):.2f}); feet at the road at {n_road}; "
+            f"{n_flat} stations skipped (no clear uphill side)")
+    # residual held at 0 away from the survey
+    tree = cKDTree(P[:, :2])
+    ae, an = np.meshgrid(np.arange(gx0, gx1 + 1, 15.0), np.arange(gy0, gy1 + 1, 15.0))
+    A = np.column_stack([ae.ravel(), an.ravel()])
+    far_ = tree.query(A, distance_upper_bound=12.0)[0] == np.inf
+    A = A[far_]
+    XY = np.vstack([P[:, :2], A]); R = np.concatenate([r, np.zeros(len(A))])
+    log(f"[ctr] residual TIN: {len(P)} survey points + {len(A)} zero anchors (15 m lattice, > 12 m from the survey)")
+    del tree, pts, P
+    interp = LinearNDInterpolator(XY, R, fill_value=0.0)
+    res = np.zeros((rows, cols), dtype=np.float32)
+    ce = gx0 + 0.5 + np.arange(cols)
+    for r0 in range(0, rows, 200):
+        r1 = min(r0 + 200, rows)
+        EE, NN = np.meshgrid(ce, gy1 - 0.5 - np.arange(r0, r1))
+        res[r0:r1] = interp(EE, NN).astype(np.float32)
+    del interp, XY, R
+    edge = np.minimum.outer(np.minimum(np.arange(rows), np.arange(rows)[::-1]),
+                            np.minimum(np.arange(cols), np.arange(cols)[::-1])).astype(np.float32)
+    res *= np.clip(edge / 50.0, 0, 1)
+    log(f"[ctr] residual surface: |r| p50 {np.median(np.abs(res)):.2f} m, p99 {np.percentile(np.abs(res), 99):.2f} m, "
+        f"range {res.min():+.2f}..{res.max():+.2f} m")
+    return (base + res).astype(np.float32)
+
+
+def burn_road(dtm: np.ndarray, near_oE: float, near_oN: float, e, n, s, width, log, shoulder: float = 0.3,
+              feather: float = 1.5, inner: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    """Lay the ridden carriageway into a DTM level across: every cell within w/2 + `shoulder` of the centreline
+    takes the road's height at its nearest station (the median of the DTM across the carriageway but its outer
+    `inner` metre either side, where a wall's foot or top blurs in; despiked and smoothed along s, sigma 3 m),
+    easing back to the DTM over the next `feather` metres. Returns the DTM and the road height per station."""
+    from scipy.spatial import cKDTree
+    rows, cols = dtm.shape
+    te, tn = tangents(e, n, half=2)
+    ne_, nn_ = tn, -te
+    zc = np.empty(len(s))
+    for i in range(len(s)):
+        offs = np.arange(-max(width[i] / 2 - inner, 0.5), max(width[i] / 2 - inner, 0.5) + 1e-9, 0.25)
+        zc[i] = np.median(bilinear(dtm, near_oE, near_oN, 1.0, e[i] + offs * ne_[i], n[i] + offs * nn_[i]))
+    zc, _ = hampel(zc, 7, 0.25)
+    zr = gaussian1d(zc, 3.0)
+    # cells near the route: nearest point of the centreline (0.25 m), so hairpins take the right leg
+    sd = np.arange(0.0, s[-1] + 1e-9, 0.25)
+    pe, pn = np.interp(sd, s, e), np.interp(sd, s, n)
+    tree = cKDTree(np.column_stack([pe, pn]))
+    reach = float(width.max()) / 2 + shoulder + feather
+    c0 = max(int((pe.min() - reach - near_oE) // 1) - 1, 0); c1 = min(int((pe.max() + reach - near_oE) // 1) + 2, cols)
+    r0 = max(int((near_oN - pn.max() - reach) // 1) - 1, 0); r1 = min(int((near_oN - pn.min() + reach) // 1) + 2, rows)
+    EE, NN = np.meshgrid(near_oE + 0.5 + np.arange(c0, c1), near_oN - 0.5 - np.arange(r0, r1))
+    dist, j = tree.query(np.column_stack([EE.ravel(), NN.ravel()]), distance_upper_bound=reach)
+    hit = np.isfinite(dist)
+    ss = sd[np.minimum(j[hit], len(sd) - 1)]
+    half = np.interp(ss, s, width) / 2 + shoulder
+    tgt = np.interp(ss, s, zr)
+    t = np.clip((dist[hit] - half) / feather, 0, 1)
+    t = t * t * (3 - 2 * t)
+    sub = dtm[r0:r1, c0:c1].ravel()
+    cur = sub[hit]
+    new = tgt + (cur - tgt) * t
+    sub[hit] = new
+    out = dtm.copy()
+    out[r0:r1, c0:c1] = sub.reshape(r1 - r0, c1 - c0)
+    moved = np.abs(new - cur)
+    big = np.unique(np.round(ss[(t == 0) & (moved > 1.0)] / 10) * 10)
+    log(f"[burn] carriageway laid level across: {int((t == 0).sum())} cells set, {int(((t > 0) & (t < 1)).sum())} "
+        f"feathered over {feather} m; moved by median {np.median(moved[t == 0]):.2f} m, p95 "
+        f"{np.percentile(moved[t == 0], 95):.2f} m, max {moved.max():.2f} m; > 1 m near s = "
+        + (", ".join(f"{v:.0f}" for v in big[:40]) or "nowhere"))
+    return out, zr
+
+
+def far_terrain(cfg: dict, cache: Path, fx0: int, fx1: int, fy0: int, fy1: int, cell: int, near: np.ndarray,
+                gx0: int, gy1: int, log) -> tuple[np.ndarray, int]:
+    """The far grid outside Flanders: the far source (TINITALY) at `cell` m, its sea at the sea level - 1 m,
+    and inside the near grid's footprint the near DTM block-averaged, so the two agree where they overlap."""
+    level = cfg["sea"]["level_m"]
+    log(f"[far] {cfg['far_dtm']['name']} at {cell} m over E {fx0}..{fx1}, N {fy0}..{fy1}")
+    far = raster_on_grid(cache, cfg["far_dtm"], cfg["crs"], fx0, fx1, fy0, fy1, float(cell), log, tile_m=5000)
+    sea = ~np.isfinite(far)
+    far[sea] = level - 1.0
+    c0, r0 = (gx0 - fx0) / cell, (fy1 - gy1) / cell
+    rr, cc = near.shape[0] // cell, near.shape[1] // cell
+    if c0 == int(c0) and r0 == int(r0):
+        c0, r0 = int(c0), int(r0)
+        blk = near[:rr * cell, :cc * cell].reshape(rr, cell, cc, cell).mean(axis=(1, 3))
+        d = blk - far[r0:r0 + rr, c0:c0 + cc]
+        land = far[r0:r0 + rr, c0:c0 + cc] > level - 0.5
+        log(f"[far] near grid block-averaged into its footprint ({cc} x {rr} cells): it differs from "
+            f"{cfg['far_dtm']['name']} by median {np.median(d[land]):+.2f} m, p95 |{np.percentile(np.abs(d[land]), 95):.2f}| m "
+            f"over the land")
+        # Carry that difference along the footprint's edge out over the next 300 m of land, fading, so the
+        # far ground meets the near grid's edge (smoothed along the edge, sigma 2 cells).
+        from scipy import ndimage
+        inside = np.zeros(far.shape, dtype=bool)
+        inside[r0:r0 + rr, c0:c0 + cc] = True
+        ring = inside & ~ndimage.binary_erosion(inside)
+        full = np.zeros(far.shape, dtype=np.float64)
+        full[r0:r0 + rr, c0:c0 + cc] = np.where(land, d, 0.0)
+        wt = (ring & (np.pad(land, ((r0, far.shape[0] - r0 - rr), (c0, far.shape[1] - c0 - cc))))).astype(np.float64)
+        num = ndimage.gaussian_filter(full * wt, 2.0); den = ndimage.gaussian_filter(wt, 2.0)
+        edge_d = np.where(den > 1e-3, num / np.maximum(den, 1e-9), 0.0)
+        dist, idx = ndimage.distance_transform_edt(~ring, return_indices=True)
+        ext = edge_d[idx[0], idx[1]] * np.clip(1 - dist * cell / 300.0, 0, 1)
+        land_out = ~inside & ~sea
+        far[land_out] = np.maximum(far[land_out] + ext[land_out], level - 0.9)
+        log(f"[far] the edge difference (|median| {np.median(np.abs(edge_d[ring])):.2f} m) carried 300 m out, fading")
+        far[r0:r0 + rr, c0:c0 + cc] = blk
+    log(f"[far] sea {100 * sea.mean():.1f} % of the cells, at {level - 1.0:g} m")
+    return far.astype(np.float32), int(sea.sum())
+
+
+def horizon_terrain(cfg: dict, cache: Path, oE: float, oN: float, log) -> tuple[np.ndarray, float, float]:
+    """Coarse land out to the skyline (`horizon`): a size_m square centred on the origin, block-averaged
+    from the source at cell_m (land where at least half the source cells are), the sea at its level - 1 m.
+    Returns the grid and its NW corner in local metres."""
+    hz = cfg["horizon"]
+    cell, half = float(hz["cell_m"]), hz["size_m"] / 2
+    hx0, hx1 = int(oE - half), int(oE + half)
+    hy0, hy1 = int(oN - half), int(oN + half)
+    log(f"[horizon] {hz['source']['name']} block-averaged to {cell:g} m over E {hx0}..{hx1}, N {hy0}..{hy1}")
+    a = raster_on_grid(cache, hz["source"], cfg["crs"], hx0, hx1, hy0, hy1, cell, log, tile_m=int(hz["tile_m"]))
+    sea = ~np.isfinite(a)
+    a[sea] = cfg["sea"]["level_m"] - 1.0
+    i = np.unravel_index(int(np.argmax(a)), a.shape)
+    log(f"[horizon] {a.shape[1]} x {a.shape[0]} cells, sea {100 * sea.mean():.1f} %, highest {a[i]:.0f} m at "
+        f"{(hx0 + (i[1] + 0.5) * cell - oE) / 1000:+.1f} km east, {(hy1 - (i[0] + 0.5) * cell - oN) / 1000:+.1f} km north")
+    return a.astype(np.float32), hx0 - oE, hy1 - oN
+
+
+# ---------------------------------------------------------------------------
 # Encoding
 # ---------------------------------------------------------------------------
 
 
-def encode_u16(a: np.ndarray, base: float | None = None) -> tuple[bytes, float]:
+def encode_u16(a: np.ndarray, base: float | None = None, steps: float = 100.0) -> tuple[bytes, float]:
+    """u16le_cm (steps 100 per metre, 655 m of range) or u16le_dm (steps 10, 6553 m: the horizon's mountains)."""
     finite = np.isfinite(a)
     if base is None:
         base = math.floor(float(np.nanmin(a)) - 1.0) if finite.any() else 0.0
     raw = np.full(a.shape, 65535, dtype="<u2")
-    v = np.round((a[finite].astype(np.float64) - base) * 100.0)
+    v = np.round((a[finite].astype(np.float64) - base) * steps)
     if v.size and (v.min() < 0 or v.max() > 65534):
         raise ValueError(f"values out of u16 range for base {base}")
     raw[finite] = v.astype("<u2")
     return raw.tobytes(order="C"), float(base)
+
+
+def flanders_credits(cfg: dict, cache: Path, osm: dict, route_way_ids: list, today: str, cell: int, mpp: float,
+                     vdc_info: str, dhm_info: str) -> tuple[list, list]:
+    """course.json attribution and sources for a Flemish berg (Digitaal Vlaanderen, OSM)."""
+    oc = cfg["ortho"]
+    attribution = ([
+        "© OpenStreetMap contributors (ODbL)",
+        "Digitaal Vlaanderen – Digitaal Hoogtemodel Vlaanderen II (DTM/DSM 1 m), Modellicentie Gratis Hergebruik",
+        f"Digitaal Vlaanderen – {oc['title']} ({oc['layer']}), Modellicentie Gratis Hergebruik",
+    ] + [x["attribution"] for x in cfg.get("scenery_sources", [])]
+        + (["Digitaal Vlaanderen – GRB Wegopdeling (WGO), Modellicentie Gratis Hergebruik"]
+           if cfg.get("align_to_grb") else [])
+        + list(cfg.get("extra_attribution", [])))
+    sources = [
+        {"name": "OpenStreetMap (Overpass API)", "url": "https://www.openstreetmap.org/",
+         "retrieved": cache_date(cache, osm["_cache_file"]) or today,
+         "notes": "Ways " + ", ".join(str(w) for w in route_way_ids) + " joined in race order "
+                  f"({cfg['streets']}) and trimmed to the route; projected "
+                  "EPSG:4326->31370 with pyproj; "
+                  f"OSM base {osm.get('osm3s', {}).get('timestamp_osm_base', '?')}. ODbL."},
+        {"name": "DHM Vlaanderen II DTM 1 m (DHMVII_DTM_1m)", "url": DHMV_WCS,
+         "retrieved": cache_date(cache, "wcs_DHMVII_DTM_1m_*.bin") or today,
+         "notes": "WCS 2.0.1 GetCoverage in native Lambert 72 metres, TAW heights. Near grid 1 m; far grid "
+                  f"block-averaged to {cell} m from 1 m tiles. {dhm_info}. Modellicentie Gratis Hergebruik "
+                  "(CC-BY 4.0 compatible)."},
+        {"name": "DHM Vlaanderen II DSM 1 m (DHMVII_DSM_1m)", "url": DHMV_WCS,
+         "retrieved": cache_date(cache, "wcs_DHMVII_DSM_1m_*.bin") or today,
+         "notes": "Canopy = max(DSM − DTM, 0) on the near grid. Modellicentie Gratis Hergebruik."},
+        {"name": oc["title"], "url": oc["service"],
+         "retrieved": cache_date(cache, f"wms_{oc['layer']}_*.png") or today,
+         "notes": f"WMS layer {oc['layer']} ({oc['season']} {oc['year']}, 40 cm source) resampled by the "
+                  f"server to {mpp} m/px. {vdc_info}. Modellicentie Gratis Hergebruik."},
+    ] + [{"name": x["name"], "url": x["url"],
+          "retrieved": cache_date(cache, x["cache_glob"]) or today, "notes": x["notes"]}
+         for x in cfg.get("scenery_sources", [])] + ([
+        {"name": "GRB – Wegopdeling (GRB:WGO), Digitaal Vlaanderen", "url": GRB_WFS,
+         "retrieved": cache_date(cache, "wfs_GRB_WGO_*.json") or today,
+         "notes": "WFS 2.0.0 GetFeature, typeNames GRB:WGO, 'rand van de rijbaan' (surveyed carriageway edge) "
+                  "lines. The route centreline is moved onto the middle of the surveyed carriageway (Gaussian-"
+                  "smoothed); per-way widths checked against them. Modellicentie Gratis Hergebruik."}]
+        if cfg.get("align_to_grb") else []) + [dict(cfg["roadbook"])] + [
+        dict(x) for x in cfg.get("extra_sources", [])
+    ]
+    return attribution, sources
+
+
+def outside_credits(cfg: dict, cache: Path, osm: dict, route_way_ids: list, today: str, cell: int, mpp: float,
+                    near_kind: str) -> tuple[list, list]:
+    """course.json attribution and sources for a course outside Flanders, from its source specs."""
+    oc, ctr, far, sea = cfg["ortho"], cfg["ctr"], cfg["far_dtm"], cfg["sea"]
+    num = cfg["crs"].split(":")[1]
+    attribution = (["© OpenStreetMap contributors (ODbL)"]
+                   + ([cfg["lidar"]["attribution"]] if near_kind == "lidar" else [])
+                   + [ctr["attribution"], far["attribution"], oc["attribution"], sea["attribution"]]
+                   + [x["attribution"] for x in cfg.get("scenery_sources", [])]
+                   + list(cfg.get("extra_attribution", [])))
+    ctr_layers = ", ".join(ctr[k] for k in ("road_area", "road_line", "walls", "spot", "contours"))
+    if near_kind == "lidar":
+        near_src = [{"name": cfg["lidar"]["name"], "url": cfg["lidar"]["url"],
+                     "retrieved": cache_date(cache, cfg["lidar"]["dtm_dir"] + "/*.tif*") or today,
+                     "notes": "PST LiDAR 2008-2010 (MATTM), delivered as GeoTIFF by Regione Liguria's download service "
+                              f"and resampled bilinearly to the 1 m EPSG:{num} near grid. Canopy = max(DSM First − DTM, "
+                              "0). CC BY 4.0."}]
+        ctr_use = ("Checks the LiDAR's vertical datum (road-area heights); the road-area polygons' edges centre the "
+                   "route on the surveyed carriageway.")
+    else:
+        near_src = []
+        ctr_use = ("The near grid's 1 m DTM: TINITALY bilinear as a base, plus a linear TIN of the survey's heights "
+                   "above it (contour and road vertices, ground spot heights, retaining-wall and terrace crests "
+                   "with their feet 0.45 m downhill), the ridden carriageway laid level across. No LiDAR (it is "
+                   "delivered only by e-mail), so no canopy. The road-area polygons' edges centre the route on "
+                   "the surveyed carriageway.")
+    sources = [
+        {"name": "OpenStreetMap (Overpass API)", "url": "https://www.openstreetmap.org/",
+         "retrieved": cache_date(cache, osm["_cache_file"]) or today,
+         "notes": "Ways " + ", ".join(str(w) for w in route_way_ids) + " joined in race order "
+                  f"({cfg['streets']}) and trimmed to the route; projected EPSG:4326->{num} with pyproj; "
+                  f"OSM base {osm.get('osm3s', {}).get('timestamp_osm_base', '?')}. ODbL."},
+    ] + near_src + [
+        {"name": ctr["name"], "url": ctr["url"],
+         "retrieved": cache_date(cache, "wfs_M1237_*.json") or today,
+         "notes": f"WFS 2.0.0, layers {ctr_layers}, reprojected by the server to EPSG:{num}; orthometric heights "
+                  f"(Genova 1942), 0.6 m precision. {ctr_use} CC BY 4.0."},
+        {"name": far["name"], "url": far["url_info"],
+         "retrieved": cache_date(cache, f"wcs_{far['coverage']}_*.tif") or today,
+         "notes": f"WCS 2.0.1 GetCoverage ({far['url']}), 10 m in WGS 84 / UTM 32N, bare earth. The far grid at "
+                  f"{cell} m (the near grid block-averaged inside its footprint)"
+                  + (f", the horizon at {cfg['horizon']['cell_m']:g} m over {cfg['horizon']['size_m'] / 1000:g} km"
+                     if cfg.get("horizon") else "")
+                  + (" and the base of the near DTM" if near_kind == "ctr" else "")
+                  + ". Its nodata is the sea. CC BY 4.0."},
+        {"name": oc["title"], "url": oc["service"],
+         "retrieved": cache_date(cache, f"wms_{oc['layer'].replace(':', '_')}_*.jpg") or today,
+         "notes": f"WMS layer {oc['layer']} ({oc['season']} {oc['year']}) resampled by the server to {mpp} m/px over "
+                  "the near grid"
+                  + (f" and {cfg['ortho_far']['m_per_px']} m/px over the far grid "
+                     f"(CourseTextures/{cfg['ortho_far']['file']})" if cfg.get("ortho_far") else "")
+                  + f". {oc.get('notes', '')}"},
+        {"name": sea["name"], "url": sea["coast_wfs"],
+         "retrieved": cache_date(cache, f"wfs_{sea['coast_layer'].replace(':', '_')}_*.json") or today,
+         "notes": f"Cuts the near grid's sea along the 2022 coastline; the sea holds {sea['level_m'] - 1:g} m on every "
+                  "terrain grid and no canopy. CC BY 4.0."},
+    ] + [{"name": x["name"], "url": x["url"],
+          "retrieved": cache_date(cache, x["cache_glob"]) or today, "notes": x["notes"]}
+         for x in cfg.get("scenery_sources", [])] + [dict(cfg["roadbook"])] + [
+        dict(x) for x in cfg.get("extra_sources", [])]
+    return attribution, sources
 
 
 # ---------------------------------------------------------------------------
@@ -961,7 +1921,7 @@ def encode_u16(a: np.ndarray, base: float | None = None) -> tuple[bytes, float]:
 # ---------------------------------------------------------------------------
 
 
-def build(course_id: str) -> int:
+def build(course_id: str, near_source: str = "auto") -> int:
     cfg = COURSES[course_id]
     cache = CACHE_ROOT / course_id
     dbg = DEBUG_ROOT / course_id
@@ -978,23 +1938,26 @@ def build(course_id: str) -> int:
     today = date.today().isoformat()
     from pyproj import Transformer
 
-    to72 = Transformer.from_crs("EPSG:4326", "EPSG:31370", always_xy=True)
-    to84 = Transformer.from_crs("EPSG:31370", "EPSG:4326", always_xy=True)
+    # The course's projected CRS: Lambert 72 for the Flemish bergs, whose sources are all in it.
+    crs = cfg.get("crs", "EPSG:31370")
+    flanders = crs == "EPSG:31370"
+    to_xy = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    to84 = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
 
     # ---------------- route ----------------
     log("[osm] fetching route ways")
     osm = fetch_osm(cfg, cache, log)
     chain = build_chain(cfg, osm)
-    X, Y = to72.transform(chain.lon, chain.lat)
+    X, Y = to_xy.transform(chain.lon, chain.lat)
     X = np.asarray(X); Y = np.asarray(Y)
     try:
         from pyproj.transformer import TransformerGroup
-        tg = TransformerGroup("EPSG:4326", "EPSG:31370", always_xy=True)
+        tg = TransformerGroup("EPSG:4326", crs, always_xy=True)
         t0 = tg.transformers[0]
-        log(f"[proj] EPSG:4326 -> EPSG:31370: {t0.description} (accuracy {t0.accuracy} m); "
+        log(f"[proj] EPSG:4326 -> {crs}: {t0.description} (accuracy {t0.accuracy} m); "
             f"{len(tg.unavailable_operations)} grid-based operations unavailable offline")
     except Exception as e:
-        log(f"[proj] EPSG:4326 -> EPSG:31370 ({e})")
+        log(f"[proj] EPSG:4326 -> {crs} ({e})")
     for k, w in enumerate(chain.ways):
         i0, i1 = chain.way_first_vertex[k], chain.way_last_vertex[k]
         L = float(np.hypot(np.diff(X[i0:i1 + 1]), np.diff(Y[i0:i1 + 1])).sum())
@@ -1015,20 +1978,38 @@ def build(course_id: str) -> int:
     dev = np.hypot(xs - xd, ys - yd)
     log(f"[route] raw chain length {s_vert[-1]:.1f} m; xy smoothing sigma {cfg['xy_smooth_sigma_m']} m, "
         f"max lateral change {dev.max():.2f} m, median {np.median(dev):.3f} m")
-    ss = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(xs), np.diff(ys)))])
+    # Local exceptions (the Poggio's fork and summit hairpin): a wider Gaussian blended in over a window
+    # round an OSM node, easing in over the window's outer 15 m.
+    for loc in cfg.get("xy_smooth_local", []):
+        v = chain.node_ids.index(loc["node"])
+        w_ = np.clip((loc["half_m"] - np.abs(sd - s_vert[v])) / 15.0, 0, 1)
+        w_ = 0.5 - 0.5 * np.cos(np.pi * w_)
+        r_before = min_radius(xs, ys, dense_step, w_ > 0)
+        xs = xs + w_ * (gaussian1d(xd, loc["sigma_m"] / dense_step) - xs)
+        ys = ys + w_ * (gaussian1d(yd, loc["sigma_m"] / dense_step) - ys)
+        dv = np.hypot(xs - xd, ys - yd)[w_ > 0]
+        log(f"[route] node {loc['node']}: sigma {loc['sigma_m']} m within +-{loc['half_m']} m; min radius "
+            f"{r_before:.1f} -> {min_radius(xs, ys, dense_step, w_ > 0):.1f} m, max lateral change {dv.max():.2f} m")
+    ss =np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(xs), np.diff(ys)))])
 
     def key_vertex(spec):
         kind, wid = spec
         k = cfg["ways"].index(wid)
         return chain.way_first_vertex[k] if kind == "way_start" else chain.way_last_vertex[k]
 
-    def s_of_point(px, py):
-        j = int(np.argmin(np.hypot(xs - px, ys - py)))
+    def s_of_point(px, py, near: float | None = None):
+        # Only within 60 m (along the chain) of where the point is expected: the Poggio's summit loop runs
+        # back 10-14 m from itself, and its hairpins fold the road onto itself.
+        if near is None:
+            j = int(np.argmin(np.hypot(xs - px, ys - py)))
+        else:
+            k0, k1 = np.searchsorted(sd, [near - 60.0, near + 60.0])
+            j = k0 + int(np.argmin(np.hypot(xs[k0:k1] - px, ys[k0:k1] - py)))
         return float(ss[j])
 
     vs, ve = key_vertex(cfg["climb_start"]), key_vertex(cfg["climb_end"])
-    s_cs = s_of_point(X[vs], Y[vs])
-    s_ce = s_of_point(X[ve], Y[ve])
+    s_cs = s_of_point(X[vs], Y[vs], s_vert[vs])
+    s_ce = s_of_point(X[ve], Y[ve], s_vert[ve])
     r0 = s_cs - cfg["approach_m"]
     r1 = s_ce + cfg["exit_m"]
     if r0 < 0 or r1 > ss[-1]:
@@ -1040,8 +2021,14 @@ def build(course_id: str) -> int:
     startS = s_cs - r0
     endS = s_ce - r0
     # s of every way boundary (junction vertex) on the trimmed route, for landmarks
-    way_start_s = [s_of_point(X[chain.way_first_vertex[k]], Y[chain.way_first_vertex[k]]) - r0
+    way_start_s = [s_of_point(X[chain.way_first_vertex[k]], Y[chain.way_first_vertex[k]],
+                              s_vert[chain.way_first_vertex[k]]) - r0
                    for k in range(len(chain.ways))]
+    # s of the OSM nodes named by xy_smooth_local and width_local
+    node_s = {}
+    for loc in cfg.get("xy_smooth_local", []) + cfg.get("width_local", []):
+        v = chain.node_ids.index(loc["node"])
+        node_s[loc["node"]] = s_of_point(X[v], Y[v], s_vert[v]) - r0
     log(f"[route] {n_st} stations, total {s[-1]:.0f} m; climb {startS:.1f} -> {endS:.1f} ({endS - startS:.1f} m)")
 
     # local origin: climb midpoint snapped to 10 m (centre of the far grid)
@@ -1092,15 +2079,21 @@ def build(course_id: str) -> int:
     gx1 = int(math.ceil((Xr.max() + margin) / 10.0) * 10)
     gy0 = int(math.floor((Yr.min() - margin) / 10.0) * 10)
     gy1 = int(math.ceil((Yr.max() + margin) / 10.0) * 10)
-    log(f"[near] Lambert72 x {gx0}..{gx1}, y {gy0}..{gy1} ({gx1 - gx0} x {gy1 - gy0} m)")
-    dtm = wcs_grid(cache, "DHMVII_DTM_1m", gx0, gx1, gy0, gy1, log)
-    dsm = wcs_grid(cache, "DHMVII_DSM_1m", gx0, gx1, gy0, gy1, log)
-    n_dtm_nan = int((~np.isfinite(dtm)).sum()); n_dsm_nan = int((~np.isfinite(dsm)).sum())
+    sea_near = None
+    near_kind = "dhmv"
+    if flanders:
+        log(f"[near] Lambert72 x {gx0}..{gx1}, y {gy0}..{gy1} ({gx1 - gx0} x {gy1 - gy0} m)")
+        dtm = wcs_grid(cache, "DHMVII_DTM_1m", gx0, gx1, gy0, gy1, log)
+        dsm = wcs_grid(cache, "DHMVII_DSM_1m", gx0, gx1, gy0, gy1, log)
+    else:
+        log(f"[near] {crs} E {gx0}..{gx1}, N {gy0}..{gy1} ({gx1 - gx0} x {gy1 - gy0} m)")
+        dtm, dsm, sea_near, near_kind, ctr_feats = near_terrain(cfg, cache, gx0, gx1, gy0, gy1, near_source, log)
+    n_dtm_nan = int((~np.isfinite(dtm)).sum()); n_dsm_nan = int((~np.isfinite(dsm)).sum()) if dsm is not None else 0
     log(f"[near] DTM nodata {n_dtm_nan} cells ({100 * n_dtm_nan / dtm.size:.2f} %), DSM nodata {n_dsm_nan}")
     near_oE = gx0 - oE; near_oN = gy1 - oN
     dtm_raw_nan = ~np.isfinite(dtm)
-    dtm_f, nfilled = fill_nans(dtm)
-    dsm_f, _ = fill_nans(dsm)
+    dtm_f, nfilled = fill_nans(dtm, sea=sea_near)
+    dsm_f, _ = fill_nans(dsm, sea=sea_near) if dsm is not None else (dtm_f, 0)
     log(f"[near] filled {nfilled} DTM nodata cells by nearest-neighbour + diffusion")
 
     def samp(grid, e, n):
@@ -1135,6 +2128,7 @@ def build(course_id: str) -> int:
         osm_e = np.interp(old_at, s, osm_e); osm_n = np.interp(old_at, s, osm_n)
         startS = float(np.interp(startS, s, cum)); endS = float(np.interp(endS, s, cum))
         way_start_s = [float(np.interp(v, s, cum)) for v in way_start_s]
+        node_s = {k: float(np.interp(v, s, cum)) for k, v in node_s.items()}
         s = s_new; n_st = n_new
         log(f"[trough] centreline shifted by up to {np.abs(refine_off).max():.2f} m "
             f"(Gaussian sigma {cfg['refine_sigma_m']} m, weight from bank height); "
@@ -1143,20 +2137,29 @@ def build(course_id: str) -> int:
         te, tn = tangents(e_loc, n_loc, half=2)
         ne_, nn_ = tn, -te
 
-    # ---------------- centreline alignment to the surveyed carriageway (GRB WGO) ----------------
+    # ---------------- centreline alignment to the surveyed carriageway (GRB WGO, CTR road areas) ----------------
     grb_off = np.zeros(n_st)
-    if cfg.get("align_to_grb"):
-        segs = fetch_grb_road_edges(cache, gx0, gx1, gy0, gy1, log) - np.array([oE, oN, oE, oN])
+    road_edges = cfg.get("road_edges", "grb_wgo" if cfg.get("align_to_grb") else None)
+    if road_edges:
+        tag = "[grb]" if road_edges == "grb_wgo" else "[edges]"
+        if road_edges == "grb_wgo":
+            segs = fetch_grb_road_edges(cache, gx0, gx1, gy0, gy1, log) - np.array([oE, oN, oE, oN])
+        else:
+            segs = ctr_road_edges(ctr_feats, oE, oN)
+            log(f"{tag} {len(segs)} carriageway-edge segments (CTR road areas on the ground, shared edges dropped)")
         wn = np.array([width_for(k) for k in widx])
         centre, gw = grb_carriageway(segs, e_loc, n_loc, ne_, nn_, wn)
+        # Not where the centreline is smoothed on purpose (the fork, the summit hairpin's racing line).
+        for loc in cfg.get("xy_smooth_local", []):
+            centre[np.abs(s - node_s[loc["node"]]) <= loc["half_m"]] = np.nan
         ok_ = np.isfinite(centre)
-        log(f"[grb] surveyed carriageway found at {int(ok_.sum())} of {n_st} stations; centre off the line: "
+        log(f"{tag} surveyed carriageway found at {int(ok_.sum())} of {n_st} stations; centre off the line: "
             f"median {np.median(centre[ok_]):+.2f} m, p10 {np.percentile(centre[ok_], 10):+.2f}, "
             f"p90 {np.percentile(centre[ok_], 90):+.2f} m")
         for k in sorted(set(int(v) for v in widx)):
             m_ = ok_ & (widx == k)
             if m_.sum() >= 5:
-                log(f"[grb]   way {chain.ways[k]['id']:>10} {names[k]:<15}: measured width median "
+                log(f"{tag}   way {chain.ways[k]['id']:>10} {names[k]:<15}: measured width median "
                     f"{np.median(gw[m_]):.2f} m (p10 {np.percentile(gw[m_], 10):.2f}, p90 {np.percentile(gw[m_], 90):.2f}) "
                     f"vs configured {width_for(k):.2f}; centre {np.median(centre[m_]):+.2f} m")
         # Robust fill: despike, carry across short gaps, ease to no shift over long ones.
@@ -1168,7 +2171,8 @@ def build(course_id: str) -> int:
                            np.abs(s - s[idx_ok][np.clip(np.searchsorted(s[idx_ok], s) - 1, 0, len(idx_ok) - 1)]))
             filled = filled * np.clip(1 - (gap - 15.0) / 15.0, 0, 1)
             filled, _ = hampel(filled, 7, 0.3)
-            grb_off = np.clip(gaussian1d(filled, cfg.get("grb_sigma_m", 4.0)), -1.5, 1.5)
+            cap = cfg.get("edge_max_shift_m", 1.5)
+            grb_off = np.clip(gaussian1d(filled, cfg.get("grb_sigma_m", 4.0)), -cap, cap)
             pe = e_loc + grb_off * ne_; pn = n_loc + grb_off * nn_
             cum = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(pe), np.diff(pn)))])
             n_new = int(math.floor(cum[-1] + 1e-9)) + 1
@@ -1180,16 +2184,24 @@ def build(course_id: str) -> int:
             osm_e = np.interp(old_at, s, osm_e); osm_n = np.interp(old_at, s, osm_n)
             startS = float(np.interp(startS, s, cum)); endS = float(np.interp(endS, s, cum))
             way_start_s = [float(np.interp(v, s, cum)) for v in way_start_s]
+            node_s = {k: float(np.interp(v, s, cum)) for k, v in node_s.items()}
             s = s_new; n_st = n_new
             te, tn = tangents(e_loc, n_loc, half=2)
             ne_, nn_ = tn, -te
             after, _ = grb_carriageway(segs, e_loc, n_loc, ne_, nn_, np.array([width_for(k) for k in widx]))
             fa = np.isfinite(after)
-            log(f"[grb] centreline moved by up to {np.abs(grb_off).max():.2f} m (sigma {cfg.get('grb_sigma_m', 4.0)} m); "
+            log(f"{tag} centreline moved by up to {np.abs(grb_off).max():.2f} m (sigma {cfg.get('grb_sigma_m', 4.0)} m); "
                 f"{int((np.abs(grb_off) > 0.3).sum())} stations > 0.3 m; residual |centre| median "
                 f"{np.median(np.abs(after[fa])):.2f} m, p90 {np.percentile(np.abs(after[fa]), 90):.2f} m; "
                 f"route now {s[-1]:.0f} m, climb {startS:.1f} -> {endS:.1f}")
     width = np.array([width_for(k) for k in widx])
+    # Wider round a node (width_local): full width within half_m, easing back to the way's over ramp_m.
+    for loc in cfg.get("width_local", []):
+        d_ = np.abs(s - node_s[loc["node"]])
+        t_ = np.clip((d_ - loc["half_m"]) / loc["ramp_m"], 0, 1)
+        width = np.maximum(width, loc["width_m"] + (width - loc["width_m"]) * (t_ * t_ * (3 - 2 * t_)))
+        log(f"[width] {loc['width_m']} m round node {loc['node']} (s {node_s[loc['node']]:.0f}), "
+            f"+-{loc['half_m']} m, easing over {loc['ramp_m']} m")
     surf = np.array([surf_k[k] for k in widx], dtype=int)
     floor_mid, floor_w, lb1, rb1 = trough_analysis(dtm_f, near_oE, near_oN, e_loc, n_loc, ne_, nn_)
     sunken1 = (np.minimum(lb1, rb1) >= 1.0) & (floor_w <= 6.0)
@@ -1197,13 +2209,24 @@ def build(course_id: str) -> int:
         log(f"[trough] after refinement, sunken stations {int(sunken1.sum())}: floor-centre residual median "
             f"{np.median(floor_mid[sunken1]):+.2f} m, |p90| {np.percentile(np.abs(floor_mid[sunken1]), 90):.2f} m")
 
+    # ---------------- the carriageway in a DTM made from vector heights ----------------
+    if cfg.get("road_burn") and not flanders:
+        # The carriageway is a level shelf (the CTR's road areas, ~5.9 m on the SP55), but a 1 m DTM blurs the
+        # walls at its edges into it (the LiDAR's narrows the Poggio's to ~3-4 m where a wall drops away), and
+        # the CTR fallback's TIN can dip at a wall's foot: lay it level across at the inner carriageway's median.
+        dtm_f, _ = burn_road(dtm_f, near_oE, near_oN, e_loc, n_loc, s, width, log)
+        dtm_f[sea_near] = cfg["sea"]["level_m"] - 1.0
+        if dsm is None:
+            dsm_f = dtm_f
+
     # ---------------- road profile ----------------
     naive = samp(dtm_f, e_loc, n_loc)
     naive_osm = samp(dtm_f, osm_e, osm_n)
     pct = cfg["low_percentile"]
+    pmargin = cfg.get("profile_margin_m", 1.0)
     z_low = np.empty(n_st)
     for i in range(n_st):
-        hw = width[i] / 2 + 1.0
+        hw = width[i] / 2 + pmargin
         offs = np.arange(-hw, hw + 1e-9, 0.25)
         z = samp(dtm_f, e_loc[i] + offs * ne_[i], n_loc[i] + offs * nn_[i])
         z_low[i] = np.percentile(z, pct)
@@ -1237,7 +2260,7 @@ def build(course_id: str) -> int:
     elev = gaussian1d(z_low, sigma / 1.0)
     grade = np.gradient(elev, s) * 100.0
     climb_mask = (s >= startS) & (s <= endS)
-    log(f"[profile] low-percentile p{pct:.0f} across +-(w/2+1) m; Gaussian sigma {sigma} m")
+    log(f"[profile] low-percentile p{pct:.0f} across +-(w/2+{pmargin:g}) m; Gaussian sigma {sigma} m")
     log(f"[profile] p{pct:.0f} - DTM at refined centreline: median {np.median(z_low - naive):+.2f} m, "
         f"min {np.min(z_low - naive):+.2f}; p{pct:.0f} - DTM at OSM centreline: median "
         f"{np.median(z_low - naive_osm):+.2f}, min {np.min(z_low - naive_osm):+.2f} m")
@@ -1268,8 +2291,8 @@ def build(course_id: str) -> int:
         log(f"[sens] sigma {sg:4.1f} m: gain {st_['gain']:.1f} avg {st_['avg']:.2f}% max10 {st_['max10']:.1f} "
             f"max25 {st_['max25']:.1f} max50 {st_['max50']:.1f} max100 {st_['max100']:.1f}")
     for p_ in (10.0, 50.0):
-        zz = np.array([np.percentile(samp(dtm_f, e_loc[i] + np.arange(-width[i] / 2 - 1, width[i] / 2 + 1 + 1e-9, 0.25) * ne_[i],
-                                          n_loc[i] + np.arange(-width[i] / 2 - 1, width[i] / 2 + 1 + 1e-9, 0.25) * nn_[i]), p_)
+        zz = np.array([np.percentile(samp(dtm_f, e_loc[i] + np.arange(-width[i] / 2 - pmargin, width[i] / 2 + pmargin + 1e-9, 0.25) * ne_[i],
+                                          n_loc[i] + np.arange(-width[i] / 2 - pmargin, width[i] / 2 + pmargin + 1e-9, 0.25) * nn_[i]), p_)
                        for i in range(n_st)])
         st_ = climb_stats(gaussian1d(hampel(zz, int(cfg["despike_window_m"]), cfg["despike_min_m"])[0], sigma))
         log(f"[sens] percentile p{p_:.0f} (sigma {sigma}): gain {st_['gain']:.1f} avg {st_['avg']:.2f}% "
@@ -1371,6 +2394,15 @@ def build(course_id: str) -> int:
     landmarks.append({"s": round(st["at25"], 1), "kind": "steepest",
                       "name": f"Steepest 25 m ({st['max25']:.1f} %)"})
     landmarks.append({"s": round(endS, 1), "kind": "summit", "name": cfg["summit_name"]})
+    # Places named in the course config (hairpins, side roads, sights): at the nearest station within 80 m of
+    # where the research put them.
+    for lm in cfg.get("extra_landmarks", []):
+        pe_, pn_ = to_xy.transform(lm["at"][1], lm["at"][0])
+        win = np.flatnonzero(np.abs(s - lm["near_s"]) <= 80.0)
+        d_ = np.hypot(e_loc[win] - (pe_ - oE), n_loc[win] - (pn_ - oN))
+        i_ = int(win[np.argmin(d_)])
+        landmarks.append({"s": round(float(s[i_]), 1), "kind": lm["kind"], "name": lm["name"]})
+        log(f"[landmark] {lm['name']}: s {s[i_]:.0f} (research {lm['near_s']}), {d_.min():.0f} m from the route")
     # drop junction/note landmarks that coincide with climb start/summit (keep them, but avoid exact dupes)
     landmarks.sort(key=lambda d: (d["s"], d["kind"]))
 
@@ -1379,18 +2411,30 @@ def build(course_id: str) -> int:
     fx0, fx1 = int(oE - half), int(oE + half)
     fy0, fy1 = int(oN - half), int(oN + half)
     cell = int(cfg["far_cell_m"])
-    log(f"[far] DHMV II DTM 1 m block-averaged to {cell} m over x {fx0}..{fx1}, y {fy0}..{fy1}")
-    far = far_grid(cache, fx0, fx1, fy0, fy1, cell, log)
-    far_nan = int((~np.isfinite(far)).sum())
-    far, _ = fill_nans(far)
+    horizon = None
+    if flanders:
+        log(f"[far] DHMV II DTM 1 m block-averaged to {cell} m over x {fx0}..{fx1}, y {fy0}..{fy1}")
+        far = far_grid(cache, fx0, fx1, fy0, fy1, cell, log)
+        far_nan = int((~np.isfinite(far)).sum())
+        far, _ = fill_nans(far)
+    else:
+        far, far_nan = far_terrain(cfg, cache, fx0, fx1, fy0, fy1, cell, dtm_f, gx0, gy1, log)
+        horizon = horizon_terrain(cfg, cache, oE, oN, log) if cfg.get("horizon") else None
     log(f"[far] {far.shape[1]} x {far.shape[0]} cells, nodata filled {far_nan}, range {np.nanmin(far):.1f}..{np.nanmax(far):.1f} m")
 
     # ---------------- canopy ----------------
-    canopy = np.maximum(dsm - dtm, 0).astype(np.float32)  # NaN where either is NaN
-    canopy[~np.isfinite(canopy)] = np.nan
-    # where the DTM was a hole (buildings), compare against the filled ground
-    hole = dtm_raw_nan & np.isfinite(dsm)
-    canopy[hole] = np.maximum(dsm[hole] - dtm_f[hole], 0)
+    if dsm is None:
+        # No DSM (the CTR fallback): no canopy; build_scenery places the trees from the survey and the photo.
+        canopy = np.zeros_like(dtm_f)
+    else:
+        canopy = np.maximum(dsm - dtm, 0).astype(np.float32)  # NaN where either is NaN
+        canopy[~np.isfinite(canopy)] = np.nan
+        # where the DTM was a hole (buildings), compare against the filled ground
+        hole = dtm_raw_nan & np.isfinite(dsm)
+        canopy[hole] = np.maximum(dsm[hole] - dtm_f[hole], 0)
+    if sea_near is not None:
+        canopy[sea_near] = 0.0
+        canopy[~np.isfinite(canopy)] = 0.0   # LiDAR holes with no DSM return: nothing standing there
     log(f"[canopy] max {np.nanmax(canopy):.1f} m, cells > 2 m: {100 * np.mean(canopy > 2):.1f} %")
 
     # ---------------- ortho ----------------
@@ -1402,7 +2446,8 @@ def build(course_id: str) -> int:
         raise SystemExit("ortho too large")
     from PIL import Image
 
-    ortho = fetch_wms_mosaic(cache, oc["service"], oc["layer"], gx0, gx1, gy0, gy1, mpp, log)
+    ortho = fetch_wms_mosaic(cache, oc["service"], oc["layer"], gx0, gx1, gy0, gy1, mpp, log,
+                             crs=oc.get("crs", "EPSG:31370"), fmt=oc.get("format", "image/png"))
     winter = None
     vo = cfg.get("validation_ortho")
     if vo:
@@ -1413,6 +2458,8 @@ def build(course_id: str) -> int:
     # flight date from the vliegdagcontour layer at the climb midpoint
     vdc_info = ""
     try:
+        if not oc.get("vdc_layer"):
+            raise LookupError("no flight-date layer")
         bb = f"{oE - 50},{oN - 50},{oE + 50},{oN + 50}"
         q = urllib.parse.urlencode({
             "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetFeatureInfo", "LAYERS": oc["vdc_layer"],
@@ -1427,9 +2474,19 @@ def build(course_id: str) -> int:
                                                   if "datum" in k.lower() and v not in (None, "", "Null"))
     except Exception as e:  # informative only
         vdc_info = f"(flight date lookup failed: {e})"
+    if not oc.get("vdc_layer"):
+        vdc_info = oc.get("notes", "")
     log(f"[ortho] {oc['layer']} {pw}x{ph} px at {mpp} m/px; flight info: {vdc_info}")
+    ortho_far = None
+    if cfg.get("ortho_far"):
+        of = cfg["ortho_far"]
+        ortho_far = fetch_wms_mosaic(cache, oc["service"], oc["layer"], fx0, fx1, fy0, fy1, of["m_per_px"], log,
+                                     tile_m=2500, crs=oc.get("crs", "EPSG:31370"), fmt=oc.get("format", "image/png"))
+        log(f"[ortho] far photo {ortho_far.size[0]}x{ortho_far.size[1]} px at {of['m_per_px']} m/px over the far grid")
     dhm_info = ""
     try:
+        if not flanders:
+            raise LookupError("not DHM Vlaanderen")
         bb = f"{oE - 50},{oN - 50},{oE + 50},{oN + 50}"
         q = urllib.parse.urlencode({
             "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetFeatureInfo", "LAYERS": "DHMVII_vdc",
@@ -1444,7 +2501,8 @@ def build(course_id: str) -> int:
                 f"{v}" for k, v in props.items() if "datum" in k.lower() and v not in (None, "", "Null"))
     except Exception as e:
         dhm_info = f"(survey date lookup failed: {e})"
-    log(f"[dhmv] survey info at climb: {dhm_info}")
+    if flanders:
+        log(f"[dhmv] survey info at climb: {dhm_info}")
 
     # ---------------- write outputs ----------------
     route_way_ids = [chain.ways[k]["id"] for k in sorted(set(int(v) for v in widx))]
@@ -1455,59 +2513,36 @@ def build(course_id: str) -> int:
     (out / "terrain_near.u16").write_bytes(near_bytes)
     (out / "terrain_far.u16").write_bytes(far_bytes)
     (out / "canopy_near.u16").write_bytes(can_bytes)
+    if horizon is not None:
+        hor_bytes, hor_base = encode_u16(horizon[0], steps=10.0)
+        (out / "terrain_horizon.u16").write_bytes(hor_bytes)
     # The raw photo feeds the scenery and ground-map bakes only; the app
     # drapes the baked CourseTextures/<id>_ortho_ground.jpg.
     ortho.save(pipe / "ortho_near.jpg", "JPEG", quality=85, optimize=True)
     (out / "ortho_near.jpg").unlink(missing_ok=True)  # shipped by older builds
+    if ortho_far is not None:
+        # The far land's own photo, shipped as is (north up, exactly over terrain.far).
+        TEXTURE_ROOT.mkdir(parents=True, exist_ok=True)
+        ortho_far.save(TEXTURE_ROOT / cfg["ortho_far"]["file"], "JPEG", quality=cfg["ortho_far"]["quality"], optimize=True)
 
-    def hdr(file, base, oe, on, cellm, grid):
-        return {"file": file, "encoding": "u16le_cm", "baseM": base, "originEast": float(oe),
+    def hdr(file, base, oe, on, cellm, grid, encoding="u16le_cm"):
+        return {"file": file, "encoding": encoding, "baseM": base, "originEast": float(oe),
                 "originNorth": float(on), "cellM": float(cellm), "cols": int(grid.shape[1]), "rows": int(grid.shape[0])}
 
+    if flanders:
+        origin = {"lambert72": [oE, oN], "wgs84": [round(olat, 7), round(olon, 7)]}
+        attribution, sources = flanders_credits(cfg, cache, osm, route_way_ids, today, cell, mpp, vdc_info, dhm_info)
+    else:
+        origin = {"crs": crs, "projected": [oE, oN], "wgs84": [round(olat, 7), round(olon, 7)]}
+        attribution, sources = outside_credits(cfg, cache, osm, route_way_ids, today, cell, mpp, near_kind)
     course = {
         "schemaVersion": 1,
         "id": course_id,
         "name": cfg["name"],
         "region": cfg["region"],
-        "origin": {"lambert72": [oE, oN], "wgs84": [round(olat, 7), round(olon, 7)]},
-        "attribution": [
-            "© OpenStreetMap contributors (ODbL)",
-            "Digitaal Vlaanderen – Digitaal Hoogtemodel Vlaanderen II (DTM/DSM 1 m), Modellicentie Gratis Hergebruik",
-            f"Digitaal Vlaanderen – {oc['title']} ({oc['layer']}), Modellicentie Gratis Hergebruik",
-        ] + [x["attribution"] for x in cfg.get("scenery_sources", [])]
-          + (["Digitaal Vlaanderen – GRB Wegopdeling (WGO), Modellicentie Gratis Hergebruik"]
-             if cfg.get("align_to_grb") else [])
-          + list(cfg.get("extra_attribution", [])),
-        "sources": [
-            {"name": "OpenStreetMap (Overpass API)", "url": "https://www.openstreetmap.org/",
-             "retrieved": cache_date(cache, osm["_cache_file"]) or today,
-             "notes": "Ways " + ", ".join(str(w) for w in route_way_ids) + " joined in race order "
-                      f"({cfg['streets']}) and trimmed to the route; projected "
-                      "EPSG:4326->31370 with pyproj; "
-                      f"OSM base {osm.get('osm3s', {}).get('timestamp_osm_base', '?')}. ODbL."},
-            {"name": "DHM Vlaanderen II DTM 1 m (DHMVII_DTM_1m)", "url": DHMV_WCS,
-             "retrieved": cache_date(cache, "wcs_DHMVII_DTM_1m_*.bin") or today,
-             "notes": "WCS 2.0.1 GetCoverage in native Lambert 72 metres, TAW heights. Near grid 1 m; far grid "
-                      f"block-averaged to {cell} m from 1 m tiles. {dhm_info}. Modellicentie Gratis Hergebruik "
-                      "(CC-BY 4.0 compatible)."},
-            {"name": "DHM Vlaanderen II DSM 1 m (DHMVII_DSM_1m)", "url": DHMV_WCS,
-             "retrieved": cache_date(cache, "wcs_DHMVII_DSM_1m_*.bin") or today,
-             "notes": "Canopy = max(DSM − DTM, 0) on the near grid. Modellicentie Gratis Hergebruik."},
-            {"name": oc["title"], "url": oc["service"],
-             "retrieved": cache_date(cache, f"wms_{oc['layer']}_*.png") or today,
-             "notes": f"WMS layer {oc['layer']} ({oc['season']} {oc['year']}, 40 cm source) resampled by the "
-                      f"server to {mpp} m/px. {vdc_info}. Modellicentie Gratis Hergebruik."},
-        ] + [{"name": x["name"], "url": x["url"],
-              "retrieved": cache_date(cache, x["cache_glob"]) or today, "notes": x["notes"]}
-             for x in cfg.get("scenery_sources", [])] + ([
-            {"name": "GRB – Wegopdeling (GRB:WGO), Digitaal Vlaanderen", "url": GRB_WFS,
-             "retrieved": cache_date(cache, "wfs_GRB_WGO_*.json") or today,
-             "notes": "WFS 2.0.0 GetFeature, typeNames GRB:WGO, 'rand van de rijbaan' (surveyed carriageway edge) "
-                      "lines. The route centreline is moved onto the middle of the surveyed carriageway (Gaussian-"
-                      "smoothed); per-way widths checked against them. Modellicentie Gratis Hergebruik."}]
-            if cfg.get("align_to_grb") else []) + [dict(cfg["roadbook"])] + [
-            dict(x) for x in cfg.get("extra_sources", [])
-        ],
+        "origin": origin,
+        "attribution": attribution,
+        "sources": sources,
         "climb": {"startS": round(startS, 2), "endS": round(endS, 2)},
         "stats": {
             "totalLengthM": float(s[-1]),
@@ -1545,6 +2580,11 @@ def build(course_id: str) -> int:
                   "capturedSeason": oc["season"], "capturedYear": oc["year"]},
         "scenery": "scenery.json",
     }
+    if horizon is not None:
+        course["terrain"]["horizon"] = hdr("terrain_horizon.u16", hor_base, horizon[1], horizon[2],
+                                           cfg["horizon"]["cell_m"], horizon[0], encoding="u16le_dm")
+    if cfg.get("sea"):
+        course["sea"] = {"levelM": float(cfg["sea"]["level_m"])}
     (out / "course.json").write_text(json.dumps(course, ensure_ascii=False, separators=(",", ":")) + "\n")
 
     # ---------------- debug renders ----------------
@@ -1561,7 +2601,9 @@ def build(course_id: str) -> int:
     del dtm, dsm, dsm_f, canopy, far
 
     # ---------------- self-check ----------------
-    ok = self_check(out, pipe, log, dtm_f, near_oE, near_oN)
+    ok = self_check(out, pipe, log, dtm_f, near_oE, near_oN,
+                    far_photo=(TEXTURE_ROOT / cfg["ortho_far"]["file"], cfg["ortho_far"]["m_per_px"])
+                    if cfg.get("ortho_far") else None)
     sizes = {p.name: p.stat().st_size for p in out.iterdir() if p.is_file()}
     total = sum(sizes.values())
     log(f"[out] {out}: " + ", ".join(f"{k} {v / 1e6:.2f} MB" for k, v in sorted(sizes.items()))
@@ -1602,6 +2644,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
     width, z_raw, z_low, elev, grade = R["width"], R["z_raw"], R["z_low"], R["elev"], R["grade"]
     startS, endS, st, sigma = R["startS"], R["endS"], R["st"], R["sigma"]
     pct = cfg["low_percentile"]
+    datum = cfg.get("vertical_datum", "TAW")
 
     # ---- profile ----
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(13, 8.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
@@ -1615,7 +2658,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
             ax.axvline(x, color="k", ls="--", lw=0.8)
         a1.text(x + 4, float(np.min(elev)) + (0.1 if lab == "climb start" else 0.3) * float(np.ptp(elev)), lab,
                 rotation=90, va="bottom", fontsize=8)
-    a1.set_ylabel("elevation (m TAW)")
+    a1.set_ylabel(f"elevation (m {datum})")
     a1.legend(loc="upper left", fontsize=8)
     a1.set_title(f"{cfg['name']}: climb {endS - startS:.0f} m, +{st['gain']:.1f} m ({st['z0']:.1f} → {st['z1']:.1f} m), "
                  f"avg {st['avg']:.1f} %, max 10/25/50 m = {st['max10']:.1f} / {st['max25']:.1f} / {st['max50']:.1f} %",
@@ -1650,7 +2693,8 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
     fig, (m1, m2) = plt.subplots(1, 2, figsize=(19, 6.6))
     m1.imshow(hs, cmap="gray", extent=ext, interpolation="bilinear")
     xs_ = oE + 0.5 + np.arange(0, cols, 4); ys_ = oN - 0.5 - np.arange(0, rows, 4)
-    cs = m1.contour(xs_, ys_, dtm[::4, ::4], levels=np.arange(0, 200, 5), colors="#8a6d3b", linewidths=0.4, alpha=0.7)
+    cs = m1.contour(xs_, ys_, dtm[::4, ::4], levels=np.arange(0, max(200, int(np.nanmax(dtm)) + 6), 5), colors="#8a6d3b",
+                    linewidths=0.4, alpha=0.7)
     m1.clabel(cs, cs.levels[::2], fontsize=6, fmt="%d")
     pts = np.column_stack([e, n]).reshape(-1, 1, 2)
     segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
@@ -1754,7 +2798,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
         fig, ax = plt.subplots(figsize=(8, 7.5))
         ax.imshow(hillshade(far, fh["cellM"], zf=3.0), cmap="gray", extent=fext)
         im = ax.imshow(far, cmap="terrain", extent=fext, alpha=0.45, vmin=0, vmax=max(110.0, float(np.nanmax(far))))
-        fig.colorbar(im, ax=ax, fraction=0.04, label="m TAW")
+        fig.colorbar(im, ax=ax, fraction=0.04, label=f"m {datum}")
         ax.add_patch(plt.Rectangle((ext[0], ext[2]), ext[1] - ext[0], ext[3] - ext[2], fill=False, ec="red", lw=1))
         ax.plot(e, n, color="k", lw=1.5)
         ax.set_title(f"far grid {fh['cols']}x{fh['rows']} @ {fh['cellM']:g} m (red = near grid)", fontsize=9)
@@ -1821,7 +2865,7 @@ def render_debug(dbg, cfg, R, dtm, dsm, canopy, oE, oN, ortho, winter, mpp, wmpp
         zr = zt[np.abs(offx) < 12]
         ax.set_ylim(np.nanmin(zr) - 1.0, np.nanmax(zr) + 3)
         ax.set_title(f"{lab}: s={s[i]:.0f} m, grade {grade[i]:.1f} %, OSM offset {osm_off[i]:+.1f} m", fontsize=9)
-        ax.set_xlabel("lateral offset, + = right of travel (m)"); ax.set_ylabel("m TAW"); ax.grid(alpha=0.3)
+        ax.set_xlabel("lateral offset, + = right of travel (m)"); ax.set_ylabel(f"m {datum}"); ax.grid(alpha=0.3)
     axs[0, 0].legend(fontsize=7, loc="upper left")
     fig.tight_layout(); fig.savefig(dbg / "cross_sections.png", dpi=100); plt.close(fig)
 
@@ -1838,8 +2882,10 @@ SWIFT_SCHEMA = {
                    "route": ("RouteArrays", False), "surfaces": ("[str]", False),
                    "surfaceCrr": ("{num}", False), "landmarks": ("[Landmark]", False),
                    "terrain": ("TerrainSet", False), "canopy": ("RasterHeader", True),
-                   "ortho": ("OrthoHeader", True), "scenery": ("str", True)},
-    "Origin": {"lambert72": ("[num]", False), "wgs84": ("[num]", False)},
+                   "ortho": ("OrthoHeader", True), "scenery": ("str", True), "sea": ("Sea", True)},
+    "Origin": {"lambert72": ("[num]", True), "crs": ("str", True), "projected": ("[num]", True),
+               "wgs84": ("[num]", False)},
+    "Sea": {"levelM": ("num", False)},
     "Source": {"name": ("str", False), "url": ("str", True), "retrieved": ("str", True), "notes": ("str", True)},
     "ClimbRange": {"startS": ("num", False), "endS": ("num", False)},
     "Stats": {"totalLengthM": ("num", False), "climbLengthM": ("num", False), "climbGainM": ("num", False),
@@ -1851,7 +2897,7 @@ SWIFT_SCHEMA = {
                     "north": ("[num]", False), "elev": ("[num]", False), "gradePct": ("[num]", False),
                     "widthM": ("[num]", False), "surface": ("[int]", False)},
     "Landmark": {"s": ("num", False), "kind": ("str", False), "name": ("str", False)},
-    "TerrainSet": {"near": ("RasterHeader", False), "far": ("RasterHeader", True)},
+    "TerrainSet": {"near": ("RasterHeader", False), "far": ("RasterHeader", True), "horizon": ("RasterHeader", True)},
     "RasterHeader": {"file": ("str", False), "encoding": ("str", False), "baseM": ("num", False),
                      "originEast": ("num", False), "originNorth": ("num", False), "cellM": ("num", False),
                      "cols": ("int", False), "rows": ("int", False)},
@@ -1894,7 +2940,8 @@ def _check_type(v, t, path, errs):
         errs.append(f"{path}: unknown type {t}")
 
 
-def self_check(out: Path, pipe: Path, log, dtm_mem: np.ndarray, near_oE: float, near_oN: float) -> bool:
+def self_check(out: Path, pipe: Path, log, dtm_mem: np.ndarray, near_oE: float, near_oN: float,
+               far_photo: tuple[Path, float] | None = None) -> bool:
     from PIL import Image
 
     errs: list[str] = []
@@ -1930,18 +2977,40 @@ def self_check(out: Path, pipe: Path, log, dtm_mem: np.ndarray, near_oE: float, 
         if len(b) != h["cols"] * h["rows"] * 2:
             errs.append(f"{h['file']}: {len(b)} bytes, expected {h['cols'] * h['rows'] * 2}")
             return None
-        if h["encoding"] != "u16le_cm":
+        steps = {"u16le_cm": 100.0, "u16le_dm": 10.0}.get(h["encoding"])
+        if steps is None:
             errs.append(f"{h['file']}: encoding {h['encoding']}")
+            steps = 100.0
         a = np.frombuffer(b, dtype="<u2").reshape(h["rows"], h["cols"])
-        v = np.where(a == 65535, np.nan, h["baseM"] + a.astype(np.float32) / 100.0).astype(np.float32)
+        v = np.where(a == 65535, np.nan, h["baseM"] + a.astype(np.float32) / steps).astype(np.float32)
         return v
 
     near_h = c["terrain"]["near"]; far_h = c["terrain"]["far"]; can_h = c["canopy"]
     near = load(near_h); far = load(far_h); can = load(can_h)
-    for nm, a in (("near", near), ("far", far), ("canopy", can)):
+    hor_h = c["terrain"].get("horizon")
+    hor = load(hor_h) if hor_h else None
+    for nm, a in (("near", near), ("far", far), ("canopy", can), ("horizon", hor)):
         if a is not None:
             log(f"[check] {nm}: {a.shape[1]}x{a.shape[0]}, nodata {int(np.isnan(a).sum())}, "
                 f"range {np.nanmin(a):.2f}..{np.nanmax(a):.2f}")
+            if c.get("sea") and np.isnan(a).any():
+                errs.append(f"{nm}: nodata cells on a coastal course (the sea must hold its level - 1 m)")
+    if c.get("sea") and near is not None and far is not None:
+        lv = c["sea"]["levelM"]
+        for nm, a in (("near", near), ("far", far), ("horizon", hor)):
+            if a is not None:
+                sea_ = a <= lv - 0.995
+                log(f"[check] {nm}: sea {100 * sea_.mean():.1f} % of the cells at {lv - 1:g} m")
+        if can is not None and np.nanmax(np.where(near <= lv - 0.995, can, 0)) > 0:
+            errs.append("canopy above 0 over the sea")
+        if hor is not None:
+            # the horizon must contain the far grid and agree with it (both from the same 10 m source)
+            fe0 = far_h["originEast"]; fn0 = far_h["originNorth"]
+            inside_h = (hor_h["originEast"] <= fe0 and fe0 + far_h["cols"] * far_h["cellM"] <=
+                        hor_h["originEast"] + hor_h["cols"] * hor_h["cellM"] and hor_h["originNorth"] >= fn0 and
+                        fn0 - far_h["rows"] * far_h["cellM"] >= hor_h["originNorth"] - hor_h["rows"] * hor_h["cellM"])
+            if not inside_h:
+                errs.append("horizon grid does not contain the far grid")
     if near is not None:
         # Swift-like sampler, written independently of bilinear()
         def swift_sample(h, a, e, nn):
@@ -2019,15 +3088,26 @@ def self_check(out: Path, pipe: Path, log, dtm_mem: np.ndarray, near_oE: float, 
         if (o["originEast"], o["originNorth"]) != (near_h["originEast"], near_h["originNorth"]) or \
                 abs(o["widthM"] - near_h["cols"] * near_h["cellM"]) > 1e-6 or abs(o["heightM"] - near_h["rows"] * near_h["cellM"]) > 1e-6:
             errs.append("ortho footprint != near grid footprint")
-        # georeference: correlate ortho luminance edges with canopy-height edges at 1 m
+        # georeference: correlate ortho luminance edges with canopy-height edges at 1 m (with no canopy,
+        # the DTM's: the CTR walls and road edges)
         if can is not None:
             g = np.asarray(im.convert("L").resize((near_h["cols"], near_h["rows"]), Image.BILINEAR), dtype=np.float32)
-            shift, peak = edge_shift(g, np.nan_to_num(can, nan=0.0))
-            log(f"[check] ortho vs canopy edge alignment: best shift (east {shift[0]:+.0f} m, north {shift[1]:+.0f} m), "
+            empty = float(np.nanmax(can)) < 0.5
+            ref_, lab_ = (near, "DTM") if empty else (np.nan_to_num(can, nan=0.0), "canopy")
+            shift, peak = edge_shift(g, ref_)
+            log(f"[check] ortho vs {lab_} edge alignment: best shift (east {shift[0]:+.0f} m, north {shift[1]:+.0f} m), "
                 f"peak score {peak:.3f}")
             if max(abs(shift[0]), abs(shift[1])) > 3:
                 warn.append(f"ortho may be offset from the terrain by {shift} m")
             del g
+    if far_photo is not None:
+        with Image.open(far_photo[0]) as im:
+            want = (int(round(far_h["cols"] * far_h["cellM"] / far_photo[1])),
+                    int(round(far_h["rows"] * far_h["cellM"] / far_photo[1])))
+            if im.format != "JPEG" or im.size != want:
+                errs.append(f"{far_photo[0].name}: {im.format} {im.size}, expected JPEG {want} over terrain.far")
+            log(f"[check] {far_photo[0].name}: {im.size[0]}x{im.size[1]} px over the far grid, "
+                f"{far_photo[0].stat().st_size / 1e6:.2f} MB")
     if c.get("scenery") and not (out / c["scenery"]).exists():
         warn.append(f"{c['scenery']} not present yet (written by another step; app treats it as optional)")
     for e_ in errs:
@@ -2068,6 +3148,12 @@ do {
     let route = try CourseRoute(course.route, surfaceNames: course.surfaces)
     let near = try HeightRaster.load(from: dir.appendingPathComponent(course.terrain.near.file), header: course.terrain.near)
     if let f = course.terrain.far { _ = try HeightRaster.load(from: dir.appendingPathComponent(f.file), header: f) }
+    if let h = course.terrain.horizon {
+        let r = try HeightRaster.load(from: dir.appendingPathComponent(h.file), header: h)
+        print("horizon \(h.cols)x\(h.rows) at \(h.cellM) m, \(h.encoding)")
+        _ = r
+    }
+    if let sea = course.sea { print("sea level \(sea.levelM) m") }
     if let c = course.canopy { _ = try HeightRaster.load(from: dir.appendingPathComponent(c.file), header: c) }
     var maxd: Float = 0
     var s = 0.0
@@ -2109,8 +3195,16 @@ def main(argv=None) -> int:
     ap.add_argument("course", choices=sorted(COURSES))
     ap.add_argument("--swift-check", action="store_true",
                     help="after building, compile the app's Swift decoder with swiftc and decode the output")
+    ap.add_argument("--out-root", type=Path,
+                    help="write the outputs under this folder (Courses/, pipeline/, debug/, CourseTextures/) instead of "
+                         "the repo's; the download cache is shared")
+    ap.add_argument("--near-source", choices=("auto", "lidar", "ctr"), default="auto",
+                    help="outside Flanders: the near grid from the LiDAR delivery or from the CTR survey (auto: the "
+                         "LiDAR when its GeoTIFFs are in the cache)")
     args = ap.parse_args(argv)
-    rc = build(args.course)
+    if args.out_root:
+        set_out_root(args.out_root.resolve())
+    rc = build(args.course, args.near_source)
     if rc == 0 and args.swift_check:
         rc = swift_check(args.course)
     return rc

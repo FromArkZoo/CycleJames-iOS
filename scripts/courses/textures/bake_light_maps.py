@@ -27,6 +27,14 @@ outside the app bundle. Channels:
 Read by WorldMaterials+Light (shader argument lightTex: ambient occlusion
 on the ground and the road, the baked sun shadow past the shadow map, and
 the setts' micro-shadows switched off in shade). 10-60 s per course.
+
+The Riviera (CROWNS) is lit as the scene draws it: its canopy model is the
+2008-2010 LiDAR, so only the canopy inside the scenery's tree crowns and
+shrubs (checked against the 2022 photo) shades; each crown has its species'
+density and crown base (an umbrella pine's crown is a flat, open disc high on
+a bare trunk, an olive's a dense ball from 1 m, a cypress a dense column to
+the ground); the free-standing walls (scenery walls: masonry and parapets)
+are opaque to their crest. Greenhouses are opaque roofs like every building.
 """
 from __future__ import annotations
 
@@ -55,6 +63,17 @@ REACH = 300.0         # and at most this far out, m
 N_AZ = 16
 BANDS = [(0, 8), (8, 16), (16, 26), (26, 38), (38, 52), (52, 68), (68, 90)]
 CANOPY_SCALE = 40.0   # B = canopy height / CANOPY_SCALE
+# Per-species crowns on the Riviera: (extinction per metre, crown base as a share of the height). Mediterranean
+# evergreens in March: stone and Aleppo pines are open (needle tufts on bare branches) and high on their trunks,
+# olives and holm oaks dense and low, cypresses dense to the ground, palms a ring of fronds on a tall stem.
+CROWNS = {
+    "poggio": {
+        None: (0.30, 0.40),
+        "pine": (0.20, 0.50), "umbrellaPine": (0.22, 0.60), "cypress": (0.60, 0.05), "olive": (0.40, 0.25),
+        "palm": (0.25, 0.70), "fanPalm": (0.25, 0.70), "araucaria": (0.30, 0.20),
+        "shrub": (0.45, 0.0),
+    },
+}
 
 
 def load_u16(path: Path, hdr: dict) -> np.ndarray:
@@ -83,19 +102,71 @@ def rasters(course_id: str):
         if len(pts) >= 3:
             dr.polygon(pts, fill=float(max(b.get("heightM", 0.0), 2.4)))
     roof = np.asarray(img, np.float32)
-    return course, th, dtm, canopy, roof
+    crowns = None
+    if course_id in CROWNS:
+        crowns, canopy, roof = riviera_crowns(CROWNS[course_id], scenery, th, dtm, canopy, roof)
+    return course, th, dtm, canopy, roof, crowns
 
 
-def occluders(dtm, canopy, roof):
+def riviera_crowns(table: dict, scenery: dict, th: dict, dtm, canopy, roof):
+    """The canopy the scene draws, per-cell crown density and base, and the walls as roofs (see the module
+    notes). Returns ((sigma, base share), canopy, roof)."""
+    R, C = dtm.shape
+    cell = th["cellM"]
+
+    def px(e, n):
+        return (e - th["originEast"]) / cell, (th["originNorth"] - n) / cell
+
+    sig = Image.new("F", (C, R), 0.0)
+    bas = Image.new("F", (C, R), 0.0)
+    ds, db = ImageDraw.Draw(sig), ImageDraw.Draw(bas)
+    for sh in scenery.get("shrubs", []):
+        x, y = px(sh["e"], sh["n"])
+        r = sh["radiusM"] / cell
+        ds.ellipse([x - r, y - r, x + r, y + r], fill=table["shrub"][0])
+        db.ellipse([x - r, y - r, x + r, y + r], fill=table["shrub"][1])
+    # Trees last, the smaller over the larger, so each cell takes the crown nearest its top.
+    for t in sorted(scenery.get("trees", []), key=lambda t: -t["crownRadiusM"]):
+        sg, bf = table.get(t.get("kind"), table[None])
+        x, y = px(t["e"], t["n"])
+        r = t["crownRadiusM"] * 1.15 / cell   # the crown's rim reaches past the watershed's
+        ds.ellipse([x - r, y - r, x + r, y + r], fill=sg)
+        db.ellipse([x - r, y - r, x + r, y + r], fill=bf)
+    sigma = np.asarray(sig, np.float32)
+    base = np.asarray(bas, np.float32)
+    drawn = sigma > 0
+    print(f"canopy kept inside the scenery's crowns and shrubs: {float((canopy > 0.5)[drawn].sum()) / max(float((canopy > 0.5).sum()), 1) * 100:.0f}% "
+          f"of the LiDAR's canopy cells")
+    canopy = np.where(drawn, canopy, 0.0).astype(np.float32)
+    sigma = np.where(drawn, sigma, table[None][0]).astype(np.float32)
+    # Free-standing walls: opaque to the crest (retaining walls and terraces are steps in the DTM already).
+    wimg = Image.new("F", (C, R), 0.0)
+    dw = ImageDraw.Draw(wimg)
+    for w in scenery.get("walls", []):
+        if w["kind"] not in ("masonry", "parapet"):
+            continue
+        p = w["points"]
+        for a, b in zip(p[:-1], p[1:]):
+            dw.line([px(a[0], a[1]), px(b[0], b[1])], fill=float(0.5 * (a[2] + b[2])), width=1)
+    crest = np.asarray(wimg, np.float32)
+    roof = np.where(crest > 0, np.maximum(roof, crest - dtm), roof).astype(np.float32)
+    return (sigma, base), canopy, roof
+
+
+def occluders(dtm, canopy, roof, crowns=None):
     opaque = dtm + roof
     top = dtm + canopy
-    base = dtm + np.where(canopy > 4.0, canopy * 0.4, np.minimum(canopy, 0.3))
+    if crowns is None:
+        base = dtm + np.where(canopy > 4.0, canopy * 0.4, np.minimum(canopy, 0.3))
+    else:
+        base = dtm + np.where(canopy > 4.0, canopy * crowns[1], np.minimum(canopy, 0.3))
     return opaque, top, base, canopy > 0.5
 
 
-def sky_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
+def sky_visibility(dtm, canopy, roof, cell: float, crowns=None) -> np.ndarray:
+    """With `crowns`, the optical depth sums each cell's own extinction (else SIGMA throughout)."""
     R, C = dtm.shape
-    opaque, top, base, leafy = occluders(dtm, canopy, roof)
+    opaque, top, base, leafy = occluders(dtm, canopy, roof, crowns)
     z0 = dtm + Z_OBS
     s2 = [(math.sin(math.radians(a)) ** 2, math.sin(math.radians(b)) ** 2) for a, b in BANDS]
     weights = np.array([b - a for a, b in s2], np.float32)
@@ -108,6 +179,7 @@ def sky_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
     pad = steps[-1] + 1
     P = lambda a: np.pad(a, pad, mode="edge")
     Po, Pt, Pb, Pl = P(opaque), P(top), P(base), P(leafy)
+    Ps = P(crowns[0]) if crowns is not None else None
     sky = np.zeros((R, C), np.float32)
     for k in range(N_AZ):
         az = math.radians((k + 0.5) * 360.0 / N_AZ)
@@ -128,18 +200,21 @@ def sky_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
                     continue
                 y = z0 + np.float32(t * tans[b])
                 blocked[b] |= o > y
-                depth[b] += (lf & (y > bs) & (y < tp)) * np.float32(dt * secs[b])
-        sky += (weights[:, None, None] * np.exp(-SIGMA * depth) * ~blocked).sum(0)
+                if Ps is None:
+                    depth[b] += (lf & (y > bs) & (y < tp)) * np.float32(dt * secs[b])
+                else:
+                    depth[b] += np.where(lf & (y > bs) & (y < tp), Ps[sl], 0) * np.float32(dt * secs[b])
+        sky += (weights[:, None, None] * np.exp((-SIGMA if Ps is None else -1.0) * depth) * ~blocked).sum(0)
     sky /= N_AZ
     # The crown straight over the receiver also dims the zenith band.
     over = np.where(leafy & (top > z0), top - np.maximum(base, z0), 0.0)
-    sky *= 1 - weights[-1] * (1 - np.exp(-SIGMA * over))
+    sky *= 1 - weights[-1] * (1 - np.exp(-(SIGMA if crowns is None else crowns[0]) * over))
     return np.clip(sky, 0, 1).astype(np.float32)
 
 
-def sun_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
+def sun_visibility(dtm, canopy, roof, cell: float, crowns=None) -> np.ndarray:
     R, C = dtm.shape
-    opaque, top, base, leafy = occluders(dtm, canopy, roof)
+    opaque, top, base, leafy = occluders(dtm, canopy, roof, crowns)
     z0 = dtm + Z_OBS
     az, tn = math.radians(SUN_AZIMUTH_DEG), math.tan(math.radians(SUN_ELEVATION_DEG))
     se, cn = math.sin(az), math.cos(az)
@@ -147,6 +222,7 @@ def sun_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
     pad = n + 1
     P = lambda a: np.pad(a, pad, mode="edge")
     Po, Pt, Pb, Pl = P(opaque), P(top), P(base), P(leafy)
+    Ps = P(crowns[0]) if crowns is not None else None
     depth = np.zeros((R, C), np.float32)
     blocked = np.zeros((R, C), bool)
     for st in range(1, n):
@@ -155,8 +231,11 @@ def sun_visibility(dtm, canopy, roof, cell: float) -> np.ndarray:
         sl = (slice(pad + drr, pad + drr + R), slice(pad + dc, pad + dc + C))
         y = z0 + np.float32(t * tn)
         blocked |= Po[sl] > y
-        depth += (Pl[sl] & (y > Pb[sl]) & (y < Pt[sl])) * np.float32(cell * math.sqrt(1 + tn * tn))
-    return gaussian_filter((np.exp(-SIGMA * depth) * ~blocked).astype(np.float32), 0.6 / cell)
+        if Ps is None:
+            depth += (Pl[sl] & (y > Pb[sl]) & (y < Pt[sl])) * np.float32(cell * math.sqrt(1 + tn * tn))
+        else:
+            depth += np.where(Pl[sl] & (y > Pb[sl]) & (y < Pt[sl]), Ps[sl], 0) * np.float32(cell * math.sqrt(1 + tn * tn))
+    return gaussian_filter((np.exp((-SIGMA if Ps is None else -1.0) * depth) * ~blocked).astype(np.float32), 0.6 / cell)
 
 
 def fill_footprints(a: np.ndarray, inside: np.ndarray) -> np.ndarray:
@@ -174,10 +253,10 @@ def main() -> int:
     ap.add_argument("--out", default=str(ROOT / "CycleJames/Resources/CourseTextures"))
     args = ap.parse_args()
     t0 = time.time()
-    course, th, dtm, canopy, roof = rasters(args.course)
+    course, th, dtm, canopy, roof, crowns = rasters(args.course)
     cell = th["cellM"]
-    sky = fill_footprints(sky_visibility(dtm, canopy, roof, cell), roof > 0)
-    sun = sun_visibility(dtm, canopy, roof, cell)
+    sky = fill_footprints(sky_visibility(dtm, canopy, roof, cell, crowns), roof > 0)
+    sun = sun_visibility(dtm, canopy, roof, cell, crowns)
     zmin, zmax = float(dtm.min()), float(dtm.max())
     rgba = np.stack([sky, sun, np.clip(canopy / CANOPY_SCALE, 0, 1), (dtm - zmin) / max(zmax - zmin, 1e-3)], -1)
     out = Path(args.out)

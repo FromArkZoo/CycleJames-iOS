@@ -104,7 +104,9 @@ extension WorldShaders {
     /// crown-bent normals), 0 lets every card take it (grass blades, whose
     /// normals point up); `exposureGain` scales that light with the
     /// exposure, as the lights are scaled (1 = none). Per-leaf normals wait
-    /// for a leaf atlas with a normal map (leaf atlas v2).
+    /// for a leaf atlas with a normal map (leaf atlas v2). `mipCoverage`
+    /// (0: unset) keeps the cut where it is and scales the alpha up by that
+    /// much per mip level instead (`mipCoverageMed`).
     static let foliageSurface = """
     #pragma arguments
     float3 toSun;
@@ -114,6 +116,7 @@ extension WorldShaders {
     float anisotropy;
     float throughCrown;
     float exposureGain;
+    float mipCoverage;
     #pragma body
     // Lower mip levels average leaf coverage into the gaps, which would
     // turn distant cards into solid squares; raise the cut-off with the
@@ -124,8 +127,9 @@ extension WorldShaders {
     float2 tdx = dfdx(tc), tdy = dfdy(tc);
     float fx = dot(tdx, tdx), fy = dot(tdy, tdy);
     float lod = 0.5 * log2(max(max(max(fx, fy) / (anisotropy * anisotropy), min(fx, fy)), 1e-8));
-    float cut = alphaCut + clamp(lod - 1.0, 0.0, 6.0) * 0.045;
-    if (_surface.diffuse.a < cut) { discard_fragment(); }
+    float rise = mipCoverage > 0.0 ? 0.0 : 0.045;
+    float cut = alphaCut + clamp(lod - 1.0, 0.0, 6.0) * rise;
+    if (_surface.diffuse.a * (1.0 + max(lod, 0.0) * mipCoverage) < cut) { discard_fragment(); }
     float3 V = normalize(_surface.view);
     // Cards are double-sided, and SceneKit flips the normal on the back
     // face, which would point a leaf's or a grass blade's shading into the
@@ -198,8 +202,9 @@ extension WorldShaders {
     /// vertical towards the camera, so its frame is the camera's horizontal
     /// right, world up and towards the camera. `impostorNormals` 0 (no map
     /// bound) lights it flat. The alpha cut rises with the mip level as in
-    /// `foliageSurface`; the light through the leaves comes from the side
-    /// of the crown facing away from the sun.
+    /// `foliageSurface` (or, with `mipCoverage` set, the alpha does); the
+    /// light through the leaves comes from the side of the crown facing
+    /// away from the sun.
     static let impostorSurface = """
     #pragma arguments
     float3 toSun;
@@ -208,13 +213,15 @@ extension WorldShaders {
     float atlasPx;
     float exposureGain;
     float impostorNormals;
+    float mipCoverage;
     texture2d<float> impDetail;
     #pragma body
     float2 tc = _surface.diffuseTexcoord * atlasPx;
     float2 tdx = dfdx(tc), tdy = dfdy(tc);
     float lod = 0.5 * log2(max(max(dot(tdx, tdx), dot(tdy, tdy)), 1e-8));
-    float cut = alphaCut + clamp(lod - 1.0, 0.0, 6.0) * 0.045;
-    if (_surface.diffuse.a < cut) { discard_fragment(); }
+    float rise = mipCoverage > 0.0 ? 0.0 : 0.045;
+    float cut = alphaCut + clamp(lod - 1.0, 0.0, 6.0) * rise;
+    if (_surface.diffuse.a * (1.0 + max(lod, 0.0) * mipCoverage) < cut) { discard_fragment(); }
     constexpr sampler lin(filter::linear, mip_filter::linear, address::clamp_to_edge);
     float4 nd = impDetail.sample(lin, _surface.diffuseTexcoord);
     float3 rW = scn_frame.inverseViewTransform[0].xyz;
@@ -251,6 +258,37 @@ extension WorldShaders {
     constexpr sampler rep(filter::linear, mip_filter::linear, address::repeat, max_anisotropy(8));
     float2 uv = _surface.diffuseTexcoord;
     float4 d = detailTex.sample(rep, uv);
+    float2 nxy = (d.rg * 2.0 - 1.0) * normalStrength;
+    float3 nts = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
+    \(cotangentNormal)
+    _surface.normal = nMapped;
+    _surface.ambientOcclusion *= in.fao;
+    _surface.roughness = d.b;
+    """
+
+    /// `barkSurface` from the Riviera's bark atlas (cj_bark_med_*: 4 x 2
+    /// tiles of 512 px, each a 496 px periodic core in an 8 px wrap gutter).
+    /// A vertex's u is its tile times `TreeArchetype.barkTileStride` plus its
+    /// u within the tile, which repeats every 1, as v does; both atlases are
+    /// sampled in the tile's core with the gradients of the unwrapped
+    /// coordinates, so the repeats show no seam and no mip jump.
+    static let barkAtlasSurface = """
+    #pragma arguments
+    texture2d<float> detailTex;
+    texture2d<float> albedoTex;
+    float normalStrength;
+    #pragma body
+    constexpr sampler aniso(filter::linear, mip_filter::linear, address::clamp_to_edge, max_anisotropy(8));
+    float2 tc = _surface.diffuseTexcoord;
+    float tile = floor(tc.x / \(TreeArchetype.barkTileStride));
+    float2 local = float2(tc.x - tile * \(TreeArchetype.barkTileStride), tc.y);
+    float2 cell = float2(fmod(tile, 4.0), floor(tile / 4.0));
+    float2 span = float2(496.0 / 2048.0, 496.0 / 1024.0);
+    float2 auv = (cell * 512.0 + 8.0) / float2(2048.0, 1024.0) + fract(local) * span;
+    float2 uv = local * span;
+    float2 gx = dfdx(uv), gy = dfdy(uv);
+    float4 d = detailTex.sample(aniso, auv, gradient2d(gx, gy));
+    _surface.diffuse = float4(albedoTex.sample(aniso, auv, gradient2d(gx, gy)).rgb, 1.0);
     float2 nxy = (d.rg * 2.0 - 1.0) * normalStrength;
     float3 nts = float3(nxy, sqrt(saturate(1.0 - dot(nxy, nxy))));
     \(cotangentNormal)

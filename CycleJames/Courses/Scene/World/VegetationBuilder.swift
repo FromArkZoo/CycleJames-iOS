@@ -213,6 +213,12 @@ enum VegetationBuilder {
         var full = MeshBuffer(parts: 2)
         var light = MeshBuffer(parts: 2)
         var impostor = MeshBuffer(parts: 2)
+        /// On the Riviera, the light versions of this cluster's plants that
+        /// have no full one (trees beyond `treeDetailRouteRadius`, shrubs
+        /// past the detailed share, the scrub): drawn in full too when the
+        /// cluster has a full level (`foldLightOnly`), else a cluster seen
+        /// in full left them out within its swap distance (95 m on high).
+        var lightOnly = MeshBuffer(parts: 2)
     }
 
     struct Output {
@@ -224,6 +230,11 @@ enum VegetationBuilder {
     }
 
     static let clusterSize = 48.0
+    /// The Riviera's clusters: the Poggio's ridge looks down on its own
+    /// hairpins and the slopes for a kilometre, and at 48 m its clusters
+    /// were 380 of the 807 draws in the heaviest view (route 2250, high),
+    /// most of them a handful of impostors each.
+    static let rivieraClusterSize = 64.0
     /// Length of a streamed verge-grass section, metres of route.
     static let grassCellM = 4.0
 
@@ -232,8 +243,14 @@ enum VegetationBuilder {
     static let laneLeafClearance: Float = 4
 
     static func build(corridor: RoadCorridor, scenery: SceneryFile?, config: WorldConfig,
-                      ground: GroundColor? = nil, sky: SkyRaster? = nil) -> Output {
+                      ground: GroundColor? = nil, sky: SkyRaster? = nil, courseID: String? = nil) -> Output {
         var out = Output()
+        /// The Riviera's plants (VegetationBuilder+Riviera): its species,
+        /// shrubs, verge flora and the course's hand-placed plants.
+        let riviera = corridor.art.look.isRiviera
+        let signature = riviera ? RivieraPlants.make(corridor: corridor, scenery: scenery, courseID: courseID) : nil
+        /// The walls at the edge as the Riviera's shrubs and scrub keep clear of them.
+        let edge = riviera ? RivieraEdge(corridor: corridor, scenery: scenery) : nil
         /// `skyShade` with the sky a plant of crown radius `radius` stands
         /// in at (east, north); radius 0 (ivy lying on the bank) takes the
         /// sky at that point.
@@ -246,8 +263,9 @@ enum VegetationBuilder {
         let landuse = LanduseIndex(scenery?.landuse ?? [])
         let terrain = corridor.terrain
         var clusters: [Int: Cluster] = [:]
+        let cellM = riviera ? rivieraClusterSize : clusterSize
         func key(_ e: Double, _ n: Double) -> Int {
-            let cx = Int(floor((e + 4000) / clusterSize)), cz = Int(floor((n + 4000) / clusterSize))
+            let cx = Int(floor((e + 4000) / cellM)), cz = Int(floor((n + 4000) / cellM))
             return cz * 10_000 + cx
         }
         /// The cluster for a key, removed from the dictionary so it is
@@ -256,8 +274,21 @@ enum VegetationBuilder {
             clusters.removeValue(forKey: k) ?? Cluster()
         }
         func finish() -> Output {
-            out.clusters = Array(clusters.values).filter { !$0.light.isEmpty || !$0.full.isEmpty }
+            out.clusters = collect()
             return out
+        }
+        /// The clusters with anything in them, on the Riviera with their
+        /// light-only plants in their full level (`Cluster.lightOnly`).
+        func collect() -> [Cluster] {
+            let all = Array(clusters.values).filter { !$0.light.isEmpty || !$0.full.isEmpty }
+            return riviera ? all.map(foldLightOnly) : all
+        }
+        /// Adds to the cluster at (e, n).
+        func inCluster(_ e: Double, _ n: Double, _ body: (inout Cluster) -> Void) {
+            let k = key(e, n)
+            var c = take(k)
+            body(&c)
+            clusters[k] = c
         }
         let sideRoads = RoadBuilder.SideRoadMask(scenery: scenery)
         let near = corridor.near
@@ -280,11 +311,36 @@ enum VegetationBuilder {
         /// Whether the ground at a point has been cleared since the LiDAR
         /// flight (`CourseArt.clearings`).
         func cleared(_ e: Double, _ n: Double) -> Bool {
+            if signature?.keepsOff(east: e, north: n) ?? false { return true }
             guard !corridor.art.clearings.isEmpty else { return false }
             let q = corridor.coarse.query(east: e, north: n)
             let st = corridor.station(at: q.s)
             let side: Double = (e - st.east) * st.rightE + (n - st.north) * st.rightN >= 0 ? 1 : -1
             return corridor.art.isCleared(s: q.s, side: side, beyondEdge: q.dist - st.halfWidth)
+        }
+
+        // The Poggio's scrub fill (`buildRivieraScrub`) on its own thread
+        // beside the trees and shrubs, into clusters of its own merged in at
+        // the end: it reads only the corridor, the scenery and the course's
+        // planting, and the plants were the world build's longest step
+        // (fix2-budget, 31 October: 16.9 s of 22 s on high, one thread).
+        final class ScrubPart: @unchecked Sendable {
+            var clusters: [Int: Cluster] = [:]
+            var placed = 0
+        }
+        let scrubPart = ScrubPart()
+        let scrubDone = DispatchGroup()
+        if let signature, let edge, let id = RivieraPlants.key(corridor: corridor, courseID: courseID) {
+            DispatchQueue.global(qos: .userInitiated).async(group: scrubDone) {
+                scrubPart.placed = buildRivieraScrub(courseID: id, corridor: corridor, scenery: scenery, config: config,
+                                                     sky: sky, sideRoads: sideRoads, landuse: landuse, edge: edge,
+                                                     plants: signature, cleared: cleared) { e, n, body in
+                    let k = key(e, n)
+                    var c = scrubPart.clusters.removeValue(forKey: k) ?? Cluster()
+                    body(&c)
+                    scrubPart.clusters[k] = c
+                }
+            }
         }
 
         // Trees.
@@ -293,7 +349,7 @@ enum VegetationBuilder {
         let crowns = TreeCrowding(scenery?.trees ?? [])
         var nFull = 0, nLight = 0, nLane = 0
         var formCounts = [Int](repeating: 0, count: TreeArchetype.Form.allCases.count)
-        for t in (scenery?.trees ?? []) + extraTrees(corridor) {
+        for t in (scenery?.trees ?? []) + extraTrees(corridor) + (signature?.trees ?? []) {
             if Task.isCancelled { return finish() }
             if cleared(t.e, t.n) { continue }
             var e = t.e, n = t.n
@@ -312,7 +368,10 @@ enum VegetationBuilder {
             let sunk = corridor.art.sunkenWeight(q.s)
             let stQ = corridor.station(at: q.s)
             let treeSide: Double = (e - stQ.east) * stQ.rightE + (n - stQ.north) * stQ.rightN >= 0 ? 1 : -1
-            let form = corridor.art.isPollard(s: q.s, side: treeSide, routeDistance: q.dist, height: Double(h)) ? .willow
+            let form = riviera
+                ? pickRivieraForm(kind: t.kind, h: h, r: Float(t.crownRadiusM), landuse: lu, crowded: crowded,
+                                  zone: signature?.zone(s: q.s, side: treeSide, routeDistance: q.dist), y: y, rnd: &rnd)
+                : corridor.art.isPollard(s: q.s, side: treeSide, routeDistance: q.dist, height: Double(h)) ? .willow
                 : pickForm(kind: t.kind, h: h, r: Float(t.crownRadiusM), landuse: lu, sunk: sunk,
                            nearStream: streams.near(east: e, north: n, within: 8), crowded: crowded, rnd: &rnd)
             // Leaf-off LiDAR (February) under-measures a hybrid poplar's
@@ -323,13 +382,15 @@ enum VegetationBuilder {
             let yellowing = max(0, rnd.range(-0.25, 0.55))
             let shade = rnd.range(0.93, 1.07)
             var colour = form.leafColour * shade
-            if form != .copperBeech { colour *= SIMD3(1, 1, 1) + (SIMD3(1.16, 1.06, 0.72) - SIMD3(1, 1, 1)) * yellowing }
+            if form != .copperBeech, !form.isRiviera {
+                colour *= SIMD3(1, 1, 1) + (SIMD3(1.16, 1.06, 0.72) - SIMD3(1, 1, 1)) * yellowing
+            }
             let tint = TreeArchetype.packColour(colour)
             let x = Float(e), z = Float(-n)
             /// Height and crown-width scales of an archetype for this tree.
             func scales(_ a: TreeArchetype) -> (sy: Float, sxz: Float) {
                 let sy = h / a.refHeight
-                return (sy, min(max(r / a.refRadius, sy * form.minSpread), sy * 1.9))
+                return (sy, min(max(r / a.refRadius, sy * form.minSpread), sy * form.maxSpread))
             }
             // On the holle weg's banks the trees reach out over the lane
             // for light, closing the tunnel above the steepest part; those
@@ -339,7 +400,7 @@ enum VegetationBuilder {
             // at the road's level, not on the bank top.
             var lean = SIMD2<Float>.zero
             var laneArch: TreeArchetype?
-            if sunk > 0.2, q.dist < 16 {
+            if sunk > 0.2, q.dist < 16, !riviera {
                 let st = corridor.station(at: q.s)
                 let side: Double = ((e - st.east) * st.rightE + (n - st.north) * st.rightN) >= 0 ? 1 : -1
                 let amount = Float(sunk) * min(0.35 * r, 2.5) * (1 - Float(q.dist) / 20)
@@ -358,7 +419,7 @@ enum VegetationBuilder {
                     }
                 }
             }
-            let arch = laneArch ?? library.pick(form, &rnd)
+            let arch = laneArch ?? (riviera ? rivieraArchetype(library, form, h: h, r: r, rnd: &rnd) : library.pick(form, &rnd))
             let (sy, sxz) = scales(arch)
             let ck = key(e, n)
             var c = take(ck)
@@ -367,14 +428,20 @@ enum VegetationBuilder {
                 appendPlant(&c.full, arch.full, sx: sxz, sy: sy, yaw: yaw, x: x, y: y, z: z, phase: phase, tint: tint,
                             lean: lean, height: h, sky: skyHere)
                 nFull += 1
+            } else if riviera {
+                appendPlant(&c.lightOnly, arch.light, sx: sxz, sy: sy, yaw: yaw, x: x, y: y, z: z, phase: phase,
+                            tint: tint, lean: lean, height: h, sky: skyHere)
             }
             appendPlant(&c.light, arch.light, sx: sxz, sy: sy, yaw: yaw, x: x, y: y, z: z, phase: phase,
                         tint: tint, lean: lean, height: h, sky: skyHere)
             nLight += 1
             if laneArch != nil { nLane += 1 }
             formCounts[form.rawValue] += 1
-            impostor(&c.impostor, cell: form.impostorCell, width: max(2.1 * r, h * 0.25), height: h * 1.02,
-                     x: x, y: y - 0.2, z: z, yaw: yaw, phase: phase, tint: tint, sky: skyHere)
+            // (A Riviera impostor is as wide as its tree is drawn: palms and
+            // cypresses keep their slender crowns.)
+            impostor(&c.impostor, cell: form.impostorCell,
+                     width: form.isRiviera ? form.impostorWidthFactor * arch.refRadius * sxz : max(2.1 * r, h * 0.25),
+                     height: h * 1.02, x: x, y: y - 0.2, z: z, yaw: yaw, phase: phase, tint: tint, sky: skyHere)
             clusters[ck] = c
         }
         for f in TreeArchetype.Form.allCases where formCounts[f.rawValue] > 0 {
@@ -393,6 +460,26 @@ enum VegetationBuilder {
             if roadClearance(sh.e, sh.n, margin: 0.25) != nil || cleared(sh.e, sh.n) { continue }
             let y = Float(terrain.height(east: sh.e, north: sh.n))
             guard y.isFinite else { continue }
+            if let edge {
+                let half = scrubHalfReach(r: Float(sh.radiusM) * 1.2, h: Float(sh.heightM) * 1.1, cards: 2)
+                if edge.blocks(corridor, east: sh.e, north: sh.n, s: q.s, routeDistance: q.dist, half: Double(half)) { continue }
+                // Smaller (or none) under the line of sight over a drop.
+                let st = corridor.station(at: q.s)
+                let side: Double = (sh.e - st.east) * st.rightE + (sh.n - st.north) * st.rightN >= 0 ? 1 : -1
+                let fit = edge.sightFit(corridor, s: q.s, side: side, beyond: q.dist - st.reach(side), y: y,
+                                        h: Float(sh.heightM) * 1.1)
+                if fit < 0.45 { continue }
+                let sh = fit < 1 ? SceneryFile.Shrub(e: sh.e, n: sh.n, heightM: sh.heightM * Double(fit),
+                                                     radiusM: sh.radiusM * Double(fit)) : sh
+                let lu = landuse.kind(east: sh.e, north: sh.n)
+                let detailed = q.dist < config.shrubDetailRouteRadius * rivieraShrubDetailShare
+                inCluster(sh.e, sh.n) { c in
+                    rivieraShrub(&c, sh, y: y, landuse: lu, routeDistance: q.dist, detailed: detailed, sky: sky)
+                }
+                if detailed { nShrubD += 1 }
+                nShrubL += 1
+                continue
+            }
             var rnd = WorldRandom(sh.e, sh.n, salt: 29)
             let sunken = corridor.art.sunkenWeight(q.s) > 0.4 && q.dist < 16
             let uv = TreeArchetype.broadUV
@@ -441,6 +528,12 @@ enum VegetationBuilder {
         }
         out.counts["shrubs detailed"] = nShrubD
         out.counts["shrubs"] = nShrubL
+        if let signature {
+            if Task.isCancelled { return finish() }
+            let placed = buildRivieraPlants(signature, corridor: corridor, config: config, sky: sky, sideRoads: sideRoads,
+                                            cluster: inCluster)
+            for (k, v) in placed { out.counts[k] = v }
+        }
 
         // The holle weg's banks: ivy creeping over the earth, cushions of
         // ivy and bramble along the bank tops (the silhouette against the
@@ -450,6 +543,10 @@ enum VegetationBuilder {
         // stools need a measured bank on their side (`bankTop`): a span can
         // be open on one side, and nothing grows on a side road.
         var nBank = 0, nBankShrub = 0
+        // (On the Riviera, its evergreens in the Flemish ivy's and
+        // broadleaves' places.)
+        let ivyUV = riviera ? TreeArchetype.medEvergreenUV : TreeArchetype.ivyUV
+        let broadUV = riviera ? TreeArchetype.medEvergreenUV : TreeArchetype.broadUV
         if config.bankPlantDensity > 0 {
             var rnd = WorldRandom(seed: 4242)
             // Its own sequence, so the other bank plants stay where they were.
@@ -479,9 +576,9 @@ enum VegetationBuilder {
                             var cl = take(ck)
                             let first = cl.full.vertexCount
                             TreeArchetype.card(&cl.full, centre: pos, size: rnd.range(0.75, 1.3), normal: tilt, roll: rnd.range(0, 6.28),
-                                               uv: TreeArchetype.ivyUV, crownCentre: pos - pn * 0.6, crownRadii: SIMD3(1, 1, 1),
+                                               uv: ivyUV, crownCentre: pos - pn * 0.6, crownRadii: SIMD3(1, 1, 1),
                                                height: 3, ao: rnd.range(0.82, 0.95), bend: 0.35, baseY: pos.y - 1, billboard: false,
-                                               mirror: rnd.unit() < 0.5, hull: TreeArchetype.ivyHull)
+                                               mirror: rnd.unit() < 0.5, hull: TreeArchetype.hull(for: ivyUV))
                             patchPhase(&cl.full, from: first, phase: rnd.range(0, 6.28), tint: rnd.range(0, 0.12))
                             shadeBySky(&cl.full, from: first, east: p.east, north: p.north, baseY: Float(p.y), height: 1)
                             clusters[ck] = cl
@@ -502,7 +599,7 @@ enum VegetationBuilder {
                                 let jitter = SIMD3<Float>(rnd.range(-0.35, 0.35), size * rnd.range(0.25, 0.45), rnd.range(-0.35, 0.35))
                                 let lean: SIMD3<Float> = toRoad * (Float(k) * 0.12)
                                 let c = base + jitter + lean
-                                let cuv = rnd.unit() < 0.65 ? TreeArchetype.ivyUV : TreeArchetype.broadUV
+                                let cuv = rnd.unit() < 0.65 ? ivyUV : broadUV
                                 TreeArchetype.card(&cl.full, centre: c, size: size * rnd.range(0.8, 1.05), normal: TreeArchetype.randomDir(&rnd, minY: -0.2),
                                                    roll: rnd.range(0, 6.283), uv: cuv,
                                                    crownCentre: base, crownRadii: SIMD3(size, size * 0.7, size), height: 3,
@@ -533,7 +630,7 @@ enum VegetationBuilder {
                                 let lean: SIMD3<Float> = toRoad * (0.1 + Float(k) * 0.12)
                                 let c = base + lift + lean
                                 TreeArchetype.card(&cl.full, centre: c, size: size, normal: TreeArchetype.randomDir(&rnd, minY: 0),
-                                                   roll: rnd.range(-0.6, 0.6), uv: k == 0 ? TreeArchetype.ivyUV : TreeArchetype.broadUV,
+                                                   roll: rnd.range(-0.6, 0.6), uv: k == 0 ? ivyUV : broadUV,
                                                    crownCentre: base, crownRadii: SIMD3(size, size, size), height: 2,
                                                    ao: rnd.range(0.78, 0.9), bend: 0.5, baseY: base.y)
                             }
@@ -565,7 +662,7 @@ enum VegetationBuilder {
                                     let at = foot + dir * (hgt * rnd.range(0.3, 1.0))
                                     TreeArchetype.card(&cl.full, centre: at, size: rnd.range(0.7, 1.1),
                                                        normal: TreeArchetype.randomDir(&rnd, minY: -0.2),
-                                                       roll: rnd.range(0, 6.28), uv: TreeArchetype.broadUV,
+                                                       roll: rnd.range(0, 6.28), uv: broadUV,
                                                        crownCentre: foot + dir * (hgt * 0.6),
                                                        crownRadii: SIMD3(0.9, hgt * 0.5, 0.9), height: hgt, ao: 0.9, baseY: base.y)
                                 }
@@ -596,7 +693,7 @@ enum VegetationBuilder {
                                     let d = TreeArchetype.randomDir(&shrubRnd, minY: -0.3)
                                     let size = max(rad, hgt * 0.5) * shrubRnd.range(1.1, 1.5)
                                     let roll = shrubRnd.range(0, 6.283)
-                                    let cuv = shrubRnd.unit() < 0.45 ? TreeArchetype.ivyUV : TreeArchetype.broadUV
+                                    let cuv = shrubRnd.unit() < 0.45 ? ivyUV : broadUV
                                     TreeArchetype.card(&cl.full, centre: centre + d * radii * shrubRnd.range(0.15, 0.6),
                                                        size: size, normal: d, roll: roll, uv: cuv,
                                                        crownCentre: centre - SIMD3(0, hgt * 0.3, 0), crownRadii: radii,
@@ -617,9 +714,22 @@ enum VegetationBuilder {
         }
         out.counts["bank plants"] = nBank
         out.counts["bank shrubs"] = nBankShrub
-        out.clusters = Array(clusters.values).filter { !$0.light.isEmpty || !$0.full.isEmpty }
+        scrubDone.wait()
+        if riviera, RivieraPlants.key(corridor: corridor, courseID: courseID) != nil {
+            for (k, part) in scrubPart.clusters {
+                var c = take(k)
+                c.light.appendExactly(part.light)
+                c.lightOnly.appendExactly(part.lightOnly)
+                clusters[k] = c
+            }
+            out.counts["riviera scrub"] = scrubPart.placed
+        }
+        out.clusters = collect()
 
         buildHedges(corridor: corridor, sideRoads: sideRoads, sky: sky, into: &out.hedges)
+        if let signature {
+            buildRivieraHedges(signature, corridor: corridor, sideRoads: sideRoads, sky: sky, into: &out.hedges)
+        }
         out.counts["hedge metres"] = Int(corridor.art.hedges.reduce(0) { $0 + $1.span.upperBound - $1.span.lowerBound })
 
         // Verge grass, in short route sections; none on side-road tarmac:
@@ -650,10 +760,12 @@ enum VegetationBuilder {
                         var oMax = 3.2 + (0.45 - 3.2) * village
                         oMax = oMax * (1 - sunk) + 0.7 * sunk
                         oMax = min(oMax, verge - 0.4)
+                        if riviera { oMax = min(oMax, Self.rivieraVergeReach) }
                         guard oMax > 0.15 else { continue }
                         // A lawn is a close sward: twice the tufts, short and wide.
                         let lawnSide = corridor.art.isLawn(s, side: side)
                         let density = config.grassDensity * (1 - 0.65 * village) * (1 - 0.6 * sunk) * (lawnSide ? 2.2 : 1)
+                            * (riviera ? Self.rivieraGrassShare : 1)
                         let count = Int(density * (oMax - 0.1) * 0.5 + Double(rnd.unit()))
                         for _ in 0..<count {
                             let o = Double(rnd.range(0.1, Float(oMax)))
@@ -669,14 +781,19 @@ enum VegetationBuilder {
                             // summer photo says, and grows no tall tufts (the
                             // draw is kept so the tufts elsewhere stay put).
                             let lawn = corridor.art.isLawn(ss, side: side)
-                            let tint = lawn ? Self.lawnTint : grassTint(ground?.color(east: p.east, north: p.north), sunk: Float(sunk))
+                            let tint = lawn ? Self.lawnTint : grassTint(ground?.color(east: p.east, north: p.north), sunk: Float(sunk),
+                                                                        riviera: riviera)
                             let tall = Double(rnd.unit()) >= village && sunk < 0.3 && !lawn
                             // Late August: past the mown strip some tufts
                             // flower, some have gone to straw, and nettles
                             // come up.
                             let pick = rnd.unit()
-                            var kind: GrassCell = tall && rnd.unit() < 0.45 ? .seeded : .green
-                            if tall, o > 1.0 {
+                            // (On the Riviera fewer in seed: the wild oats
+                            // are still green heads in late March.)
+                            var kind: GrassCell = tall && rnd.unit() < (riviera ? 0.2 : 0.45) ? .seeded : .green
+                            if tall, o > 1.0, riviera {
+                                kind = rivieraGrassCell(pick, flowerShare: Float(config.flowerShare)) ?? kind
+                            } else if tall, o > 1.0 {
                                 let flowers = Float(config.flowerShare)
                                 if pick < flowers {
                                     kind = [GrassCell.carrot, .knapweed, .tansy][min(Int(pick / flowers * 3), 2)]
@@ -739,6 +856,7 @@ enum VegetationBuilder {
                         let sunk = corridor.art.sunkenWeight(st.s), village = corridor.art.villageWeight(st.s)
                         var oMax = 3.2 + (0.45 - 3.2) * village
                         oMax = oMax * (1 - sunk) + 0.7 * sunk
+                        if riviera { oMax = min(oMax, Self.rivieraVergeReach) }
                         return (min(oMax, (side > 0 ? st.vergeRight : st.vergeLeft) - 0.4), sunk, village)
                     }
                     // (No denser than every 0.3 m: closer, the roots make a
@@ -763,7 +881,7 @@ enum VegetationBuilder {
                             if sideRoads.covers(east: pt.east, north: pt.north) { continue }
                             let y = o < 0 ? Float(corridor.roadHeight(st, lateral: lat)) + 0.005
                                           : Float(RoadBuilder.vergePoint(corridor, st, side: side, offset: o).y) - 0.015
-                            let tint = grassTint(ground?.color(east: pt.east, north: pt.north), sunk: Float(r.sunk))
+                            let tint = grassTint(ground?.color(east: pt.east, north: pt.north), sunk: Float(r.sunk), riviera: riviera)
                             let out = SIMD2<Float>(Float(st.rightE * side), Float(-st.rightN * side))
                             grassTuft(&mesh, x: Float(pt.east), y: y, z: Float(-pt.north), rnd: &finRnd, tall: false, tint: tint,
                                       cell: finRnd.unit() < 0.75 ? .green : .dry, height: 0.1...0.22, width: 0.2...0.35,
@@ -790,7 +908,7 @@ enum VegetationBuilder {
                             guard r.oMax > lo + 0.1, ob > oa + 0.1, !corridor.art.isLawn(sc, side: side) else { continue }
                             if swardRibbon(&mesh, corridor, side: side, from: (sc - half * sin(ang), oa), to: (sc + half * sin(ang), ob),
                                            village: Float(r.village), sideRoads: sideRoads, rnd: &finRnd, ground: ground,
-                                           sunk: Float(r.sunk)) {
+                                           sunk: Float(r.sunk), riviera: riviera) {
                                 fins += 1
                             }
                         }
@@ -857,7 +975,8 @@ enum VegetationBuilder {
         var colour: SIMD3<Float>
     }
 
-    static func hedgeLook(_ kind: CourseArt.HedgeKind) -> HedgeLook {
+    static func hedgeLook(_ kind: CourseArt.HedgeKind, riviera: Bool = false) -> HedgeLook {
+        if riviera { return rivieraHedgeLook(kind) }
         /// `shadeDecode`'s yellowing, as a multiplier.
         func yellowed(_ t: Float) -> SIMD3<Float> { SIMD3(repeating: 1) + (SIMD3(1.16, 1.06, 0.72) - 1) * t }
         switch kind {
@@ -942,7 +1061,7 @@ enum VegetationBuilder {
         let step = 0.6
         for run in corridor.art.hedges {
             var rnd = WorldRandom(seed: UInt64(run.span.lowerBound * 17 + 11))
-            let look = hedgeLook(run.kind)
+            let look = hedgeLook(run.kind, riviera: corridor.art.look.isRiviera)
             let wave = SIMD3<Double>(Double(rnd.range(0, 6.28)), Double(rnd.range(0, 6.28)), Double(rnd.range(0, 6.28)))
             var stretch: [HedgeSection] = []
             var s = run.span.lowerBound
@@ -1264,9 +1383,9 @@ enum VegetationBuilder {
     /// A kept lawn's tufts: greener than the card.
     static let lawnTint = SIMD3<Float>(0.76, 1.0, 0.68)
 
-    static func grassTint(_ ground: SIMD3<Float>?, sunk: Float) -> SIMD3<Float> {
+    static func grassTint(_ ground: SIMD3<Float>?, sunk: Float, riviera: Bool = false) -> SIMD3<Float> {
         guard let g = ground else { return SIMD3(1, 1, 1) }
-        let ratio = simd_clamp(g / grassCardColor, SIMD3(repeating: 0.55), SIMD3(1.7, 1.7, 1.3))
+        let ratio = simd_clamp(g / (riviera ? grassCardColorMed : grassCardColor), SIMD3(repeating: 0.55), SIMD3(1.7, 1.7, 1.3))
         let t = SIMD3<Float>(1, 1, 1) + (ratio - SIMD3(1, 1, 1)) * 0.7
         return t * (1 - 0.25 * sunk)
     }
@@ -1358,7 +1477,7 @@ enum VegetationBuilder {
     @discardableResult
     static func swardRibbon(_ m: inout MeshBuffer, _ corridor: RoadCorridor, side: Double, from a: (s: Double, o: Double),
                             to b: (s: Double, o: Double), village: Float, sideRoads: RoadBuilder.SideRoadMask,
-                            rnd: inout WorldRandom, ground: GroundColor?, sunk: Float) -> Bool {
+                            rnd: inout WorldRandom, ground: GroundColor?, sunk: Float, riviera: Bool = false) -> Bool {
         let phase = rnd.range(0, 6.28)
         let tint = max(0, rnd.range(-0.2, 0.5))
         let rough = village < 0.5 && (a.o + b.o) / 2 > 1.0
@@ -1382,7 +1501,7 @@ enum VegetationBuilder {
             let pt = st.point(lateral: lat)
             let y = end.o < 0 ? Float(corridor.roadHeight(st, lateral: lat)) + 0.01
                               : Float(RoadBuilder.vergePoint(corridor, st, side: side, offset: end.o).y) - 0.015
-            let colour = swardTint(grassTint(ground?.color(east: pt.east, north: pt.north), sunk: sunk))
+            let colour = swardTint(grassTint(ground?.color(east: pt.east, north: pt.north), sunk: sunk, riviera: riviera))
             var hh = (village > 0.5 ? rnd.range(0.06, 0.09) : 0.10 + 0.22 * smoothstepF(0.7, 1.4, Float(end.o)))
                 * rnd.range(0.75, 1.25)
             var top = SIMD2<Float>(cos(lie), sin(lie)) * (hh * lieK)

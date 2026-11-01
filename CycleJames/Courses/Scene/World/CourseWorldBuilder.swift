@@ -29,22 +29,47 @@ enum CourseWorldBuilder {
         WorldCrashLog.install()
         #endif
         var log = WorldBuildLog(quality: quality)
-        let config = WorldConfig.make(quality)
+        let tier = WorldConfig.make(quality)
         progress(0.02, "Reading the map")
 
-        let corridor = RoadCorridor(bundle: bundle, vergeWidth: config.vergeWidth)
+        let corridor = RoadCorridor(bundle: bundle, vergeWidth: tier.vergeWidth)
+        // The Riviera's own tier knobs (`WorldBudget`); the verge width is
+        // the tier's either way.
+        let config = corridor.art.look.isRiviera ? tier.riviera() : tier
         try Task.checkCancellation()
         log.mark("corridor")
         progress(0.1, "Shaping the hills")
 
         let scenery = bundle.scenery
-        async let nearChunks = TerrainBuilder.buildNear(corridor: corridor, config: config)
-        async let farChunks = TerrainBuilder.buildFar(corridor: corridor, config: config)
-        async let roadMeshes = RoadBuilder.build(corridor: corridor, coarse: quality == .battery)
+        // A coast's sea and the land out to its skyline (the Poggio).
+        let look = corridor.art.look
+        let seaLevel = SeaBuilder.level(bundle: bundle)
+        let horizonRaster = TerrainBuilder.horizonRaster(bundle: bundle)
+        // Each builder's own time, for the log (they run side by side).
+        let times = WorldBuildTimes(origin: started)
+        async let nearChunks = times.handOver("terrain near") {
+            TerrainBuilder.buildNear(corridor: corridor, config: config, seaLevel: seaLevel)
+        }
+        async let farChunks = times.handOver("terrain far") {
+            TerrainBuilder.buildFar(corridor: corridor, config: config, seaLevel: seaLevel)
+        }
+        async let horizonChunks = times.handOver("terrain horizon") {
+            horizonRaster.map {
+                TerrainBuilder.buildHorizon(corridor: corridor, raster: $0, config: config, seaLevel: seaLevel)
+            } ?? []
+        }
+        async let seaMesh = times.handOver("sea") {
+            seaLevel.map { SeaBuilder.build(corridor: corridor, levelM: $0, horizon: horizonRaster) }
+        }
+        async let roadMeshes = times.handOver("road") { RoadBuilder.build(corridor: corridor, coarse: quality == .battery) }
         // The canopy raster is decoded for this build only (`CourseBundle.canopy`).
-        async let houses = BuildingBuilder.build(corridor: corridor, scenery: scenery, canopy: bundle.canopy)
-        async let sideRoads = RoadBuilder.buildSideRoads(corridor: corridor, scenery: scenery,
-                                                         reach: config.terrain1mRadius - 4)
+        async let houses = times.handOver("buildings, roadside, summit") {
+            BuildingBuilder.build(corridor: corridor, scenery: scenery, canopy: bundle.canopy,
+                                  rivieraDetail: .make(quality))
+        }
+        async let sideRoads = times.handOver("side roads") {
+            RoadBuilder.buildSideRoads(corridor: corridor, scenery: scenery, reach: config.terrain1mRadius - 4)
+        }
 
         // The course's light raster, decoded once while those build: for the
         // plants' sky (`SkyRaster`), the light along the route that meters
@@ -58,15 +83,17 @@ enum CourseWorldBuilder {
         let sky = SkyRaster(pixels: lightPixels, bundle: bundle, config: config)
         let light = LightProfile.make(bundle: bundle, pixels: lightPixels)
         log.mark("light raster")
-        async let plants = VegetationBuilder.build(corridor: corridor, scenery: scenery, config: config,
-                                                   ground: config.grassDensity > 0 ? GroundColor(bundle: bundle) : nil,
-                                                   sky: sky)
+        async let plants = times.handOver("plants") {
+            VegetationBuilder.build(corridor: corridor, scenery: scenery, config: config,
+                                    ground: config.grassDensity > 0 ? GroundColor(bundle: bundle) : nil, sky: sky)
+        }
 
         // Textures and materials load while the meshes build. Their GPU
         // uploads need the app in the foreground; if it left part way
         // through, an upload failed and they are made again on return.
         var textures: WorldTextures
         var materials: WorldMaterials
+        var seaMaterial: SCNMaterial?
         var attempts = 0
         repeat {
             try await waitForForeground()
@@ -74,6 +101,7 @@ enum CourseWorldBuilder {
             textures.adopt(lightPixels, as: lightName)
             materials = WorldMaterials(config: config, textures: textures, bundle: bundle, art: corridor.art)
             for m in materials.warmUp { _ = m }
+            seaMaterial = seaLevel == nil ? nil : materials.makeSea()
             attempts += 1
             #if DEBUG
             if textures.uploadFailed { print("world textures: GPU upload failed (attempt \(attempts)), retrying") }
@@ -82,24 +110,45 @@ enum CourseWorldBuilder {
         } while textures.uploadFailed && attempts < 3
         lightPixels = nil
         let scene = SCNScene()
-        let sun = SkyLighting.install(in: scene, config: config, textures: textures)
+        let sun = SkyLighting.install(in: scene, config: config, textures: textures, look: look)
         log.mark("sky, textures, materials")
 
-        let near = await nearChunks
-        let far = await farChunks
+        var near = await nearChunks.take()
+        var far = await farChunks.take()
         try Task.checkCancellation()
         log.mark("terrain meshes (wait)")
         progress(0.45, "Laying the cobbles")
-        let road = await roadMeshes
+        var road = await roadMeshes.take()
         try Task.checkCancellation()
-        progress(0.6, "Planting the hedges")
-        let veg = await plants
+        var town = await houses.take()
         try Task.checkCancellation()
-        progress(0.75, "Building the houses")
-        let town = await houses
+        var side = await sideRoads.take()
         try Task.checkCancellation()
-        log.mark("road, plants, buildings (wait)")
-        progress(0.85, "Painting the light")
+        // The plants take longest (on the Poggio's high tier 12.5 s of a
+        // Debug build against the buildings' 11 s): the terrain, road and
+        // building geometry is made while they finish, and they are awaited
+        // after it.
+        log.mark("road, buildings (wait)")
+        // On the Riviera each built mesh is let go of once its geometry is
+        // made (SceneKit keeps its own copy), so the end of the build holds
+        // one copy of the world, not two (`release` below, and the builders'
+        // results taken out of their `async let`s by `WorldHandOver`): the
+        // Poggio's high tier ended its build at 1018 MB, now 570-610 MB. A
+        // Flemish course keeps them to the end, as before.
+        let release = look.isRiviera
+        #if DEBUG
+        var budget = WorldBudgetReport.enabled ? WorldBudgetReport(corridor: corridor) : nil
+        if budget != nil {
+            for chunk in near { budget?.add("terrain near", chunk.mesh) }
+            for (mesh, name) in [(road.asphalt, "road asphalt"), (road.verge, "road verge"), (road.gutter, "road gutter"),
+                                 (road.markings, "road markings"), (side, "side roads")] {
+                budget?.add(name, mesh)
+            }
+            budget?.add("building walls", town.walls)
+            budget?.add("building roofs", town.roofs, perPart: true)
+            budget?.add("props", town.props, perPart: true)
+        }
+        #endif
 
         // Terrain.
         let terrainRoot = SCNNode()
@@ -121,15 +170,43 @@ enum CourseWorldBuilder {
             terrainRoot.addChildNode(node)
             log.triangles["terrain near", default: 0] += chunk.mesh.triangleCount
             log.distant["terrain near", default: 0] += chunk.lod?.triangleCount ?? chunk.mesh.triangleCount
+            log.bytes["terrain near", default: 0] += chunk.mesh.byteCount + (chunk.lod?.byteCount ?? 0)
         }
+        if release { near = [] }
         for chunk in far {
             guard let g = chunk.mesh.geometry(materials: [materials.farTerrain]) else { continue }
             let node = SCNNode(geometry: g)
             node.castsShadow = false
             terrainRoot.addChildNode(node)
             log.triangles["terrain far", default: 0] += chunk.mesh.triangleCount
+            log.bytes["terrain far", default: 0] += chunk.mesh.byteCount
+        }
+        if release { far = [] }
+        for chunk in await horizonChunks.take() {
+            guard let g = chunk.mesh.geometry(materials: [materials.farTerrain]) else { continue }
+            let node = SCNNode(geometry: g)
+            node.castsShadow = false
+            terrainRoot.addChildNode(node)
+            log.triangles["terrain horizon", default: 0] += chunk.mesh.triangleCount
+            log.bytes["terrain horizon", default: 0] += chunk.mesh.byteCount
+        }
+        // The sea stays at the origin: its shader bends it with the earth
+        // from world positions.
+        if let sea = await seaMesh.take(), let seaMaterial, let g = sea.geometry(materials: [seaMaterial]) {
+            let node = SCNNode(geometry: g)
+            node.name = "sea"
+            node.castsShadow = false
+            terrainRoot.addChildNode(node)
+            log.triangles["sea", default: 0] += sea.triangleCount
+            log.bytes["sea", default: 0] += sea.byteCount
         }
         scene.rootNode.addChildNode(terrainRoot)
+
+        // On the Riviera the whole-course meshes (road strips, buildings,
+        // props) go in as tiles (`WorldTiles`); a Flemish course keeps one
+        // node each.
+        let tiled = look.isRiviera
+        var tiles = 0
 
         // Road and verges.
         let roadRoot = SCNNode()
@@ -143,6 +220,17 @@ enum CourseWorldBuilder {
                                         (road.markings, materials.roadPaint, "markings"),
                                         (road.cycleLanes, materials.cycleLane, "cycle lanes"),
                                         (road.verge, materials.verge, "verge")] {
+            if tiled {
+                guard !mesh.isEmpty else { continue }
+                // Paint is under a pixel long before 450 m.
+                let nodes = WorldTiles.nodes(mesh, materials: [material], size: WorldTiles.roadSize,
+                                             hideBeyond: name == "markings" ? 450 : nil, casts: name == "verge", name: name)
+                for node in nodes { roadRoot.addChildNode(node) }
+                tiles += nodes.count
+                log.triangles["road " + name, default: 0] += mesh.triangleCount
+                log.bytes["road " + name, default: 0] += mesh.byteCount
+                continue
+            }
             guard let g = mesh.geometry(materials: [material]) else { continue }
             let node = SCNNode(geometry: g)
             node.name = name
@@ -151,24 +239,136 @@ enum CourseWorldBuilder {
             node.castsShadow = name == "verge"
             roadRoot.addChildNode(node)
             log.triangles["road " + name, default: 0] += mesh.triangleCount
+            log.bytes["road " + name, default: 0] += mesh.byteCount
         }
-        let side = await sideRoads
-        try Task.checkCancellation()
+        if release { road = RoadBuilder.Output() }
+        // (Side roads and hedges stay whole: their shaders move vertices by
+        // their model position, the side roads towards the camera, the
+        // hedges in the wind.)
         if let g = side.geometry(materials: [materials.sideAsphalt, materials.sideCobbles]) {
             let node = SCNNode(geometry: g)
             node.name = "side roads"
             node.castsShadow = false
             roadRoot.addChildNode(node)
             log.triangles["side roads", default: 0] += side.triangleCount
+            log.bytes["side roads", default: 0] += side.byteCount
         }
+        if release { side = MeshBuffer() }
         scene.rootNode.addChildNode(roadRoot)
         log.mark("terrain + road geometry")
+
+        // Buildings, props, water.
+        let builtRoot = SCNNode()
+        builtRoot.name = "buildings"
+        // Fence and power wire is a few millimetres thick: its shadow would
+        // only alias into dotted lines across the grass.
+        let wirePart = BuildingBuilder.PropPart.wire.rawValue
+        var solidProps = town.props, wires = town.props
+        solidProps.parts[wirePart] = []
+        for k in wires.parts.indices where k != wirePart { wires.parts[k] = [] }
+        if tiled {
+            // Walls and roofs whole wherever they are. Of the props, the
+            // stone walls and guardrails, which still read as lines along
+            // the far legs of the road, stay; from 500 m (a tile's nearest
+            // corner up to 180 m nearer) the rest let go: copings and
+            // slabs, pergolas, signs and lamp posts; the wires from 300 m.
+            // The ironwork, lamp glass and nets are tiles of their own,
+            // which let go from the tier's `RivieraDetail.ironM` (420 m on
+            // high).
+            let far: Set<BuildingBuilder.PropPart> = [.masonry, .galvanised]
+            let ironParts = Set(RivieraDetail.ironParts.map(\.rawValue))
+            var iron = solidProps
+            for k in solidProps.parts.indices {
+                if ironParts.contains(k) { solidProps.parts[k] = [] } else { iron.parts[k] = [] }
+            }
+            let detail = RivieraDetail.make(quality)
+            var meshes: [(MeshBuffer, [SCNMaterial], String, Bool, Float?, Set<BuildingBuilder.PropPart>?)] = [
+                (town.walls, [materials.walls], "building walls", true, nil, nil),
+                (town.roofs, materials.roofParts, "building roofs", true, nil, nil),
+                (solidProps, materials.props, "props", true, 500, far),
+                (iron, materials.props, "props", true, detail.ironM, nil),
+                (wires, materials.props, "props", false, 300, nil),
+                (town.water, [materials.water], "water", false, nil, nil),
+                (town.streams, [materials.stream], "streams", false, nil, nil),
+            ]
+            // Only `meshes` holds them now, and each is let go of once its
+            // tiles are made (`release`). (The props' three meshes share
+            // their vertices: their bytes are counted once.)
+            log.bytes["props", default: 0] += town.props.byteCount
+            (town.walls, town.roofs, town.props, town.water, town.streams) = (.init(), .init(), .init(), .init(), .init())
+            (solidProps, wires, iron) = (.init(), .init(), .init())
+            for i in meshes.indices where !meshes[i].0.isEmpty {
+                let (mesh, mats, name, casts, beyond, keep) = meshes[i]
+                meshes[i].0 = MeshBuffer()
+                let farParts = keep.map { Set($0.map(\.rawValue)) }
+                let nodes = WorldTiles.nodes(mesh, materials: mats, size: WorldTiles.builtSize, hideBeyond: beyond,
+                                             keepBeyond: farParts, casts: casts, name: name)
+                for node in nodes { builtRoot.addChildNode(node) }
+                tiles += nodes.count
+                log.triangles[name, default: 0] += mesh.triangleCount
+                if name != "props" { log.bytes[name, default: 0] += mesh.byteCount }
+            }
+        } else {
+            if let g = town.walls.geometry(materials: [materials.walls]) {
+                builtRoot.addChildNode(SCNNode(geometry: g))
+                log.triangles["building walls", default: 0] += town.walls.triangleCount
+                log.bytes["building walls", default: 0] += town.walls.byteCount
+            }
+            if let g = town.roofs.geometry(materials: materials.roofParts) {
+                builtRoot.addChildNode(SCNNode(geometry: g))
+                log.triangles["building roofs", default: 0] += town.roofs.triangleCount
+                log.bytes["building roofs", default: 0] += town.roofs.byteCount
+            }
+            for (mesh, casts) in [(solidProps, true), (wires, false)] {
+                guard let g = mesh.geometry(materials: materials.props) else { continue }
+                let node = SCNNode(geometry: g)
+                node.castsShadow = casts
+                builtRoot.addChildNode(node)
+                log.triangles["props", default: 0] += mesh.triangleCount
+                log.bytes["props", default: 0] += mesh.byteCount
+            }
+            for (mesh, material, name) in [(town.water, materials.water, "water"),
+                                            (town.streams, materials.stream, "streams")] {
+                guard let g = mesh.geometry(materials: [material]) else { continue }
+                let node = SCNNode(geometry: g)
+                node.castsShadow = false
+                builtRoot.addChildNode(node)
+                log.triangles[name, default: 0] += mesh.triangleCount
+            }
+        }
+        log.mark("building geometry")
+        progress(0.6, "Planting the hedges")
+        var veg = await plants.take()
+        try Task.checkCancellation()
+        log.mark("plants (wait)")
+        #if DEBUG
+        if budget != nil {
+            budget?.add("hedges", veg.hedges)
+            for c in veg.clusters {
+                budget?.add("trees+shrubs full", c.full)
+                if c.full.isEmpty { budget?.add("trees+shrubs light only", c.light) }
+            }
+            for cell in veg.grassCells { budget?.add("grass", cell.mesh) }
+            budget?.write(quality: quality)
+            budget = nil
+        }
+        #endif
 
         // Trees and shrubs, clustered with three levels of detail.
         let plantRoot = SCNNode()
         plantRoot.name = "vegetation"
         let plantMats = [materials.bark, materials.leaves]
-        for var c in veg.clusters {
+        // On the Riviera the clusters with no full trees (all beyond the
+        // full trees' reach of the route) go in four to a node
+        // (`WorldTiles.mergeLightClusters`): each cost two draws for its
+        // light trees, or one for its impostors, for a few hundred
+        // triangles.
+        var clusters = tiled ? WorldTiles.mergeLightClusters(veg.clusters) : veg.clusters
+        if release { veg.clusters = [] }
+        for i in clusters.indices {
+            var c = clusters[i]
+            if release { clusters[i] = VegetationBuilder.Cluster() }
+            log.bytes["trees+shrubs", default: 0] += c.full.byteCount + c.light.byteCount + c.impostor.byteCount
             // Local to the cluster's centre, so the levels of detail switch
             // by the distance to this cluster (see the terrain above).
             let centre = (c.full.isEmpty ? c.light : c.full).boundsCentre
@@ -204,6 +404,7 @@ enum CourseWorldBuilder {
             node.name = "hedges"
             plantRoot.addChildNode(node)
             log.triangles["hedges", default: 0] += veg.hedges.triangleCount
+            log.bytes["hedges", default: 0] += veg.hedges.byteCount
         }
 
         // Streamed verge grass.
@@ -216,48 +417,24 @@ enum CourseWorldBuilder {
             plantRoot.addChildNode(node)
             grassCells.append((cell.s, node))
             log.triangles["grass (all cells)", default: 0] += cell.mesh.triangleCount
+            log.bytes["grass (all cells)", default: 0] += cell.mesh.byteCount
+        }
+        if release {
+            clusters = []
+            veg.hedges = MeshBuffer()
+            veg.grassCells = []
         }
         log.mark("vegetation geometry")
 
-        // Buildings, props, water.
-        let builtRoot = SCNNode()
-        builtRoot.name = "buildings"
-        if let g = town.walls.geometry(materials: [materials.walls]) {
-            builtRoot.addChildNode(SCNNode(geometry: g))
-            log.triangles["building walls", default: 0] += town.walls.triangleCount
-        }
-        if let g = town.roofs.geometry(materials: materials.roofParts) {
-            builtRoot.addChildNode(SCNNode(geometry: g))
-            log.triangles["building roofs", default: 0] += town.roofs.triangleCount
-        }
-        // Fence and power wire is a few millimetres thick: its shadow would
-        // only alias into dotted lines across the grass.
-        let wirePart = BuildingBuilder.PropPart.wire.rawValue
-        var solidProps = town.props, wires = town.props
-        solidProps.parts[wirePart] = []
-        for k in wires.parts.indices where k != wirePart { wires.parts[k] = [] }
-        for (mesh, casts) in [(solidProps, true), (wires, false)] {
-            guard let g = mesh.geometry(materials: materials.props) else { continue }
-            let node = SCNNode(geometry: g)
-            node.castsShadow = casts
-            builtRoot.addChildNode(node)
-            log.triangles["props", default: 0] += mesh.triangleCount
-        }
-        for (mesh, material, name) in [(town.water, materials.water, "water"),
-                                        (town.streams, materials.stream, "streams")] {
-            guard let g = mesh.geometry(materials: [material]) else { continue }
-            let node = SCNNode(geometry: g)
-            node.castsShadow = false
-            builtRoot.addChildNode(node)
-            log.triangles[name, default: 0] += mesh.triangleCount
-        }
+        progress(0.75, "Building the houses")
         scene.rootNode.addChildNode(builtRoot)
         log.counts = veg.counts
         log.counts["buildings"] = town.count
+        if tiled { log.counts["tiled nodes"] = tiles }
         #if DEBUG
         log.counts["light raster decodes"] = WorldTextures.decodes(lightName) - lightDecodes
         #endif
-        log.mark("building geometry")
+        progress(0.85, "Painting the light")
 
         let dynamicRoot = SCNNode()
         dynamicRoot.name = "dynamic"
@@ -268,22 +445,28 @@ enum CourseWorldBuilder {
         log.mark("texture caches released")
 
         log.total = CACurrentMediaTime() - started
+        log.builders = times.all
         log.write()
 
         let frame = FrameUpdater(sun: sun, corridor: corridor, grass: grassCells, grassMaterial: materials.grass,
                                  grassRadius: config.grassRadius)
         // The lane exposure, metered from `light`: the lights (and the
         // leaves' light through them) that it scales.
-        let glow = [materials.leaves, materials.grass, materials.impostor]
-        let exposure: (Float) -> Void = sun.light.map { SkyLighting.exposure(scene: scene, sun: $0, glow: glow) } ?? { _ in }
+        let glow = [materials.leaves, materials.grass, materials.impostor] + [seaMaterial].compactMap { $0 }
+        let exposure: (Float) -> Void = sun.light.map {
+            SkyLighting.exposure(scene: scene, sun: $0, glow: glow, look: look)
+        } ?? { _ in }
         #if DEBUG
         if let dir = WorldDebugShots.directory {
             progress(1, "Taking world shots")
             WorldDebugShots.run(scene: scene, route: bundle.route, quality: quality,
-                                configure: { SkyLighting.configure($0, config: config) },
+                                configure: { SkyLighting.configure($0, config: config, look: look) },
                                 frame: frame, dir: dir,
                                 terrainHeight: { e, n in corridor.terrain.height(east: Double(e), north: Double(n)) },
-                                light: light, setExposure: exposure)
+                                light: light, setExposure: exposure,
+                                partNames: Dictionary(zip(materials.props.map(ObjectIdentifier.init),
+                                                          BuildingBuilder.PropPart.allCases.map { "\($0)" }),
+                                                      uniquingKeysWith: { a, _ in a }))
         }
         #endif
         progress(1, "Ready")
@@ -294,12 +477,12 @@ enum CourseWorldBuilder {
             dynamicRoot: dynamicRoot,
             sun: sun,
             preferredFramesPerSecond: config.fps,
-            configureCamera: { camera in SkyLighting.configure(camera, config: config) },
+            configureCamera: { camera in SkyLighting.configure(camera, config: config, look: look) },
             onFrame: { position, time in frame.update(camera: position, time: time) },
             // Keeps the materials for the ride; their textures' caches are
             // already let go of (`releaseCaches` above).
             applyLiveConfig: { [materials] live in
-                if let light = sun.light { SkyLighting.applyShadows(light, config: live) }
+                if let light = sun.light { SkyLighting.applyShadows(light, config: live, look: look) }
                 frame.setGrassRadius(min(live.grassRadius, config.grassRadius))
                 materials.applyLive(live)
             },
@@ -395,14 +578,21 @@ struct WorldBuildLog {
     /// Triangles once distant levels of detail have switched in.
     var distant: [String: Int] = [:]
     var counts: [String: Int] = [:]
+    /// Bytes of the meshes made into geometry, by the names above.
+    var bytes: [String: Int] = [:]
+    /// Each builder's own time (`WorldBuildTimes`).
+    var builders: [WorldBuildTimes.Entry] = []
     var total: Double = 0
     private var last = CACurrentMediaTime()
+    /// CPU time over every thread, at the start and at each step's end.
+    private var cpu: [Double] = [WorldBuildTimes.processCPU()]
 
     init(quality: GraphicsQuality) { self.quality = quality }
 
     mutating func mark(_ step: String) {
         let now = CACurrentMediaTime()
         steps.append((step, now - last, Self.footprintMB().now))
+        cpu.append(WorldBuildTimes.processCPU())
         last = now
     }
 
@@ -429,6 +619,18 @@ struct WorldBuildLog {
         for (k, v) in triangles.sorted(by: { $0.key < $1.key }) { lines.append("  \(k): \(v)") }
         for (k, v) in distant.sorted(by: { $0.key < $1.key }) { lines.append("  distant LOD \(k): \(v)") }
         for (k, v) in counts.sorted(by: { $0.key < $1.key }) { lines.append("  count \(k): \(v)") }
+        lines.append(String(format: "mesh MB made into geometry %.1f", Double(bytes.values.reduce(0, +)) / 1_048_576))
+        for (k, v) in bytes.sorted(by: { $0.key < $1.key }) {
+            lines.append(String(format: "  MB %@: %.1f", k, Double(v) / 1_048_576))
+        }
+        // CPU time over all threads by step, and each builder's own.
+        lines.append(String(format: "CPU (all threads) %.2f s over %.2f s", (cpu.last ?? 0) - cpu[0], total))
+        for (i, step) in steps.enumerated() where i + 1 < cpu.count {
+            lines.append(String(format: "  CPU %@ %.2f s", step.0, cpu[i + 1] - cpu[i]))
+        }
+        for b in builders {
+            lines.append(String(format: "  builder %@: from %.2f s, %.2f s wall, %.2f s CPU", b.name, b.start, b.wall, b.cpu))
+        }
         let text = lines.joined(separator: "\n") + "\n"
         let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("cj_world_log_\(quality.rawValue).txt")
         try? text.write(to: url, atomically: true, encoding: .utf8)
