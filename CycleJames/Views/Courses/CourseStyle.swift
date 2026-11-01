@@ -52,6 +52,13 @@ enum CourseFormat {
         return String(format: v < 10_000 ? "%.2f km" : "%.1f km", v / 1000)
     }
 
+    /// `distance` split for a big readout: ("570", "m"), ("1.07", "km").
+    static func distanceParts(_ m: Double) -> (value: String, unit: String) {
+        let v = max(0, m)
+        if v < 1000 { return ("\(Int(v.rounded()))", "m") }
+        return (String(format: v < 10_000 ? "%.2f" : "%.1f", v / 1000), "km")
+    }
+
     /// Climb time with tenths: "2:41.3", "1:02:41.3".
     static func climbTime(_ seconds: Double) -> String {
         let tenths = Int((max(0, seconds) * 10).rounded())
@@ -80,6 +87,8 @@ enum CourseFormat {
 enum CourseNav: Hashable {
     case list
     case detail(String)
+    /// The bergs back to back (`BergSeriesView`).
+    case series
 }
 
 /// Development launch arguments for screenshots of the course screens, in
@@ -99,6 +108,9 @@ enum CourseNav: Hashable {
 ///     -screenshotCourseResetPB        open the "Reset personal best" confirmation
 ///     -screenshotTrainerChips         (Debug) show every trainer chip state over the ride
 ///     -courseRideHold                 open the demo ride but wait on the start line
+///     -courseSeriesDemo paterberg,molenberg   open the berg series with these climbs (or `all`) and ride it
+///     -courseSeriesRecoverySec 12     with -courseSeriesDemo, the easy spin between climbs, s
+///     -screenshotCourseSeries         open the berg series setup page
 ///     -screenshotHistoryDetail        with -screenshotTab history, open the newest ride
 ///     -screenshotSettings             open Settings from the Workouts tab
 ///     -courseRideGear 14              (Debug) a Wattbike in gear 14 (0: connected, gear not yet known)
@@ -127,6 +139,15 @@ enum CourseLaunchArgs {
     static var rideStop: Bool { args.contains("-courseRideStop") }
     static var rideLandscape: Bool { args.contains("-courseRideLandscape") }
     static var rideHold: Bool { args.contains("-courseRideHold") }
+    /// The series demo's climbs; nil without `-courseSeriesDemo`.
+    static var seriesDemoCourseIDs: [String]? {
+        guard args.contains("-courseSeriesDemo") else { return nil }
+        let list = value("-courseSeriesDemo") ?? "all"
+        if list == "all" || list.hasPrefix("-") { return BergSeries.availableIDs }
+        return list.split(separator: ",").map(String.init)
+    }
+    static var seriesDemoRecoverySec: Double? { value("-courseSeriesRecoverySec").flatMap(Double.init) }
+    static var screenshotCourseSeries: Bool { args.contains("-screenshotCourseSeries") }
     static var screenshotHistoryDetail: Bool { args.contains("-screenshotHistoryDetail") }
     static var screenshotSettings: Bool { args.contains("-screenshotSettings") }
     /// Section of the detail page to scroll to: profile, pb, setup, trainer, licences.
@@ -154,6 +175,15 @@ enum CourseLaunchArgs {
     @MainActor private static var personalBestSeedConsumed = false
     @MainActor private static var resetPBPromptConsumed = false
     @MainActor private static var workoutRideGearDemoConsumed = false
+    @MainActor private static var seriesDemoConsumed = false
+
+    /// The series demo opens once per launch.
+    @MainActor
+    static func consumeSeriesDemo() -> CourseRidePlan? {
+        guard !seriesDemoConsumed, let ids = seriesDemoCourseIDs, !ids.isEmpty else { return nil }
+        seriesDemoConsumed = true
+        return CourseRidePlan(courseIDs: ids, recoverySec: seriesDemoRecoverySec ?? Double(AppSettings.seriesRecoveryMin) * 60)
+    }
 
     @MainActor
     static func consumeRideDemo(for courseID: String) -> Bool {

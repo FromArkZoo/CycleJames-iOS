@@ -7,6 +7,9 @@ import SwiftUI
 struct CourseRideHUD: View {
     @ObservedObject var controller: CourseRideController
     let summary: CourseSummary
+    /// Between the climbs of a series: how far the next course's world has
+    /// been built, nil once it is showing.
+    var nextWorldProgress: Double? = nil
     @Binding var cameraMode: CameraMode
     var onStart: () -> Void
     var onStop: () -> Void
@@ -43,6 +46,7 @@ struct CourseRideHUD: View {
         .foregroundStyle(.white)
         .animation(.easeInOut(duration: 0.2), value: phase)
         .animation(.easeInOut(duration: 0.2), value: showTrainerDropped)
+        .animation(.easeInOut(duration: 0.3), value: controller.isRecovering)
         .onAppear { if controller.trainerConnected { hadTrainer = true } }
         .onChange(of: controller.trainerConnected) { _, connected in
             if connected { hadTrainer = true }
@@ -97,8 +101,13 @@ struct CourseRideHUD: View {
                     .hudPanel(cornerRadius: CJRadius.chip)
                     .transition(.opacity)
             }
-            bottomPanel
-                .modifier(CoverEdge(edge: .bottom, value: $cover.portraitBottom))
+            // The spin card counts as cover, so the camera frames the rider
+            // above it.
+            VStack(spacing: CJSpacing.s) {
+                if controller.isRecovering { recoveryCard.transition(.opacity) }
+                bottomPanel
+            }
+            .modifier(CoverEdge(edge: .bottom, value: $cover.portraitBottom))
         }
         .task(id: cameraMode) {
             // Shown for a moment after each change, not on first appear.
@@ -160,6 +169,11 @@ struct CourseRideHUD: View {
                         .hudPanel()
                         .frame(maxWidth: 440)
                         .modifier(CoverEdge(edge: .bottom, value: $cover.landscapeBottom))
+                } else if controller.isRecovering {
+                    recoveryCard
+                        .frame(maxWidth: 400)
+                        .modifier(CoverEdge(edge: .bottom, value: $cover.landscapeBottom))
+                        .transition(.opacity)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -274,23 +288,29 @@ struct CourseRideHUD: View {
 
     private var climbStartS: Double { controller.bundle?.climb.startS ?? summary.climbStartS }
 
+    /// "· 2 of 6" after the course name on a berg series.
+    private var legSuffix: String {
+        guard let plan = controller.plan, plan.isSeries else { return "" }
+        return " · \(controller.legIndex + 1) of \(plan.legCount)"
+    }
+
     @ViewBuilder
     private var climbPanel: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if controller.climbElapsedSec == nil {
+            if controller.isRecovering {
+                upNext
+            } else if controller.climbElapsedSec == nil {
                 // Before the timing line, or started past it (no time).
                 let beforeClimb = controller.distanceM < climbStartS
-                Text(summary.name.uppercased())
-                    .font(CJFont.labelUpper)
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .lineLimit(1)
-                Text(beforeClimb
-                     ? "Climb in \(CourseFormat.distance(climbStartS - controller.distanceM))"
-                     : (controller.distanceToSummitM > 0
-                        ? "\(CourseFormat.distance(controller.distanceToSummitM)) to summit"
-                        : "Over the top"))
-                    .font(CJFont.bodyBold)
-                    .monospacedDigit()
+                panelLabel(summary.name.uppercased() + legSuffix)
+                if beforeClimb {
+                    metresLeft(climbStartS - controller.distanceM, to: "to the climb")
+                } else if controller.distanceToSummitM > 0 {
+                    metresLeft(controller.distanceToSummitM, to: "to summit")
+                } else {
+                    Text("Over the top")
+                        .font(CJFont.bodyBold)
+                }
                 Text(controller.personalBestSec.map { "PB \(CourseFormat.climbTime($0))" } ?? "No PB yet")
                     .font(CJFont.caption)
                     .foregroundStyle(controller.personalBestSec == nil ? Color.white.opacity(0.6) : CJColors.positionMarker)
@@ -307,36 +327,25 @@ struct CourseRideHUD: View {
                 HStack(spacing: 4) {
                     Image(systemName: atSummit ? "flag.checkered" : "stopwatch.fill")
                         .font(.system(size: 10, weight: .bold))
-                    Text(atSummit ? "SUMMIT" : "CLIMB")
+                    Text((atSummit ? "SUMMIT" : summary.name.uppercased()) + legSuffix)
                         .font(CJFont.labelUpper)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .foregroundStyle(Color.white.opacity(0.72))
-                HStack(alignment: .firstTextBaseline, spacing: CJSpacing.xs) {
-                    Text(CourseFormat.climbTime(controller.climbElapsedSec ?? 0))
-                        .font(CJFont.metricSmall)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    if let delta = controller.pbDeltaSec {
-                        Text(CourseFormat.delta(delta))
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
-                            .monospacedDigit()
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .foregroundStyle(.white)
-                            .background(delta <= 0 ? CJColors.success : CJColors.danger, in: Capsule())
-                    }
-                }
                 if atSummit {
+                    climbClock
                     let left = max(0, (controller.bundle?.route.length ?? summary.totalLengthM) - controller.distanceM)
-                    Text(left > 1 ? "Finish in \(CourseFormat.distance(left))" : "Finished")
-                        .font(CJFont.caption)
-                        .foregroundStyle(Color.white.opacity(0.8))
-                        .monospacedDigit()
+                    if left > 1 {
+                        metresLeft(left, to: "to finish")
+                    } else {
+                        Text("Finished")
+                            .font(CJFont.caption)
+                            .foregroundStyle(Color.white.opacity(0.8))
+                    }
                 } else {
-                    Text("\(CourseFormat.distance(controller.distanceToSummitM)) to summit")
-                        .font(CJFont.caption)
-                        .foregroundStyle(Color.white.opacity(0.8))
-                        .monospacedDigit()
+                    metresLeft(controller.distanceToSummitM, to: "to summit")
+                    climbClock
                     ProgressView(value: min(max(controller.climbProgress, 0), 1))
                         .tint(CJColors.positionMarker)
                         .scaleEffect(x: 1, y: 0.8, anchor: .center)
@@ -352,6 +361,206 @@ struct CourseRideHUD: View {
         .frame(minWidth: 150, maxWidth: landscape ? .infinity : nil, alignment: .leading)
         .hudPanel()
         .accessibilityElement(children: .combine)
+    }
+
+    private func panelLabel(_ text: String) -> some View {
+        Text(text)
+            .font(CJFont.labelUpper)
+            .foregroundStyle(Color.white.opacity(0.72))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+
+    /// The distance still to ride, in digits big enough to read at a glance
+    /// from the saddle.
+    private func metresLeft(_ m: Double, to target: String) -> some View {
+        let parts = CourseFormat.distanceParts(m)
+        return VStack(alignment: .leading, spacing: -4) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(parts.value)
+                    .font(.system(size: 46, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(parts.unit)
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.85))
+            }
+            Text(target.uppercased())
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(Color.white.opacity(0.72))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(CourseFormat.distance(m)) \(target)")
+    }
+
+    /// Climb time so far (frozen at the summit) and the gap to the PB.
+    private var climbClock: some View {
+        HStack(alignment: .firstTextBaseline, spacing: CJSpacing.xs) {
+            Text(CourseFormat.climbTime(controller.climbElapsedSec ?? 0))
+                .font(CJFont.metricSmall)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            if let delta = controller.pbDeltaSec {
+                Text(CourseFormat.delta(delta))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .foregroundStyle(.white)
+                    .background(delta <= 0 ? CJColors.success : CJColors.danger, in: Capsule())
+            }
+        }
+    }
+
+    /// Between climbs: the one coming up.
+    @ViewBuilder
+    private var upNext: some View {
+        let next = controller.nextCourseID.flatMap(CourseCatalog.summary(id:)) ?? summary
+        let total = controller.plan?.legCount ?? 1
+        panelLabel("UP NEXT · \(controller.legResults.count + 1) of \(total)")
+        Text(next.name)
+            .font(.system(size: 20, weight: .heavy))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+        Text("\(CourseFormat.distance(next.climbLengthM)) at \(CourseFormat.grade(next.climbAvgGradePct))")
+            .font(CJFont.caption)
+            .foregroundStyle(Color.white.opacity(0.8))
+            .monospacedDigit()
+        Text("max \(CourseFormat.grade(next.climbMaxGradePct)) · +\(Int(next.climbGainM.rounded())) m")
+            .font(CJFont.caption)
+            .foregroundStyle(Color.white.opacity(0.8))
+            .monospacedDigit()
+        if let pb = AppSettings.personalBestSeconds(courseID: next.id) {
+            Text("PB \(CourseFormat.climbTime(pb))")
+                .font(CJFont.caption)
+                .foregroundStyle(CJColors.positionMarker)
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: Recovery
+
+    /// The easy spin between two climbs of a series: time left, the climb
+    /// just done, and the one coming up (with its world's build while it
+    /// isn't showing yet).
+    private var recoveryCard: some View {
+        let next = controller.nextCourseID.flatMap(CourseCatalog.summary(id:))
+        let done = controller.legResults.count
+        let total = controller.plan?.legCount ?? done
+        let seconds = Int(controller.recoveryRemainingSec.rounded(.up))
+        return VStack(spacing: CJSpacing.xs) {
+            HStack(spacing: CJSpacing.xs) {
+                Image(systemName: "wind")
+                    .font(.system(size: 11, weight: .bold))
+                Text("EASY SPIN")
+                    .font(CJFont.labelUpper)
+                Spacer(minLength: CJSpacing.s)
+                Text("\(done) of \(total) climbs done")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(Color.white.opacity(0.75))
+
+            HStack(alignment: .center, spacing: CJSpacing.m) {
+                Text(TimeFormat.mmss(seconds))
+                    .font(.system(size: landscape ? 48 : 58, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText(countsDown: true))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("then the")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.7))
+                    Text(next?.name ?? "next climb")
+                        .font(.system(size: 17, weight: .heavy))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let progress = nextWorldProgress {
+                VStack(alignment: .leading, spacing: 3) {
+                    ProgressView(value: min(max(progress, 0), 1))
+                        .tint(CJColors.accent)
+                        .animation(.easeOut(duration: 0.25), value: progress)
+                    Text("Building the \(next?.name ?? "next climb")… keep spinning")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                }
+            }
+
+            if let last = controller.legResults.last {
+                lastClimbLine(last)
+            }
+
+            HStack(spacing: CJSpacing.s) {
+                Button {
+                    controller.extendRecovery()
+                } label: {
+                    Text("+1 MIN")
+                        .font(.system(size: 13, weight: .heavy))
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(.white)
+                        .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: CJRadius.medium))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("One more minute of easy spinning")
+                Button {
+                    controller.skipRecovery()
+                } label: {
+                    Text("START NOW")
+                        .font(.system(size: 13, weight: .heavy))
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .foregroundStyle(.white)
+                        .background(CJColors.accent, in: RoundedRectangle(cornerRadius: CJRadius.medium))
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.recoveryCountdown != nil)
+                .opacity(controller.recoveryCountdown != nil ? 0.6 : 1)
+            }
+            .padding(.top, 2)
+        }
+        .padding(CJSpacing.m)
+        .hudPanel()
+        .animation(.easeOut(duration: 0.2), value: seconds)
+    }
+
+    private func lastClimbLine(_ leg: CourseLegResult) -> some View {
+        HStack(spacing: CJSpacing.xs) {
+            Image(systemName: leg.isPersonalBest ? "trophy.fill" : "flag.checkered")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(leg.isPersonalBest ? CJColors.positionMarker : Color.white.opacity(0.75))
+            Text(leg.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.8))
+                .lineLimit(1)
+            Spacer(minLength: CJSpacing.xs)
+            if let t = leg.climbTimeSec {
+                if leg.isPersonalBest {
+                    Text(leg.previousBestSec == nil ? "First time" : "New PB")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(CJColors.positionMarker)
+                } else if let prev = leg.previousBestSec, !leg.climbOnVirtualPower {
+                    Text(CourseFormat.delta(t - prev))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(t <= prev ? CJColors.success : CJColors.danger)
+                        .monospacedDigit()
+                }
+                Text(CourseFormat.climbTime(t))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+            } else {
+                Text("not timed")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, CJSpacing.s)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: CJRadius.small))
     }
 
     /// A climb ridden (even partly) on the power control can't set a PB.

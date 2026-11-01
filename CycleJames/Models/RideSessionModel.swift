@@ -89,6 +89,19 @@ struct RideSamples: Codable {
     /// so the climb never counts as a personal best. Nil for workouts and
     /// older rides.
     var climbOnVirtualPower: Bool? = nil
+    /// Berg series only: each climb's course, in ride order. `distanceM` is
+    /// then along the whole ride (easy spins between climbs included), and
+    /// a course's own distance is `distanceM - offsetM`. Nil otherwise.
+    var segments: [CourseSegment]? = nil
+}
+
+/// One climb of a berg series in its saved samples.
+struct CourseSegment: Codable, Equatable {
+    var courseID: String
+    /// Ride distance at the course's start (its `s` = 0), metres.
+    var offsetM: Double
+    /// Virtual power was used on this climb or on the way to it.
+    var climbOnVirtualPower: Bool
 }
 
 struct IntervalSummary: Codable, Hashable {

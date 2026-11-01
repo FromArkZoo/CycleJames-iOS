@@ -82,6 +82,9 @@ struct ClimbsEntryCard: View {
 /// Every course in `CourseCatalog`, one card each.
 struct CourseListView: View {
     private let courses = CourseCatalog.all
+    /// Bumped on each appear so the series card shows the setup chosen on
+    /// its own screen.
+    @State private var appearances = 0
 
     var body: some View {
         ScrollView {
@@ -99,6 +102,12 @@ struct CourseListView: View {
                         .frame(maxWidth: .infinity)
                         .padding(CJSpacing.xxl)
                 } else {
+                    if courses.count >= 2 {
+                        NavigationLink(value: CourseNav.series) {
+                            BergSeriesCard().id(appearances)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     ForEach(courses) { course in
                         NavigationLink(value: CourseNav.detail(course.id)) {
                             CourseCard(summary: course)
@@ -111,6 +120,7 @@ struct CourseListView: View {
             .padding(.bottom, CJSpacing.xl)
         }
         .background(CJColors.bgPrimary.ignoresSafeArea())
+        .onAppear { appearances += 1 }
         .navigationTitle("3D Climbs")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(CJColors.bgSecondary, for: .navigationBar)

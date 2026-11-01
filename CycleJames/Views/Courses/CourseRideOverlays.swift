@@ -6,6 +6,8 @@ struct CourseLoadingView: View {
     let progress: Double
     let label: String
     let error: String?
+    /// The line above the name: "3D CLIMB", or the series and climb number.
+    var kicker = "3D CLIMB"
     var onClose: () -> Void
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -19,7 +21,7 @@ struct CourseLoadingView: View {
             VStack(spacing: compact ? CJSpacing.s : CJSpacing.l) {
                 Spacer(minLength: 0)
                 VStack(spacing: CJSpacing.xs) {
-                    Text("3D CLIMB")
+                    Text(kicker)
                         .font(CJFont.labelUpper)
                         .foregroundStyle(CJColors.accent)
                     Text(summary?.name ?? "Loading course")
@@ -103,6 +105,21 @@ struct CourseLoadingView: View {
     }
 }
 
+/// Behind the HUD while the next climb of a series is being built: the
+/// old world is gone and the new one isn't showing yet.
+struct CourseRecoveryBackdrop: View {
+    var body: some View {
+        LinearGradient(colors: [CJColors.bgSecondary, CJColors.bgPrimary], startPoint: .top, endPoint: .bottom)
+            .overlay(alignment: .center) {
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 140, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.04))
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+    }
+}
+
 /// 3-2-1 over the live scene. Lighter than the workout `CountdownOverlay` so
 /// the rider can see the road they are about to ride.
 struct CourseCountdownOverlay: View {
@@ -138,8 +155,14 @@ struct CourseRideOutcome: Equatable {
     /// Part of the timed climb was ridden on virtual power, so it can't be
     /// a personal best.
     var climbOnVirtualPower = false
+    /// A berg series' climbs so far, in order; empty for a single course.
+    var legs: [CourseLegResult] = []
+    /// Names of every climb the series planned, in order.
+    var plannedLegNames: [String] = []
 
-    init(result: CourseRideResult, climbOnVirtualPower: Bool = false) {
+    var isSeries: Bool { plannedLegNames.count > 1 }
+
+    init(result: CourseRideResult, climbOnVirtualPower: Bool = false, plannedLegNames: [String] = []) {
         completed = result.completed
         climbTimeSec = result.climbTimeSec
         previousBestSec = result.previousBestSec
@@ -151,12 +174,21 @@ struct CourseRideOutcome: Equatable {
         elevationGainM = result.elevationGainM
         climbAvgSpeedKph = result.climbAvgSpeedKph
         self.climbOnVirtualPower = climbOnVirtualPower
+        self.plannedLegNames = plannedLegNames
+        if plannedLegNames.count > 1 {
+            legs = result.legs
+            // The series' power and speed are the whole ride's.
+            climbAvgPowerW = nil
+            climbAvgSpeedKph = nil
+        }
     }
 
     /// A ride ended with Save & Stop. The climb counts only if the summit
     /// was already behind the rider.
     @MainActor
-    init(stopped controller: CourseRideController, session: RideSessionModel?) {
+    init(stopped controller: CourseRideController, session: RideSessionModel?, plannedLegNames: [String] = []) {
+        self.plannedLegNames = plannedLegNames
+        legs = plannedLegNames.count > 1 ? controller.legResults : []
         completed = false
         let pastSummit = controller.climbElapsedSec != nil && controller.distanceToSummitM <= 0
         climbTimeSec = pastSummit ? controller.climbElapsedSec : nil
@@ -169,7 +201,7 @@ struct CourseRideOutcome: Equatable {
         avgPowerW = session.map(\.avgPower)
         climbAvgPowerW = nil
         totalTimeSec = session?.durationSec ?? controller.elapsedSec
-        distanceM = controller.distanceM
+        distanceM = controller.rideDistanceM
         elevationGainM = controller.elevationGainM
         climbAvgSpeedKph = nil
     }
@@ -201,6 +233,10 @@ struct CourseFinishOverlay: View {
     private var power: Int? { outcome.climbAvgPowerW ?? outcome.avgPowerW }
 
     private var headline: String {
+        if outcome.isSeries {
+            if outcome.completed { return "SERIES COMPLETE" }
+            return saved ? "RIDE SAVED" : "RIDE STOPPED"
+        }
         if outcome.climbTimeSec != nil { return "SUMMIT REACHED" }
         if outcome.completed { return "ROUTE COMPLETE" }
         return saved ? "RIDE SAVED" : "RIDE STOPPED"
@@ -240,7 +276,9 @@ struct CourseFinishOverlay: View {
             Button("Keep it", role: .cancel) {}
         } message: {
             Text(outcome.isPersonalBest
-                 ? "It's deleted from History, and the personal best it set goes with it."
+                 ? (outcome.isSeries
+                    ? "It's deleted from History, and the personal bests it set go with it."
+                    : "It's deleted from History, and the personal best it set goes with it.")
                  : "It's deleted from History.")
         }
     }
@@ -251,7 +289,7 @@ struct CourseFinishOverlay: View {
             HStack(alignment: .center, spacing: CJSpacing.xl) {
                 VStack(spacing: CJSpacing.m) {
                     titleBlock
-                    climbTime
+                    if outcome.isSeries { legsList } else { climbTime }
                 }
                 .frame(maxWidth: .infinity)
                 VStack(spacing: CJSpacing.m) {
@@ -263,7 +301,7 @@ struct CourseFinishOverlay: View {
         } else {
             VStack(spacing: CJSpacing.l) {
                 titleBlock
-                climbTime
+                if outcome.isSeries { legsList } else { climbTime }
                 statsGrid
                 buttons
             }
@@ -330,6 +368,59 @@ struct CourseFinishOverlay: View {
         }
     }
 
+    /// A series: every planned climb with its time, or why it has none.
+    private var legsList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(outcome.plannedLegNames.enumerated()), id: \.offset) { i, name in
+                if i > 0 { Divider().overlay(CJColors.border) }
+                legRow(index: i, name: name, leg: outcome.legs.indices.contains(i) ? outcome.legs[i] : nil)
+            }
+        }
+        .background(CJColors.card)
+        .clipShape(RoundedRectangle(cornerRadius: CJRadius.small))
+    }
+
+    private func legRow(index: Int, name: String, leg: CourseLegResult?) -> some View {
+        HStack(spacing: CJSpacing.s) {
+            Text("\(index + 1)")
+                .font(CJFont.caption)
+                .foregroundStyle(CJColors.textMuted)
+                .frame(width: 14)
+            Text(name)
+                .font(CJFont.bodyBold)
+                .foregroundStyle(leg == nil ? CJColors.textMuted : CJColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: CJSpacing.xs)
+            if let leg, let t = leg.climbTimeSec {
+                if leg.isPersonalBest {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(CJColors.positionMarker)
+                        .accessibilityLabel("Personal best")
+                } else if let prev = leg.previousBestSec, !leg.climbOnVirtualPower {
+                    Text(CourseFormat.delta(t - prev))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(t <= prev ? CJColors.success : CJColors.danger)
+                        .monospacedDigit()
+                }
+                Text(CourseFormat.climbTime(t))
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(leg.isPersonalBest ? CJColors.positionMarker : CJColors.textPrimary)
+                    .monospacedDigit()
+            } else {
+                // Ridden on past (or to the route's end) without a time:
+                // started on the climb.
+                let passed = leg != nil && (index < outcome.legs.count - 1 || outcome.completed)
+                Text(leg == nil ? "Not ridden" : (passed ? "Not timed" : "Not finished"))
+                    .font(CJFont.caption)
+                    .foregroundStyle(CJColors.textMuted)
+            }
+        }
+        .padding(.vertical, compact ? 5 : CJSpacing.xs)
+        .padding(.horizontal, CJSpacing.s)
+    }
+
     @ViewBuilder
     private func pbLine(time: Double) -> some View {
         if outcome.climbOnVirtualPower {
@@ -385,7 +476,7 @@ struct CourseFinishOverlay: View {
         layout {
             if saved {
                 HStack(spacing: CJSpacing.s) {
-                    Label("Saved to History", systemImage: "checkmark.circle.fill")
+                    Label(compact ? "Saved" : "Saved to History", systemImage: "checkmark.circle.fill")
                         .font(CJFont.bodyBold)
                         .foregroundStyle(CJColors.success)
                         .lineLimit(1)
@@ -454,6 +545,8 @@ struct CourseStopConfirmOverlay: View {
     let distanceToSummitM: Double
     /// True while the climb clock is running or has stopped at the summit.
     let climbTimed: Bool
+    /// A berg series says this instead.
+    var seriesMessage: String? = nil
     var onSave: () -> Void
     var onDiscard: () -> Void
     var onCancel: () -> Void
@@ -462,6 +555,7 @@ struct CourseStopConfirmOverlay: View {
     private var compact: Bool { verticalSizeClass == .compact }
 
     private var message: String {
+        if let seriesMessage { return seriesMessage }
         if distanceToSummitM > 0 {
             let left = CourseFormat.distance(distanceToSummitM)
             return climbTimed

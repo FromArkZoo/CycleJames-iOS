@@ -14,6 +14,8 @@ enum SettingsKeys {
     static let coursePersonalBestSplits = "cyclejames_coursePersonalBestSplits"
     static let coursePersonalBestSessions = "cyclejames_coursePersonalBestSessions"
     static let coursePersonalBestClearedAt = "cyclejames_coursePersonalBestClearedAt"
+    static let seriesExcludedCourseIDs = "cyclejames_seriesExcludedCourseIDs"
+    static let seriesRecoveryMin = "cyclejames_seriesRecoveryMin"
 }
 
 enum AppSettings {
@@ -82,6 +84,21 @@ enum AppSettings {
             return wattbikeGearCounts.contains(v) ? v : defaultWattbikeGearCount
         }
         set { UserDefaults.standard.set(newValue, forKey: SettingsKeys.wattbikeGearCount) }
+    }
+
+    /// Bergs the rider left out of the berg series.
+    static var seriesExcludedCourseIDs: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: SettingsKeys.seriesExcludedCourseIDs) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: SettingsKeys.seriesExcludedCourseIDs) }
+    }
+
+    /// Minutes of easy spinning between the series' climbs.
+    static var seriesRecoveryMin: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: SettingsKeys.seriesRecoveryMin)
+            return BergSeries.recoveryMinuteOptions.contains(v) ? v : BergSeries.defaultRecoveryMin
+        }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKeys.seriesRecoveryMin) }
     }
 
     /// "auto" or a `GraphicsQuality` raw value.

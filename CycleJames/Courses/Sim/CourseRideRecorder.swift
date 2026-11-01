@@ -145,13 +145,33 @@ extension CourseRideRecorder {
         return (seconds, splits)
     }
 
+    /// The climbs a saved ride holds, each with the samples' distances
+    /// along its own course: one for a single course ride, one per climb
+    /// of a berg series (none for a workout).
+    @MainActor
+    static func courseLegs(workoutID: String, samples: RideSamples) -> [(courseID: String, samples: RideSamples)] {
+        if workoutID == BergSeries.workoutID {
+            guard let segments = samples.segments, let dist = samples.distanceM else { return [] }
+            return segments.map { segment in
+                var own = samples
+                own.distanceM = dist.map { $0 - segment.offsetM }
+                own.climbOnVirtualPower = segment.climbOnVirtualPower
+                own.segments = nil
+                return (segment.courseID, own)
+            }
+        }
+        let prefix = CourseRideController.workoutIDPrefix
+        guard workoutID.hasPrefix(prefix) else { return [] }
+        return [(String(workoutID.dropFirst(prefix.count)), samples)]
+    }
+
     /// Works a course's personal best out again after a ride was deleted
     /// from History. `sessions` are the saved rides that remain. While the
     /// ride that set the PB is among them the PB stays as it is; otherwise
     /// it becomes the fastest climb they hold (rides on virtual power never
     /// count, nor rides from before the PB was last cleared), or none. A
     /// course without a PB (never set, or reset by the rider) stays without
-    /// one.
+    /// one. Berg series that climbed the course count like its own rides.
     @MainActor
     static func recomputePersonalBest(courseID: String, from sessions: [RideSessionModel]) {
         guard let summary = CourseCatalog.summary(id: courseID) else { return }
@@ -164,7 +184,9 @@ extension CourseRideRecorder {
                                       from sessions: [RideSessionModel]) {
         guard AppSettings.personalBestSeconds(courseID: courseID) != nil else { return }
         let workoutID = CourseRideController.workoutID(courseID: courseID)
-        let rides = sessions.filter { !$0.isDeleted && $0.workoutId == workoutID }
+        let rides = sessions.filter {
+            !$0.isDeleted && ($0.workoutId == workoutID || $0.workoutId == BergSeries.workoutID)
+        }
         if let id = AppSettings.personalBestSessionID(courseID: courseID), rides.contains(where: { $0.id == id }) {
             return
         }
@@ -172,12 +194,15 @@ extension CourseRideRecorder {
         let clearedAt = AppSettings.personalBestClearedAt(courseID: courseID) ?? .distantPast
         var best: (seconds: Double, splits: [Double], id: UUID)?
         for ride in rides where ride.date >= clearedAt {
-            guard let samples = ride.samples, samples.climbOnVirtualPower != true,
-                  let timing = climbTiming(samples: samples, interval: ride.sampleInterval,
-                                           startS: climbStartS, endS: climbEndS)
-            else { continue }
-            if timing.seconds < best?.seconds ?? .infinity {
-                best = (timing.seconds, timing.splits, ride.id)
+            guard let samples = ride.samples else { continue }
+            for leg in courseLegs(workoutID: ride.workoutId, samples: samples) where leg.courseID == courseID {
+                guard leg.samples.climbOnVirtualPower != true,
+                      let timing = climbTiming(samples: leg.samples, interval: ride.sampleInterval,
+                                               startS: climbStartS, endS: climbEndS)
+                else { continue }
+                if timing.seconds < best?.seconds ?? .infinity {
+                    best = (timing.seconds, timing.splits, ride.id)
+                }
             }
         }
         if let best {
