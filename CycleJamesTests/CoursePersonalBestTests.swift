@@ -100,6 +100,59 @@ final class CoursePersonalBestTests: XCTestCase {
         XCTAssertNil(AppSettings.personalBestSeconds(courseID: courseID))
     }
 
+    /// A berg series that climbed the course after another one: its
+    /// distances run along the whole ride, so the course's climb is timed
+    /// from its segment's offset, and only that segment's virtual flag
+    /// counts.
+    @MainActor
+    func test_recompute_countsTheClimbInsideABergSeries() throws {
+        let container = try ModelContainer(for: RideSessionModel.self,
+                                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let context = ModelContext(container)
+        // Another course first (to 330 m, on virtual power), a spin to 500 m,
+        // then this course's ride shifted by 500 m.
+        let own = samples(climbSec: 42)
+        let leadIn = (1...50).map { Double($0) * 10 }
+        var series = own
+        series.distanceM = leadIn + (own.distanceM ?? []).map { $0 + 500 }
+        series.speedMps = Array(repeating: 10, count: leadIn.count) + (own.speedMps ?? [])
+        let n = series.distanceM?.count ?? 0
+        series.power = Array(repeating: 200, count: n)
+        series.cadence = Array(repeating: 80, count: n)
+        series.hr = Array(repeating: 0, count: n)
+        series.targets = Array(repeating: 0, count: n)
+        series.altitudeM = Array(repeating: 10, count: n)
+        series.climbOnVirtualPower = true
+        series.segments = [
+            CourseSegment(courseID: "other_course", offsetM: 0, climbOnVirtualPower: true),
+            CourseSegment(courseID: courseID, offsetM: 500, climbOnVirtualPower: false),
+        ]
+        let seriesRide = RideSessionModel(
+            workoutId: BergSeries.workoutID, workoutName: BergSeries.name(legCount: 2), category: "Climb",
+            durationSec: n, ftp: 250, avgPower: 200, avgCadence: 80, avgHR: 0,
+            np: 200, intensityFactor: 0.8, tss: 10, partial: false, sampleInterval: 1,
+            samplesJSON: try JSONEncoder().encode(series)
+        )
+        context.insert(seriesRide)
+        let fast = session(climbSec: 40, in: context)
+        try context.save()
+        AppSettings.setPersonalBest(seconds: 40, splits: [0, 40], courseID: courseID, sessionID: fast.id)
+
+        let legs = CourseRideRecorder.courseLegs(workoutID: seriesRide.workoutId, samples: series)
+        XCTAssertEqual(legs.map(\.courseID), ["other_course", courseID])
+        XCTAssertEqual(legs[1].samples.climbOnVirtualPower, false)
+        XCTAssertNil(legs[1].samples.segments)
+
+        // Deleting the PB ride from History falls back to the series' climb.
+        context.delete(fast)
+        try context.save()
+        let remaining = RideHistory.rides(climbing: courseID, in: context)
+        XCTAssertEqual(remaining.map(\.id), [seriesRide.id])
+        recompute(remaining)
+        XCTAssertEqual(AppSettings.personalBestSeconds(courseID: courseID) ?? 0, 42, accuracy: 1e-9)
+        XCTAssertEqual(AppSettings.personalBestSessionID(courseID: courseID), seriesRide.id)
+    }
+
     /// Reset, then a new PB ride that is discarded (deleted): the rides
     /// from before the reset don't bring the old PB back.
     @MainActor

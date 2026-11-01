@@ -13,18 +13,17 @@ enum SkyLighting {
     /// 1 fit in 8 bits. The lighting environment's faces are stored at 1.
     static let skyScale: Double = 1.6
 
-    /// All-round sky colour just above the horizon, linear, as the bake
-    /// wrote it to scripts/courses/textures/cj_sky_horizon.json; the far
-    /// terrain fades to it. SkyBakeTests checks it against the faces.
+    /// Flanders' all-round sky colour just above the horizon, linear, as
+    /// the bake wrote it to scripts/courses/textures/cj_sky_horizon.json;
+    /// the far terrain fades to it. Each region's is
+    /// `WorldLook.horizonLinear`. SkyBakeTests checks both against the faces.
     static let horizonLinear = SIMD3<Double>(0.5374, 0.6032, 0.6896)
 
-    /// Fog colour: the horizon haze as the background shows it.
-    static var horizon: UIColor { horizon(scale: 1) }
-
-    /// The haze `scale` times brighter (the lane exposure), at most until
-    /// its brightest channel reaches 1, so it whitens without shifting hue.
-    static func horizon(scale: Double) -> UIColor {
-        let base = horizonLinear * pow(2, -exposureOffset)
+    /// The region's haze `scale` times brighter (the lane exposure), at
+    /// most until its brightest channel reaches 1, so it whitens without
+    /// shifting hue: the fog colour.
+    static func horizon(scale: Double, look: WorldLook) -> UIColor {
+        let base = look.horizonLinear * pow(2, -exposureOffset)
         let c = base * min(scale, 1 / max(base.x, base.y, base.z))
         func enc(_ x: Double) -> CGFloat {
             let v = min(max(x, 0), 1)
@@ -35,36 +34,42 @@ enum SkyLighting {
 
     /// The six cube faces in SceneKit's order (+x, -x, +y, -y, +z, -z)
     /// and the scale they are stored at, baked or, failing that, a simple
-    /// gradient (at 1). `prefix` "cj_sky" is the background (at
-    /// 1 / `skyScale`), "cj_skyenv" the lighting environment (at 1: the same
-    /// sky without the background's photo look and with dimmer clouds, and
-    /// a hemisphere of sunlit fields below the horizon), which falls back to
-    /// the background.
-    static func skyFaces(textures: WorldTextures, prefix: String = "cj_sky") -> (faces: [UIImage], scale: Double) {
+    /// gradient (at 1). `prefix` "cj_sky" (the region's `skyPrefix`) is the
+    /// background (at 1 / `skyScale`), "cj_skyenv" (`skyEnvPrefix`) the
+    /// lighting environment (at 1: the same sky without the background's
+    /// photo look and with dimmer clouds, and a hemisphere of sunlit land
+    /// below the horizon), which falls back to the background. A region
+    /// whose faces are missing falls back to Flanders'.
+    static func skyFaces(textures: WorldTextures, prefix: String = "cj_sky",
+                         look: WorldLook = .flanders) -> (faces: [UIImage], scale: Double) {
         let names = ["px", "nx", "py", "ny", "pz", "nz"].map { "\(prefix)_\($0)" }
         let baked = names.compactMap { textures.image($0) }
-        if baked.count == 6 { return (baked, prefix == "cj_sky" ? 1 / skyScale : 1) }
-        if prefix != "cj_sky" { return skyFaces(textures: textures) }
+        let background = prefix == look.skyPrefix
+        if baked.count == 6 { return (baked, background ? 1 / skyScale : 1) }
+        if !background { return skyFaces(textures: textures, prefix: look.skyPrefix, look: look) }
+        if look != .flanders { return skyFaces(textures: textures) }
         return (gradientFaces(size: 64), 1)
     }
 
-    static func install(in scene: SCNScene, config: WorldConfig, textures: WorldTextures) -> SCNNode {
-        let sky = skyFaces(textures: textures)
+    static func install(in scene: SCNScene, config: WorldConfig, textures: WorldTextures,
+                        look: WorldLook = .flanders) -> SCNNode {
+        let sky = skyFaces(textures: textures, prefix: look.skyPrefix, look: look)
         scene.background.contents = sky.faces
         scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
         // Image-based light from the sky (the rider's metals, clear coat
         // and lenses rely on it too), at its stored radiance: the
         // calibrated ambient (WorldDebugShots `litchart`).
-        let env = skyFaces(textures: textures, prefix: "cj_skyenv")
+        let env = skyFaces(textures: textures, prefix: look.skyEnvPrefix, look: look)
         scene.lightingEnvironment.contents = env.faces
         scene.lightingEnvironment.intensity = CGFloat(pow(2, -exposureOffset) / env.scale)
 
-        // Aerial perspective: roughly 1 - exp(-d / 21 km) out to the far
-        // hills, about half-way to the haze at 2.5 km on a summer afternoon.
-        scene.fogColor = horizon
+        // Aerial perspective: in Flanders roughly 1 - exp(-d / 21 km) out
+        // to the far hills, about half-way to the haze at 2.5 km on a
+        // summer afternoon; on the Riviera clearer (`WorldLook+Sky`).
+        scene.fogColor = horizon(scale: 1, look: look)
         scene.fogStartDistance = 0
-        scene.fogEndDistance = 5600
-        scene.fogDensityExponent = 1
+        scene.fogEndDistance = look.fogEndDistance
+        scene.fogDensityExponent = look.fogExponent
 
         let light = SCNLight()
         light.type = .directional
@@ -75,7 +80,7 @@ enum SkyLighting {
         light.shadowColor = UIColor(white: 0, alpha: 1)
         light.shadowCascadeSplittingFactor = 0.55
         light.automaticallyAdjustsShadowProjection = true
-        applyShadows(light, config: config)
+        applyShadows(light, config: config, look: look)
         light.shadowBias = 0.6
         light.forcesBackFaceCasters = false
         light.categoryBitMask = 1
@@ -106,7 +111,8 @@ enum SkyLighting {
     /// recompiles. `glow` are the materials whose emission stands for
     /// light (argument `exposureGain`). Takes the installed levels as
     /// exposure 0. Render thread, or before the scene is shown.
-    static func exposure(scene: SCNScene, sun: SCNLight, glow: [SCNMaterial]) -> (Float) -> Void {
+    static func exposure(scene: SCNScene, sun: SCNLight, glow: [SCNMaterial],
+                         look: WorldLook = .flanders) -> (Float) -> Void {
         let env = scene.lightingEnvironment.intensity, sky = scene.background.intensity
         var share = skyExposureShare
         #if DEBUG
@@ -119,21 +125,22 @@ enum SkyLighting {
             sun.intensity = sunIntensity * CGFloat(k)
             scene.lightingEnvironment.intensity = env * CGFloat(k)
             scene.background.intensity = sky * CGFloat(kSky)
-            scene.fogColor = horizon(scale: kSky)
+            scene.fogColor = horizon(scale: kSky, look: look)
             let gain = NSNumber(value: k)
             for m in glow { m.setValue(gain, forKey: "exposureGain") }
         }
     }
 
-    /// The sun's shadow quality for a tier. Also used live, from the render
-    /// thread, when an automatic tier steps down mid-ride.
-    static func applyShadows(_ light: SCNLight, config: WorldConfig) {
+    /// The sun's shadow quality for a tier, with the region's penumbra.
+    /// Also used live, from the render thread, when an automatic tier steps
+    /// down mid-ride.
+    static func applyShadows(_ light: SCNLight, config: WorldConfig, look: WorldLook = .flanders) {
         let size = CGSize(width: config.shadowMapSize, height: config.shadowMapSize)
         if light.shadowMapSize != size { light.shadowMapSize = size }
         if light.shadowCascadeCount != config.shadowCascades { light.shadowCascadeCount = config.shadowCascades }
         light.maximumShadowDistance = CGFloat(config.shadowDistance)
         light.shadowSampleCount = config.shadowSamples
-        light.shadowRadius = config.quality == .battery ? 1 : 2.5
+        light.shadowRadius = config.quality == .battery ? 1 : look.shadowRadius
     }
 
     /// Points the light's −z along the sunlight.
@@ -142,10 +149,10 @@ enum SkyLighting {
         sun.simdLook(at: sun.simdPosition - toSun, up: SIMD3(0, 1, 0), localFront: SIMD3(0, 0, -1))
     }
 
-    /// The camera look for this tier.
-    static func configure(_ camera: SCNCamera, config: WorldConfig) {
+    /// The camera look for this tier and region.
+    static func configure(_ camera: SCNCamera, config: WorldConfig, look: WorldLook = .flanders) {
         camera.zNear = 0.08
-        camera.zFar = 7000
+        camera.zFar = look.zFar
         camera.wantsHDR = true
         camera.wantsExposureAdaptation = false
         camera.exposureOffset = CGFloat(exposureOffset)

@@ -13,9 +13,12 @@ import simd
 /// channel 3 a billboard card's corner offset.
 struct TreeArchetype {
     /// Crown forms: a species and the way it grew, in the open or drawn up
-    /// in a wood with a clean bole.
+    /// in a wood with a clean bole. The Riviera's (from `aleppoPine` on,
+    /// TreeArchetypes+Riviera.swift) are drawn only with the Riviera look's
+    /// atlases.
     enum Form: Int, CaseIterable {
         case beech, beechForest, oak, oakForest, ash, sycamore, hybridPoplar, lombardy, willow, conifer, orchard, copperBeech
+        case aleppoPine, stonePine, cypress, phoenixPalm, washingtonia, fanPalm, olive, araucaria, holmOak, eucalyptus
     }
 
     /// A sub-crown of 1.5 to 4 m fed by one limb.
@@ -75,6 +78,7 @@ struct TreeArchetype {
     static func core(for uv: SIMD4<Float>) -> SIMD2<Float> {
         if uv == poplarUV { return poplarCore }
         if uv == ivyUV { return ivyCore }
+        if let med = medCore(for: uv) { return med }
         return broadCore
     }
 
@@ -82,7 +86,7 @@ struct TreeArchetype {
         if uv == broadUV { return broadHull }
         if uv == poplarUV { return poplarHull }
         if uv == ivyUV { return ivyHull }
-        return nil
+        return medHull(for: uv)
     }
 
     /// Every form's archetypes, and their lane-side variants.
@@ -97,6 +101,7 @@ struct TreeArchetype {
     /// larger, and the whole crown leans that way.
     static func make(_ form: Form, variant: Int, towardsLane: Bool = false) -> TreeArchetype {
         let seed = UInt64(form.rawValue * 16 + variant + 1) &* 7919
+        if form.isRiviera { return makeRiviera(form, seed: seed, variant: variant, towardsLane: towardsLane) }
         switch form {
         case .lombardy: return lombardy(seed: seed, towardsLane: towardsLane)
         case .willow: return willow(seed: seed)
@@ -603,7 +608,10 @@ struct TreeArchetype {
 
 extension TreeArchetype.Form {
     /// Archetypes made per form (each another seed).
-    var variants: Int { self == .copperBeech || self == .willow ? 2 : 3 }
+    var variants: Int {
+        if isRiviera { return rivieraVariants }
+        return self == .copperBeech || self == .willow ? 2 : 3
+    }
 
     /// The lobed crown of a broadleaf form; nil for the forms with their
     /// own builders.
@@ -620,6 +628,7 @@ extension TreeArchetype.Form {
         case .orchard: return S(H: 6, R: 3.2, crownBase: 0.33, lobes: 5...7, lobeR: 0.4...0.5, clumpsPerLobe: 12, cardSize: 1.0...1.5, gappiness: 0.25)
         case .copperBeech: return S(H: 18, R: 7, crownBase: 0.2, lobes: 7...9, lobeR: 0.36...0.5, clumpsPerLobe: 20, cardSize: 2.2...3.0, gappiness: 0.12)
         case .lombardy, .willow, .conifer: return nil
+        default: return rivieraSpec
         }
     }
 
@@ -634,6 +643,7 @@ extension TreeArchetype.Form {
         case .willow: return 5
         case .conifer: return 6
         case .orchard: return 7
+        default: return rivieraImpostorCell
         }
     }
 
@@ -652,6 +662,7 @@ extension TreeArchetype.Form {
         case .conifer: return SIMD3(1, 1, 1)
         case .orchard: return SIMD3(1.0, 1.0, 0.82)
         case .copperBeech: return SIMD3(1.95, 0.27, 1.95)
+        default: return rivieraLeafColour
         }
     }
 
@@ -660,11 +671,17 @@ extension TreeArchetype.Form {
     /// as it is tall, however small its LiDAR crown, or it reads as a
     /// lollipop.
     var minSpread: Float {
+        if isRiviera { return rivieraSpread.lowerBound }
         switch self {
         case .lombardy, .conifer: return 0.45
         default: return 0.55
         }
     }
+
+    /// Most crown radius for a tree of this form, as a share of its height
+    /// scale: a broad LiDAR crown spreads a broadleaf to almost twice its
+    /// archetype's width, but would flatten a palm or a cypress.
+    var maxSpread: Float { isRiviera ? rivieraSpread.upperBound : 1.9 }
 }
 
 extension TreeArchetype {
@@ -685,6 +702,12 @@ final class TreeLibrary {
     /// One of the form's archetypes, chosen by `rnd`.
     func pick(_ form: TreeArchetype.Form, _ rnd: inout WorldRandom, towardsLane: Bool = false) -> TreeArchetype {
         let v = min(Int(rnd.unit() * Float(form.variants)), form.variants - 1)
+        return pick(form, variant: v, towardsLane: towardsLane)
+    }
+
+    /// The form's archetype `variant`.
+    func pick(_ form: TreeArchetype.Form, variant: Int, towardsLane: Bool = false) -> TreeArchetype {
+        let v = min(max(variant, 0), form.variants - 1)
         let key = (form.rawValue * 16 + v) * 2 + (towardsLane ? 1 : 0)
         if let hit = made[key] { return hit }
         let a = TreeArchetype.make(form, variant: v, towardsLane: towardsLane)

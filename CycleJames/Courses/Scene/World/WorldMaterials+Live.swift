@@ -8,7 +8,7 @@ extension WorldMaterials {
     /// meshes need them. Draped and other `copy()`-made variants included.
     var warmUp: [SCNMaterial] {
         [terrain, verge, cobbles, sideCobbles, pavementSetts, asphalt, sideAsphalt, kerb, concrete, gutter,
-         cycleLane, leaves, bark, impostor, grass, walls, signFace] + roofParts
+         cycleLane, leaves, bark, impostor, grass, walls, signFace] + roofParts + roadsideProps
     }
 
     /// A live fallback step (render thread): the material uniforms that

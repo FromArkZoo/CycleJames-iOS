@@ -21,9 +21,27 @@ struct CourseRideResult: Equatable, Sendable {
     var elevationGainM: Double = 0
     /// Average speed from the climb start to the summit; nil if not reached.
     var climbAvgSpeedKph: Double? = nil
+    /// Every climb ridden, in order (one for a single course).
+    var legs: [CourseLegResult] = []
+}
+
+/// One climb of a ride, for the series' recovery card and finish screen.
+struct CourseLegResult: Equatable, Sendable {
+    let courseID: String
+    let name: String
+    /// Start to summit; nil when the summit wasn't reached.
+    let climbTimeSec: Double?
+    let previousBestSec: Double?
+    let isPersonalBest: Bool
+    let climbAvgPowerW: Int?
+    /// Virtual power on the climb or on the way to it: no PB.
+    let climbOnVirtualPower: Bool
 }
 
 /// Runs one 3D course ride: load → countdown → riding ⇄ paused → finished.
+/// A berg series (`CourseRidePlan` with several courses) recovers between
+/// climbs: riding → recovering (an easy spin on a flat road while the next
+/// course loads) → riding the next course, as one ride for History.
 ///
 /// A 30 Hz timer integrates `RidePhysics` with the rider's power (the
 /// trainer's when one is connected, `virtualPowerW` otherwise), hands the
@@ -33,12 +51,25 @@ struct CourseRideResult: Equatable, Sendable {
 /// best; `CourseRideRecorder` keeps per-second samples for History.
 @MainActor
 final class CourseRideController: ObservableObject {
-    enum Phase: Equatable { case idle, loading, ready, countdown, riding, paused, finished }
+    enum Phase: Equatable { case idle, loading, ready, countdown, riding, recovering, paused, finished }
 
     @Published private(set) var phase: Phase = .idle {
         didSet { syncTrainerClaim() }
     }
     @Published private(set) var bundle: CourseBundle?
+    /// What this ride climbs; set by `load`.
+    @Published private(set) var plan: CourseRidePlan?
+    /// Which of the plan's courses `bundle` is.
+    @Published private(set) var legIndex = 0
+    /// Climbs finished (or stopped on) so far, in order.
+    @Published private(set) var legResults: [CourseLegResult] = []
+    /// Seconds of easy spinning left before the next climb; 0 outside a
+    /// recovery. Held at the countdown while the next course loads.
+    @Published private(set) var recoveryRemainingSec: Double = 0
+    /// 3, 2, 1 over the last seconds of a recovery; nil otherwise.
+    @Published private(set) var recoveryCountdown: Int?
+    /// Distance ridden since the start, every climb and spin included.
+    @Published private(set) var rideDistanceM: Double = 0
     @Published private(set) var loadError: String?
     @Published private(set) var countdownNumber: Int = 3
 
@@ -101,6 +132,16 @@ final class CourseRideController: ObservableObject {
     /// starting, discarding or resetting a ride leaves it alone.
     let gears = GearFeed()
 
+    /// Between climbs of a series, or paused there.
+    var isRecovering: Bool { phase == .recovering || (phase == .paused && pausedFrom == .recovering) }
+
+    /// The course after this recovery (or after the current climb).
+    var nextCourseID: String? {
+        guard let plan else { return nil }
+        let next = isRecovering ? legResults.count : legIndex + 1
+        return plan.courseIDs.indices.contains(next) ? plan.courseIDs[next] : nil
+    }
+
     /// Development only: distance along the route at which `start()`
     /// places the rider, for screenshots of later parts of the course.
     var debugStartS: Double = 0 {
@@ -154,6 +195,10 @@ final class CourseRideController: ObservableObject {
         return (half - (half >= 4.5 ? 1.45 : 0.35)) / 2
     }
     private static let lateralDriftMps = 0.15
+    /// The last seconds of a recovery count down to the next climb.
+    static let recoveryCountdownSec = 3.0
+    /// Rolling resistance of the flat road ridden between climbs.
+    private static let recoveryCrr = 0.004
 
     // MARK: Inputs
 
@@ -195,8 +240,9 @@ final class CourseRideController: ObservableObject {
     private var climb: ClimbTimer?
     private var pbSplits: [Double]?
     private var summitWasPB = false
-    /// This ride's PB, written to `AppSettings` only when the ride is saved.
-    private var pendingPB: (seconds: Double, splits: [Double])?
+    /// This ride's PBs by course, written to `AppSettings` only when the
+    /// ride is saved.
+    private var pendingPBs: [String: (seconds: Double, splits: [Double])] = [:]
     private var savedModel: RideSessionModel?
     /// Wall-clock start, for History and exports.
     private var rideStartDate = Date()
@@ -205,6 +251,30 @@ final class CourseRideController: ObservableObject {
     private var hadTrainerThisRide = false
     /// The rider chose virtual power after the trainer dropped.
     private var virtualPowerOptIn = false
+    /// The phase a pause returns to.
+    private var pausedFrom: Phase = .riding
+
+    // MARK: Series state
+
+    /// Ride distance at the current course's `s` = 0: along the whole ride,
+    /// so the recorded distance keeps rising from one climb to the next.
+    private var legOffsetM: Double = 0
+    /// Where the first course was started (`rideStartS` of leg 0).
+    private var firstLegStartS: Double = 0
+    /// Each course's start in ride distance, for the saved samples.
+    private var legStarts: [(courseID: String, offsetM: Double)] = []
+    /// The current leg is in `legResults`.
+    private var legRecorded = false
+    /// The flat road between climbs: distance from where the spin began.
+    private var recovery = RidePhysics.State(distanceM: 0, speedMps: 0)
+    private var recoveryBaseM: Double = 0
+    private var recoveryEndElapsed: Double = 0
+    private var recoveryStartElapsed: Double = 0
+    /// The recorded altitude eases from one summit down to the next start.
+    private var recoveryElevation: (from: Double, to: Double) = (0, 0)
+    /// The next course's world is built and showing.
+    private var legSceneReady = false
+    private var nextLegTask: Task<Void, Never>?
 
     // MARK: Setup
 
@@ -263,7 +333,16 @@ final class CourseRideController: ObservableObject {
 
     /// Loads the course off the main thread. Phase goes loading → ready.
     func load(courseID: String) async {
+        await load(plan: .single(courseID))
+    }
+
+    /// Loads the plan's first course. Phase goes loading → ready.
+    func load(plan: CourseRidePlan) async {
         endRide()
+        self.plan = plan
+        legIndex = 0
+        resetSeries()
+        let courseID = plan.courseIDs[0]
         loadGeneration += 1
         let generation = loadGeneration
         phase = .loading
@@ -313,15 +392,16 @@ final class CourseRideController: ObservableObject {
         startTimer()
     }
 
-    func pauseOrResume() {
-        let now = CACurrentMediaTime()
+    func pauseOrResume(now: CFTimeInterval = CACurrentMediaTime()) {
         switch phase {
-        case .riding:
+        case .riding, .recovering:
+            pausedFrom = phase
             phase = .paused
             physics.speedMps = 0
+            recovery.speedMps = 0
             bridge.hold(now: now)
         case .paused:
-            phase = .riding
+            phase = pausedFrom
             lastTick = now
             bridge.resume()
         default:
@@ -335,7 +415,7 @@ final class CourseRideController: ObservableObject {
     /// marked not completed; `saveRide` records it as partial unless the
     /// summit was already reached.
     func finishEarly() {
-        guard phase == .riding || phase == .paused else { return }
+        guard isLive else { return }
         finishRide(completed: false, now: CACurrentMediaTime())
     }
 
@@ -346,7 +426,7 @@ final class CourseRideController: ObservableObject {
     func saveRide(context: ModelContext) -> RideSessionModel? {
         if let savedModel { return savedModel }
         switch phase {
-        case .riding, .paused: finishRide(completed: false, now: CACurrentMediaTime())
+        case .riding, .recovering, .paused: finishRide(completed: false, now: CACurrentMediaTime())
         case .finished: break
         default: return nil
         }
@@ -360,15 +440,28 @@ final class CourseRideController: ObservableObject {
         let np = PowerMetrics.normalizedPower(power)
         let snapshot = recorder.snapshot()
         var samples = snapshot.samples
-        samples.climbOnVirtualPower = climbUsedVirtualPower
-        // Reaching the summit is the climb done, even if the rider stopped
-        // short of the end of the route.
-        let finishedClimb = (result?.completed ?? false) || (climb?.isComplete ?? false)
+        let series = plan?.isSeries ?? false
+        let finishedClimb: Bool
+        if series {
+            samples.segments = legStarts.enumerated().map { i, start in
+                CourseSegment(courseID: start.courseID, offsetM: start.offsetM,
+                              climbOnVirtualPower: legResults.indices.contains(i)
+                                ? legResults[i].climbOnVirtualPower : climbUsedVirtualPower)
+            }
+            samples.climbOnVirtualPower = samples.segments?.contains(where: \.climbOnVirtualPower)
+            // Every climb of the plan up to its summit.
+            finishedClimb = legResults.count == plan?.legCount && legResults.allSatisfy { $0.climbTimeSec != nil }
+        } else {
+            samples.climbOnVirtualPower = climbUsedVirtualPower
+            // Reaching the summit is the climb done, even if the rider
+            // stopped short of the end of the route.
+            finishedClimb = (result?.completed ?? false) || (climb?.isComplete ?? false)
+        }
 
         let model = RideSessionModel(
             date: rideStartDate,
-            workoutId: Self.workoutID(courseID: bundle.id),
-            workoutName: bundle.name,
+            workoutId: series ? BergSeries.workoutID : Self.workoutID(courseID: bundle.id),
+            workoutName: series ? BergSeries.name(legCount: plan?.legCount ?? 0) : bundle.name,
             category: "Climb",
             durationSec: durationSec,
             ftp: ftp,
@@ -387,10 +480,12 @@ final class CourseRideController: ObservableObject {
         )
         context.insert(model)
         let saved = (try? context.save()) != nil
-        // The PB belongs to a ride in History: only now does it count.
-        if saved, let pb = pendingPB {
-            AppSettings.setPersonalBest(seconds: pb.seconds, splits: pb.splits, courseID: bundle.id, sessionID: model.id)
-            pendingPB = nil
+        // The PBs belong to a ride in History: only now do they count.
+        if saved {
+            for (courseID, pb) in pendingPBs {
+                AppSettings.setPersonalBest(seconds: pb.seconds, splits: pb.splits, courseID: courseID, sessionID: model.id)
+            }
+            pendingPBs = [:]
         }
         savedModel = model
         return model
@@ -399,6 +494,13 @@ final class CourseRideController: ObservableObject {
     /// Ends the ride without saving; a PB it set is dropped with it.
     func discard() {
         endRide()
+        resetSeries()
+        // A series discarded after its first climb starts over from it.
+        if legIndex > 0, let plan {
+            phase = .loading
+            Task { await load(plan: plan) }
+            return
+        }
         phase = bundle == nil ? .idle : .ready
         // A ride saved before this one may have set a new PB.
         loadPersonalBest()
@@ -419,6 +521,8 @@ final class CourseRideController: ObservableObject {
         endRide()
         loadGeneration += 1
         bundle = nil
+        legIndex = 0
+        resetSeries()
         phase = .idle
         personalBestSec = nil
         pbSplits = nil
@@ -442,6 +546,9 @@ final class CourseRideController: ObservableObject {
         rideStartDate = Date()
         params = .rider(weightKg: AppSettings.riderWeightKg, bikeKg: AppSettings.bikeWeightKg)
         climb = ClimbTimer(startS: bundle.climb.startS, endS: bundle.climb.endS, rideStartS: rideStartS)
+        resetSeries()
+        firstLegStartS = rideStartS
+        legStarts = [(bundle.id, 0)]
         bridge.config.difficultyPct = AppSettings.trainerDifficultyPct
         bridge.begin()
         phase = .riding
@@ -454,11 +561,15 @@ final class CourseRideController: ObservableObject {
     /// Runs from the 30 Hz timer and from trainer notifications, which keep
     /// arriving while iOS holds the timer in the background.
     func tick(now: CFTimeInterval) {
-        guard let bundle, phase == .riding else { return }
+        guard let bundle, phase == .riding || phase == .recovering else { return }
         let rawDt = now - lastTick
         guard rawDt > 0 else { return }
         lastTick = now
         let dt = min(rawDt, Self.maxTickDt)
+        if phase == .recovering {
+            recoveryTick(dt: dt, now: now)
+            return
+        }
         let route = bundle.route
 
         let input = powerInput(now: now)
@@ -492,7 +603,7 @@ final class CourseRideController: ObservableObject {
         peakCadence = max(peakCadence, Int(input.cadence.rounded()))
         peakHR = max(peakHR, bpm)
         recorder.record(dt: dt, powerW: input.power, cadenceRpm: input.cadence, hr: bpm,
-                        distanceM: s1, altitudeM: e1, speedMps: physics.speedMps)
+                        distanceM: legOffsetM + s1, altitudeM: e1, speedMps: physics.speedMps)
 
         // Drift towards the riding line for this surface.
         let line = Self.ridingLine(surface: route.surfaceName(at: s1), width: route.width(at: s1))
@@ -508,7 +619,11 @@ final class CourseRideController: ObservableObject {
         )
 
         if reachedEnd {
-            finishRide(completed: true, now: now)
+            if let plan, legIndex + 1 < plan.legCount {
+                beginRecovery(now: now)
+            } else {
+                finishRide(completed: true, now: now)
+            }
             return
         }
         publishSnapshot(now: now)
@@ -516,40 +631,244 @@ final class CourseRideController: ObservableObject {
     }
 
     private func reachedSummit(_ timer: ClimbTimer) {
-        guard let time = timer.climbTimeSec else { return }
+        guard let time = timer.climbTimeSec, let id = bundle?.id else { return }
         // Virtual power before the summit never counts.
         summitWasPB = !climbUsedVirtualPower && (personalBestSec.map { time < $0 } ?? true)
         // Held until the ride is saved, so a discarded ride leaves no PB.
-        pendingPB = summitWasPB ? (time, timer.splits) : nil
+        pendingPBs[id] = summitWasPB ? (time, timer.splits) : nil
+    }
+
+    /// The climb so far (or done) into `legResults`, once per course.
+    private func recordLeg() {
+        guard let bundle, !legRecorded else { return }
+        legRecorded = true
+        let time = climb?.climbTimeSec
+        legResults.append(CourseLegResult(
+            courseID: bundle.id,
+            name: bundle.name,
+            climbTimeSec: time,
+            previousBestSec: personalBestSec,
+            isPersonalBest: time != nil && summitWasPB,
+            climbAvgPowerW: climb?.avgPowerW.map { Int($0.rounded()) },
+            climbOnVirtualPower: climbUsedVirtualPower
+        ))
+    }
+
+    // MARK: Series
+
+    /// A series climb's route is done: spin easy on a flat road while the
+    /// next course loads and its world is built.
+    private func beginRecovery(now: CFTimeInterval) {
+        guard let bundle, let plan else { return }
+        recordLeg()
+        let nextID = plan.courseIDs[legIndex + 1]
+        recoveryBaseM = legOffsetM + physics.distanceM
+        recovery = RidePhysics.State(distanceM: 0, speedMps: physics.speedMps)
+        recoveryStartElapsed = elapsed
+        recoveryEndElapsed = elapsed + max(plan.recoverySec, Self.recoveryCountdownSec)
+        recoveryCountdown = nil
+        let nextStart = CourseCatalog.summary(id: nextID)?.elevation(at: 0)
+        let summitEnd = bundle.route.elevation(at: physics.distanceM)
+        recoveryElevation = (summitEnd, nextStart ?? summitEnd)
+        climb = nil
+        summitWasPB = false
+        // The spin is the way to the next climb: virtual power on it counts
+        // against that climb.
+        climbUsedVirtualPower = false
+        legSceneReady = false
+        phase = .recovering
+        publishLive(now: now)
+        publishSnapshot(now: now)
+
+        let generation = loadGeneration
+        nextLegTask = Task { [weak self] in
+            do {
+                let loaded = try await Task.detached(priority: .userInitiated) {
+                    try CourseBundle.load(id: nextID)
+                }.value
+                guard let self, generation == self.loadGeneration, self.isRecovering else { return }
+                self.showNextCourse(loaded)
+            } catch {
+                guard let self, generation == self.loadGeneration, self.isRecovering else { return }
+                self.loadError = error.localizedDescription
+                self.finishRide(completed: false, now: CACurrentMediaTime())
+            }
+        }
+    }
+
+    /// The next course takes over the view (its world builds) while the
+    /// rider waits at its start: parked, so the camera circles them.
+    private func showNextCourse(_ next: CourseBundle) {
+        bundle = next
+        legIndex += 1
+        loadPersonalBest()
+        pbDeltaSec = nil
+        physics = RidePhysics.State(distanceM: 0, speedMps: 0)
+        lateralM = Self.ridingLine(surface: next.route.surfaceName(at: 0), width: next.route.width(at: 0))
+        // On the ride's clock, which the next tick carries on from.
+        publishLive(now: lastTick)
+        publishSnapshot(now: lastTick)
+    }
+
+    /// The view shows the next course's world: the countdown may run out.
+    func legSceneDidBecomeReady(courseID: String) {
+        guard isRecovering, bundle?.id == courseID, legIndex == legResults.count else { return }
+        legSceneReady = true
+    }
+
+    /// Ends the spin now, after the usual 3-2-1.
+    func skipRecovery() {
+        guard isRecovering else { return }
+        recoveryEndElapsed = min(recoveryEndElapsed, elapsed + Self.recoveryCountdownSec)
+        if phase == .paused { pauseOrResume() }
+        publishLive(now: lastTick)
+    }
+
+    /// A minute more of easy spinning.
+    func extendRecovery(bySec extra: Double = 60) {
+        guard isRecovering else { return }
+        recoveryEndElapsed += extra
+        if let n = recoveryCountdown, recoveryEndElapsed - elapsed > Double(n) { recoveryCountdown = nil }
+        publishLive(now: lastTick)
+    }
+
+    /// One tick of the spin: flat-road physics for the speed and distance,
+    /// a flat road on the trainer, and the countdown to the next climb.
+    private func recoveryTick(dt: Double, now: CFTimeInterval) {
+        let input = powerInput(now: now)
+        instantPower = input.power
+        instantCadence = input.cadence
+        let bpm = currentHeartRate(now: now)
+        let crr = Self.recoveryCrr
+        recovery = RidePhysics.step(recovery, powerW: input.power, dt: dt, params: params) { _ in
+            RidePhysics.Terrain(gradePct: 0, crr: crr)
+        }
+        elapsed += dt
+        if input.virtual, !climbUsedVirtualPower { climbUsedVirtualPower = true }
+        workJ += input.power * dt
+        rolling.add(input.power, dt: dt)
+        peakPower = max(peakPower, Int(input.power.rounded()))
+        peakCadence = max(peakCadence, Int(input.cadence.rounded()))
+        peakHR = max(peakHR, bpm)
+        recorder.record(dt: dt, powerW: input.power, cadenceRpm: input.cadence, hr: bpm,
+                        distanceM: recoveryBaseM + recovery.distanceM, altitudeM: recoveryAltitude,
+                        speedMps: recovery.speedMps)
+        bridge.update(courseGradePct: 0, crr: crr, now: now)
+
+        // Never run out before the next world is showing.
+        if !legSceneReady {
+            recoveryEndElapsed = max(recoveryEndElapsed, elapsed + Self.recoveryCountdownSec)
+        }
+        let remaining = recoveryEndElapsed - elapsed
+        if remaining <= 0 {
+            AudioCues.shared.countdownTick(secondsRemaining: 0)
+            beginNextLeg(now: now)
+            return
+        }
+        // The 3-2-1 waits for the world it counts down to.
+        let n = Int(remaining.rounded(.up))
+        if legSceneReady, Double(n) <= Self.recoveryCountdownSec, n != recoveryCountdown {
+            recoveryCountdown = n
+            AudioCues.shared.countdownTick(secondsRemaining: n)
+        }
+        publishSnapshot(now: now)
+        if now - lastLivePublish >= Self.livePublishInterval { publishLive(now: now) }
+    }
+
+    /// The recorded altitude on the spin: from the summit behind towards
+    /// the next start, over the planned spin.
+    private var recoveryAltitude: Double {
+        let span = max(recoveryEndElapsed - recoveryStartElapsed, 1)
+        let f = min(max((elapsed - recoveryStartElapsed) / span, 0), 1)
+        return recoveryElevation.from + (recoveryElevation.to - recoveryElevation.from) * f
+    }
+
+    /// The spin is over: on to the next course's start at the speed the
+    /// rider was spinning at.
+    private func beginNextLeg(now: CFTimeInterval) {
+        guard let bundle else { return }
+        legOffsetM = recoveryBaseM + recovery.distanceM
+        legStarts.append((bundle.id, legOffsetM))
+        rideStartS = 0
+        physics = RidePhysics.State(distanceM: 0, speedMps: recovery.speedMps)
+        climb = ClimbTimer(startS: bundle.climb.startS, endS: bundle.climb.endS, rideStartS: 0)
+        summitWasPB = false
+        legRecorded = false
+        recoveryCountdown = nil
+        lateralM = Self.ridingLine(surface: bundle.route.surfaceName(at: 0), width: bundle.route.width(at: 0))
+        phase = .riding
+        lastTick = now
+        publishLive(now: now)
+        publishSnapshot(now: now)
+    }
+
+    /// Ride distance of the rider's current position.
+    private var rideCoordinateM: Double {
+        isRecovering ? recoveryBaseM + recovery.distanceM : legOffsetM + physics.distanceM
+    }
+
+    /// Back to no climbs ridden.
+    private func resetSeries() {
+        nextLegTask?.cancel()
+        nextLegTask = nil
+        legResults = []
+        legStarts = []
+        legOffsetM = 0
+        firstLegStartS = 0
+        legRecorded = false
+        pendingPBs = [:]
+        recovery = RidePhysics.State(distanceM: 0, speedMps: 0)
+        recoveryBaseM = 0
+        recoveryEndElapsed = 0
+        recoveryStartElapsed = 0
+        recoveryCountdown = nil
+        legSceneReady = false
+        pausedFrom = .riding
+    }
+
+    /// Waits for the next course to load (tests).
+    func waitForNextCourse() async {
+        await nextLegTask?.value
     }
 
     private func finishRide(completed: Bool, now: CFTimeInterval) {
         stopTimer()
         bridge.end()
         let route = bundle?.route
+        let recovering = isRecovering
         recorder.flush(
-            hr: currentHeartRate(now: now), distanceM: physics.distanceM,
-            altitudeM: route?.elevation(at: physics.distanceM) ?? 0, speedMps: physics.speedMps
+            hr: currentHeartRate(now: now), distanceM: rideCoordinateM,
+            altitudeM: recovering ? recoveryAltitude : (route?.elevation(at: physics.distanceM) ?? 0),
+            speedMps: recovering ? recovery.speedMps : physics.speedMps
         )
+        let ridden = max(0, rideCoordinateM - firstLegStartS)
+        // A spin cut short already holds its climb.
+        if !recovering { recordLeg() }
+        nextLegTask?.cancel()
+        recoveryCountdown = nil
         physics.speedMps = 0
+        recovery.speedMps = 0
         instantPower = 0
         instantCadence = 0
 
-        let climbTime = climb?.climbTimeSec
+        let climbTime = recovering ? legResults.last?.climbTimeSec : climb?.climbTimeSec
         var climbSpeedKph: Double?
         if let climb, let climbTime, climbTime > 0 { climbSpeedKph = climb.lengthM / climbTime * 3.6 }
         // Result before phase, so anything reacting to `.finished` has it.
         result = CourseRideResult(
             climbTimeSec: climbTime,
             totalTimeSec: Int(elapsed.rounded()),
-            distanceM: max(0, physics.distanceM - rideStartS),
+            distanceM: ridden,
             avgPowerW: elapsed > 0 ? Int((workJ / elapsed).rounded()) : 0,
             climbAvgPowerW: climb?.avgPowerW.map { Int($0.rounded()) },
             previousBestSec: personalBestSec,
-            isPersonalBest: climbTime != nil && summitWasPB,
+            isPersonalBest: plan?.isSeries == true
+                ? legResults.contains(where: \.isPersonalBest)
+                : climbTime != nil && summitWasPB,
             completed: completed,
             elevationGainM: gainM,
-            climbAvgSpeedKph: climbSpeedKph
+            climbAvgSpeedKph: climbSpeedKph,
+            legs: legResults
         )
         phase = .finished
         publishLive(now: now)
@@ -562,6 +881,9 @@ final class CourseRideController: ObservableObject {
         stopTimer()
         bridge.end()
     }
+
+    /// Counting the ride: riding, spinning between climbs, or paused.
+    private var isLive: Bool { phase == .riding || phase == .recovering || phase == .paused }
 
     // MARK: Inputs
 
@@ -580,7 +902,8 @@ final class CourseRideController: ObservableObject {
         // The ride's trainer dropped: coast rather than invent power.
         if awaitingTrainer { return (0, 0, false) }
         let watts = Double(max(0, virtualPowerW))
-        let cadence = Self.virtualCadence(speedMps: physics.speedMps, preferredRpm: Double(max(0, virtualCadenceRpm)))
+        let speed = phase == .recovering ? recovery.speedMps : physics.speedMps
+        let cadence = Self.virtualCadence(speedMps: speed, preferredRpm: Double(max(0, virtualCadenceRpm)))
         return (watts, watts > 0 ? cadence : 0, true)
     }
 
@@ -611,7 +934,7 @@ final class CourseRideController: ObservableObject {
         if trainerConnected != connected { trainerConnected = connected }
         let granted = trainerLinkUp && trainerInControl
         if trainerControlGranted != granted { trainerControlGranted = granted }
-        let live = phase == .riding || phase == .paused
+        let live = isLive
         if connected, live {
             hadTrainerThisRide = true
             // Back: a later drop coasts again.
@@ -637,7 +960,7 @@ final class CourseRideController: ObservableObject {
         refreshPowerSource(now: now)
         // BLE notifications keep coming while iOS suspends the timer in the
         // background; use them as a heartbeat, like RideController does.
-        if phase == .riding { tick(now: now) }
+        if phase == .riding || phase == .recovering { tick(now: now) }
     }
 
     func handleTrainerLink(_ connected: Bool, now: CFTimeInterval = CACurrentMediaTime()) {
@@ -650,7 +973,7 @@ final class CourseRideController: ObservableObject {
         let regained = has && !trainerInControl
         trainerInControl = has
         refreshPowerSource(now: now)
-        if regained, phase == .riding || phase == .paused {
+        if regained, isLive {
             bridge.resync(now: now)
         }
     }
@@ -668,7 +991,7 @@ final class CourseRideController: ObservableObject {
 
     /// Outside a ride the HUD still shows heart rate as it arrives.
     private func publishHeartRate() {
-        guard phase != .riding else { return }
+        guard phase != .riding, phase != .recovering else { return }
         let bpm = currentHeartRate(now: CACurrentMediaTime())
         if heartRate != bpm { heartRate = bpm }
     }
@@ -677,7 +1000,7 @@ final class CourseRideController: ObservableObject {
     /// runs or is paused.
     private func syncTrainerClaim() {
         switch phase {
-        case .countdown, .riding, .paused: TrainerOwnership.claim(self)
+        case .countdown, .riding, .recovering, .paused: TrainerOwnership.claim(self)
         case .idle, .loading, .ready, .finished: TrainerOwnership.release(self)
         }
     }
@@ -701,7 +1024,7 @@ final class CourseRideController: ObservableObject {
         peakPower = 0; peakCadence = 0; peakHR = 0
         climb = nil
         summitWasPB = false
-        pendingPB = nil
+        pendingPBs = [:]
         climbUsedVirtualPower = false
         hadTrainerThisRide = false
         virtualPowerOptIn = false
@@ -720,10 +1043,13 @@ final class CourseRideController: ObservableObject {
         refreshPowerSource(now: now)
         bridge.config.difficultyPct = AppSettings.trainerDifficultyPct
         let s = physics.distanceM
-        let riding = phase == .riding
+        let riding = phase == .riding || phase == .recovering
+        let recovering = isRecovering
 
         distanceM = s
-        speedKph = physics.speedMps * 3.6
+        rideDistanceM = max(0, rideCoordinateM - firstLegStartS)
+        recoveryRemainingSec = recovering ? max(0, recoveryEndElapsed - elapsed) : 0
+        speedKph = (recovering ? recovery.speedMps : physics.speedMps) * 3.6
         powerW = riding ? Int(rolling.mean.rounded()) : 0
         cadenceRpm = riding ? Int(instantCadence.rounded()) : 0
         heartRate = currentHeartRate(now: now)
@@ -740,9 +1066,9 @@ final class CourseRideController: ObservableObject {
         }
         let route = bundle.route
         let range = bundle.climb
-        gradePct = route.grade(at: s)
-        elevationM = route.elevation(at: s)
-        surfaceName = route.surfaceName(at: s)
+        gradePct = recovering ? 0 : route.grade(at: s)
+        elevationM = recovering ? recoveryAltitude : route.elevation(at: s)
+        surfaceName = recovering ? "asphalt" : route.surfaceName(at: s)
         distanceToSummitM = max(0, range.endS - s)
         climbProgress = range.lengthM > 0 ? min(max((s - range.startS) / range.lengthM, 0), 1) : 0
         climbElapsedSec = climb?.elapsed(at: elapsed)

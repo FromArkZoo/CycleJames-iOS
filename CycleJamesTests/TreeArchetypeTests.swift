@@ -1,6 +1,8 @@
 import XCTest
 import UIKit
 import simd
+import SceneKit
+import Metal
 @testable import CycleJames
 
 /// The procedural trees (`TreeArchetype`) and the plant meshes the
@@ -162,11 +164,11 @@ final class TreeArchetypeTests: XCTestCase {
         }
     }
 
-    /// cj_foliage.png's alpha, rows top first, or a skip when the atlas
-    /// isn't in the test host bundle.
-    private func foliageAlpha() throws -> (alpha: [UInt8], width: Int, height: Int) {
-        guard let cg = WorldTextures(limit: 4096).image("cj_foliage")?.cgImage else {
-            throw XCTSkip("cj_foliage.png not in the test host bundle")
+    /// An atlas's alpha (cj_foliage.png unless named), rows top first, or a
+    /// skip when the atlas isn't in the test host bundle.
+    private func foliageAlpha(_ name: String = "cj_foliage") throws -> (alpha: [UInt8], width: Int, height: Int) {
+        guard let cg = WorldTextures(limit: 4096).image(name)?.cgImage else {
+            throw XCTSkip("\(name).png not in the test host bundle")
         }
         let w = cg.width, h = cg.height
         var px = [UInt8](repeating: 0, count: w * h * 4)
@@ -448,5 +450,367 @@ final class TreeArchetypeTests: XCTestCase {
         assertChannels(cluster, "cluster")
         let packed = cluster.uv3.enumerated().filter { $0.offset % 2 == 1 }.map(\.element)
         XCTAssertTrue(packed.contains { $0 >= 65536 }, "trees carry a packed colour")
+    }
+
+    // MARK: - The Riviera
+
+    private let riviera = TreeArchetype.Form.allCases.filter(\.isRiviera)
+
+    /// The Riviera's hulls (fitted by `fit_hulls.py --med`) hold their
+    /// cells' leaves in cj_foliage_med.png (a texel or so of the fan's
+    /// tip may stand out), stay convex inside their card, and the hedge
+    /// cores sit in opaque leaf.
+    func test_medHullsEncloseTheirLeaves() throws {
+        let (alpha, w, h) = try foliageAlpha("cj_foliage_med")
+        let cells: [(String, SIMD4<Float>)] = [
+            ("aleppo", TreeArchetype.medAleppoUV), ("pinea", TreeArchetype.medPineaUV), ("olive", TreeArchetype.medOliveUV),
+            ("evergreen", TreeArchetype.medEvergreenUV), ("cypress", TreeArchetype.medCypressUV),
+            ("bougainvillea", TreeArchetype.medBougainvilleaUV), ("fan", TreeArchetype.medFanUV), ("deadFan", TreeArchetype.medDeadFanUV),
+        ]
+        for (name, uv) in cells {
+            let hull = try XCTUnwrap(TreeArchetype.hull(for: uv), name)
+            for (k, p) in hull.enumerated() {
+                XCTAssertTrue(abs(p.x) <= 1 && abs(p.y) <= 1, "\(name): \(p) outside the card")
+                let a = hull[(k + 1) % hull.count] - p, b = hull[(k + 2) % hull.count] - hull[(k + 1) % hull.count]
+                XCTAssertGreaterThan(a.x * b.y - a.y * b.x, 0, "\(name): hull turns clockwise at \(k + 1)")
+            }
+            var leaves = 0, outside = 0
+            for y in 0..<h {
+                let v = (Float(y) + 0.5) / Float(h)
+                guard v >= uv.y, v <= uv.w else { continue }
+                for x in 0..<w where alpha[y * w + x] > 76 {
+                    let u = (Float(x) + 0.5) / Float(w)
+                    guard u >= uv.x, u <= uv.z else { continue }
+                    let p = SIMD2((u - uv.x) / (uv.z - uv.x) * 2 - 1, (uv.w - v) / (uv.w - uv.y) * 2 - 1)
+                    leaves += 1
+                    let inside = hull.indices.allSatisfy { k in
+                        let a = hull[k], b = hull[(k + 1) % hull.count]
+                        return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) >= -1e-5
+                    }
+                    if !inside { outside += 1 }
+                }
+            }
+            XCTAssertGreaterThan(leaves, w * h / 400, "\(name): too few leaves, wrong cell?")
+            XCTAssertLessThanOrEqual(outside, leaves / 10_000, "\(name): \(outside) of \(leaves) leaf texels outside; run fit_hulls.py --med")
+        }
+        for uv in [TreeArchetype.medEvergreenUV, TreeArchetype.medBougainvilleaUV, TreeArchetype.medCypressUV] {
+            let core = TreeArchetype.core(for: uv)
+            XCTAssertTrue((uv.x...uv.z).contains(core.x) && (uv.y...uv.w).contains(core.y), "core outside its cell")
+            let cx = Int(core.x * Float(w)), cy = Int(core.y * Float(h))
+            for dy in -3...3 {
+                for dx in -3...3 { XCTAssertGreaterThanOrEqual(alpha[(cy + dy) * w + cx + dx], 253, "core texel not in opaque leaf") }
+            }
+        }
+    }
+
+    /// Every Riviera tree's bark sits on its own tile of the bark atlas
+    /// (`TreeArchetype.setBark`), and its leaves inside cj_foliage_med's
+    /// cells (none in the Flemish atlas's quadrants' places by mistake).
+    func test_rivieraBarkAndLeavesUseTheirAtlases() {
+        for a in all where a.form.isRiviera {
+            let tile = Float(a.form.medBark.tile.rawValue) * TreeArchetype.barkTileStride
+            for m in [a.full, a.light] {
+                for i in Set(m.parts[0]).map(Int.init) {
+                    XCTAssertTrue((tile..<(tile + TreeArchetype.barkTileStride)).contains(m.uvs[2 * i]), "\(a.form) bark u \(m.uvs[2 * i])")
+                }
+                for i in Set(m.parts[1]).map(Int.init) {
+                    XCTAssertTrue((0...1).contains(m.uvs[2 * i]) && (0...1).contains(m.uvs[2 * i + 1]), "\(a.form) leaf uv")
+                }
+            }
+        }
+    }
+
+    /// A cypress is a dense column like the Lombardy's: no band over 1 m
+    /// without leaves from its foot to near its top, and slender.
+    func test_cypressColumnHasNoGaps() {
+        for a in all where a.form == .cypress {
+            let ys = cardCentres(a.full).map(\.y).sorted()
+            let inColumn = ys.filter { $0 >= a.crownBase && $0 <= 0.9 * a.refHeight }
+            XCTAssertGreaterThan(inColumn.count, 120)
+            XCTAssertLessThan(zip(inColumn, inColumn.dropFirst()).map { $1 - $0 }.max() ?? 0, 1.0)
+            XCTAssertLessThan(width(a.full, from: 0, to: a.refHeight), 3.2, "a cypress is narrow")
+        }
+    }
+
+    /// A Canary palm's crown: dozens of fronds as ribbons in the frond
+    /// strip, reaching out about their length, the old ones drooping below
+    /// the crown, none down to the ground.
+    func test_phoenixCrownSpreadsAndDroops() {
+        for a in all where a.form == .phoenixPalm {
+            let leaves = Set(a.full.parts[1]).map(Int.init)
+            let uv = TreeArchetype.medFrondUV
+            XCTAssertTrue(leaves.allSatisfy { (uv.x...uv.z).contains(a.full.uvs[2 * $0]) && (uv.y...uv.w).contains(a.full.uvs[2 * $0 + 1]) })
+            XCTAssertGreaterThan(a.full.parts[1].count / 3, 900, "a dense crown")
+            let reach = leaves.map { simd_length(SIMD2(a.full.positions[3 * $0], a.full.positions[3 * $0 + 2])) }.max() ?? 0
+            XCTAssertGreaterThan(reach, 3.5)
+            let low = leaves.map { a.full.positions[3 * $0 + 1] }.min() ?? 0
+            XCTAssertGreaterThan(low, 0.8, "fronds down to the ground")
+            XCTAssertLessThan(low, a.crownBase + 1.5, "the old fronds should droop below the crown")
+        }
+    }
+
+    /// The species the data give are the trees drawn; without one, the mix
+    /// is the Riviera's alone.
+    func test_rivieraPickHonoursSpeciesAndStaysRiviera() {
+        var rnd = WorldRandom(seed: 4)
+        let named: [(String, TreeArchetype.Form)] = [("pine", .aleppoPine), ("umbrellaPine", .stonePine), ("cypress", .cypress),
+                                                     ("palm", .phoenixPalm), ("olive", .olive), ("araucaria", .araucaria)]
+        for (kind, form) in named {
+            XCTAssertEqual(VegetationBuilder.pickRivieraForm(kind: kind, h: 10, r: 3, landuse: nil, crowded: false, zone: nil, y: 50,
+                                                             rnd: &rnd), form, kind)
+        }
+        let zones: [RivieraPlants.Mix?] = [nil, .seaFront, .villaGardens, .sanctuaryPark, .greenhouseBelt, .terraces, .summit]
+        for zone in zones {
+            for lu in [nil, "residential", "forest", "orchard", "farmland"] {
+                for _ in 0..<40 {
+                    let h = rnd.range(3, 22), r = rnd.range(0.6, 7)
+                    let f = VegetationBuilder.pickRivieraForm(kind: rnd.unit() < 0.3 ? "conifer" : nil, h: h, r: r, landuse: lu,
+                                                              crowded: false, zone: zone, y: 40, rnd: &rnd)
+                    XCTAssertTrue(f.isRiviera, "\(f) for \(String(describing: lu)) in \(String(describing: zone))")
+                }
+            }
+        }
+    }
+
+    /// Prickly pear and agave are solid (bark atlas, part 0), on their own
+    /// tiles, with every channel.
+    func test_succulentsAreSolidOnTheirTiles() {
+        var rnd = WorldRandom(seed: 6)
+        for (name, tile) in [("opuntia", TreeArchetype.MedBark.opuntia), ("agave", .agave)] {
+            var m = MeshBuffer(parts: 2)
+            if name == "opuntia" {
+                VegetationBuilder.opuntia(&m, base: SIMD3(0, 10, 0), height: 2, rnd: &rnd)
+            } else {
+                VegetationBuilder.agave(&m, base: SIMD3(0, 10, 0), size: 1.4, spike: false, rnd: &rnd)
+            }
+            assertChannels(m, name)
+            XCTAssertTrue(m.parts[1].isEmpty, "\(name) has no leaf cards")
+            let t0 = Float(tile.rawValue) * TreeArchetype.barkTileStride
+            XCTAssertTrue(Set(m.parts[0]).allSatisfy { (t0..<(t0 + TreeArchetype.barkTileStride)).contains(m.uvs[2 * Int($0)]) }, name)
+            XCTAssertLessThan(m.triangleCount, 1600, "\(name): \(m.triangleCount) triangles")
+            let top = (0..<m.vertexCount).map { m.positions[3 * $0 + 1] }.max() ?? 0
+            XCTAssertGreaterThan(top, 10.8, "\(name) too low")
+        }
+    }
+
+    /// The Riviera's hedges are closed walls clad in its own leaves, like
+    /// the Flemish ones.
+    func test_rivieraHedgesUseTheirAtlas() {
+        for kind in [CourseArt.HedgeKind.green, .copperBeech, .laurel, .ivy] {
+            let look = VegetationBuilder.hedgeLook(kind, riviera: true)
+            XCTAssertNotNil(TreeArchetype.medCore(for: look.uv), "\(kind): no core leaf in cj_foliage_med")
+            var m = MeshBuffer(parts: 2)
+            var rnd = WorldRandom(seed: 5)
+            // (As long as the Flemish test's, so the ends weigh the same.)
+            VegetationBuilder.hedgeStretch(straightHedge(length: 24, height: 2.4), look: look, rnd: &rnd, into: &m)
+            assertChannels(m, "\(kind) Riviera hedge")
+            XCTAssertLessThan(Float(m.triangleCount) / 24, 155, "\(kind): \(m.triangleCount) triangles")
+        }
+    }
+
+    /// The Riviera's trees keep to the world's budget (the research notes
+    /// on the Poggio: a palm's full version about 1.5 k triangles, its
+    /// light one about 200), the others to what a Flemish beech costs.
+    func test_rivieraArchetypesKeepToTheTriangleBudget() {
+        let palms: Set<TreeArchetype.Form> = [.phoenixPalm, .washingtonia, .fanPalm]
+        for a in all where a.form.isRiviera {
+            let palm = palms.contains(a.form)
+            XCTAssertLessThanOrEqual(a.full.triangleCount, palm ? 1500 : 2000, "\(a.form) full: \(a.full.triangleCount)")
+            XCTAssertLessThanOrEqual(a.light.triangleCount, palm ? 220 : 450, "\(a.form) light: \(a.light.triangleCount)")
+        }
+    }
+
+    /// The Poggio's hand-placed plants are moved from the look bible's s
+    /// onto the route through its landmarks: at the fork and hairpin 2 as
+    /// course.json has them, steadily, and the climb's start still counts.
+    func test_poggioPlantsFollowTheRoutesDrift() {
+        let c = RivieraPlants.poggio
+        XCTAssertEqual(c.routeS(0, start: 300), 300, accuracy: 1e-9)
+        XCTAssertEqual(c.routeS(1383, start: 300), 1677, accuracy: 1e-9, "hairpin 2")
+        XCTAssertEqual(c.routeS(3731, start: 299.99), 4016.29, accuracy: 0.01, "the summit")
+        XCTAssertEqual(c.routeS(500, start: 310) - c.routeS(500, start: 300), 10, accuracy: 1e-9)
+        var last = -Double.infinity
+        for s in stride(from: -300.0, through: 4200, by: 5) {
+            let r = c.routeS(s, start: 300)
+            XCTAssertGreaterThan(r, last, "s \(s)")
+            last = r
+        }
+    }
+
+    /// A crown taller than the terraces' olives is never drawn as one, and
+    /// a very tall one (over 19 m) is a stone pine, a eucalypt, a pine, a
+    /// cypress or a Washingtonia, never a palm or an oak stretched to it.
+    func test_rivieraTallCrownsKeepPlausibleSpecies() {
+        var rnd = WorldRandom(seed: 9)
+        let zones: [RivieraPlants.Mix?] = [nil, .seaFront, .villaGardens, .sanctuaryPark, .greenhouseBelt, .terraces, .summit]
+        let tall: Set<TreeArchetype.Form> = [.stonePine, .eucalyptus, .aleppoPine, .cypress, .washingtonia]
+        for zone in zones {
+            for lu in [nil, "residential", "forest", "orchard", "olive", "terraces", "greenhouse", "farmland"] {
+                for _ in 0..<40 {
+                    let h = rnd.range(10, 30), r = rnd.range(0.6, 8)
+                    let f = VegetationBuilder.pickRivieraForm(kind: rnd.unit() < 0.3 ? "conifer" : "deciduous", h: h, r: r,
+                                                              landuse: lu, crowded: false, zone: zone, y: 40, rnd: &rnd)
+                    XCTAssertNotEqual(f, .olive, "a \(h) m olive")
+                    if h > 19 { XCTAssertTrue(tall.contains(f), "\(f) at \(h) m") }
+                    // (A guessed fan palm over 16 m stood alone as a chimney
+                    // at hairpin 1; the summit's are its own planting.)
+                    if f == .washingtonia, zone != .summit { XCTAssertLessThanOrEqual(h, 16, "a \(h) m Washingtonia") }
+                }
+            }
+        }
+    }
+
+    /// The linear colour a shader reads, averaged over a texture level's
+    /// region (fractions of its size), read back from the GPU; nil for a
+    /// format this doesn't decode.
+    private func meanLinear(_ tex: MTLTexture, level: Int, x0: Double, y0: Double, x1: Double, y1: Double) -> SIMD3<Double>? {
+        let w = max(tex.width >> level, 1), h = max(tex.height >> level, 1)
+        let bpp: Int
+        switch tex.pixelFormat {
+        case .rgba8Unorm, .rgba8Unorm_srgb, .bgra8Unorm, .bgra8Unorm_srgb: bpp = 4
+        case .rgba16Float: bpp = 8
+        default: return nil
+        }
+        guard let queue = tex.device.makeCommandQueue(),
+              let buf = tex.device.makeBuffer(length: w * h * bpp, options: .storageModeShared),
+              let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() else { return nil }
+        blit.copy(from: tex, sourceSlice: 0, sourceLevel: level, sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                  sourceSize: MTLSize(width: w, height: h, depth: 1), to: buf, destinationOffset: 0,
+                  destinationBytesPerRow: w * bpp, destinationBytesPerImage: w * h * bpp)
+        blit.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        let srgb = [.rgba8Unorm_srgb, .bgra8Unorm_srgb].contains(tex.pixelFormat)
+        let bgr = [.bgra8Unorm, .bgra8Unorm_srgb].contains(tex.pixelFormat)
+        func lin(_ c: Double) -> Double { srgb ? (c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)) : c }
+        var sum = SIMD3<Double>(0, 0, 0), n = 0.0
+        for y in Int(y0 * Double(h))..<Int(y1 * Double(h)) {
+            for x in Int(x0 * Double(w))..<Int(x1 * Double(w)) {
+                let o = (y * w + x) * bpp
+                var c: SIMD3<Double>
+                if bpp == 8 {
+                    let p = buf.contents().advanced(by: o).assumingMemoryBound(to: Float16.self)
+                    c = SIMD3(Double(p[0]), Double(p[1]), Double(p[2]))
+                } else {
+                    let p = buf.contents().advanced(by: o).assumingMemoryBound(to: UInt8.self)
+                    c = SIMD3(lin(Double(p[0]) / 255), lin(Double(p[1]) / 255), lin(Double(p[2]) / 255))
+                    if bgr { c = SIMD3(c.z, c.y, c.x) }
+                }
+                sum += c
+                n += 1
+            }
+        }
+        return sum / max(n, 1)
+    }
+
+    /// The bark atlas a trunk's shader samples (`barkAtlasSurface`) reads
+    /// the same colours on every tier: on battery (texture limit 1024) every
+    /// Riviera trunk drew pale pinkish white while balanced was right.
+    /// Compared at the same size (the 4096 / 2048 tiers' level 1 against
+    /// battery's level 0), tile by tile.
+    func test_rivieraBarkAtlasKeepsItsColourOnEveryTier() throws {
+        var means: [Int: [SIMD3<Double>]] = [:]
+        let b = try CourseBundle.load(id: "poggio")
+        for limit in [4096, 2048, 1024] {
+            let mats = WorldMaterials(config: .make(limit == 1024 ? .battery : limit == 2048 ? .balanced : .high),
+                                      textures: WorldTextures(limit: limit), bundle: b, art: CourseArt.make(bundle: b))
+            let m = mats.makeBarkAtlas()
+            let albedo = try XCTUnwrap((m.value(forKey: "albedoTex") as? SCNMaterialProperty)?.contents as? MTLTexture, "\(limit)")
+            let detail = try XCTUnwrap((m.value(forKey: "detailTex") as? SCNMaterialProperty)?.contents as? MTLTexture, "\(limit)")
+            XCTAssertLessThanOrEqual(max(albedo.width, albedo.height), limit)
+            let level = albedo.width > 1024 ? 1 : 0
+            for tile in 0..<8 {
+                let x = Double(tile % 4) * 0.25, y = Double(tile / 4) * 0.5
+                let c = try XCTUnwrap(meanLinear(albedo, level: level, x0: x + 0.02, y0: y + 0.04, x1: x + 0.23, y1: y + 0.46),
+                                      "albedo format \(albedo.pixelFormat.rawValue)")
+                let d = try XCTUnwrap(meanLinear(detail, level: detail.width > 1024 ? 1 : 0, x0: x + 0.02, y0: y + 0.04, x1: x + 0.23, y1: y + 0.46),
+                                      "detail format \(detail.pixelFormat.rawValue)")
+                means[tile, default: []].append(c)
+                XCTAssertGreaterThan(d.z, 0.3, "tile \(tile) roughness at \(limit)")
+            }
+        }
+        for (tile, cs) in means {
+            for c in cs.dropFirst() {
+                XCTAssertEqual(c.x, cs[0].x, accuracy: 0.02, "tile \(tile) (the battery tier last)")
+                XCTAssertEqual(c.y, cs[0].y, accuracy: 0.02, "tile \(tile)")
+                XCTAssertEqual(c.z, cs[0].z, accuracy: 0.02, "tile \(tile)")
+            }
+        }
+    }
+
+    /// On the Riviera a cluster drawn in full keeps the light versions of
+    /// its plants that have no full one (`Cluster.lightOnly`), and a cluster
+    /// with no full level is left as it is.
+    func test_rivieraFullClusterKeepsItsLightOnlyPlants() {
+        var card = MeshBuffer(parts: 2)
+        TreeArchetype.card(&card, centre: SIMD3(0, 1, 0), size: 1, normal: SIMD3(0, 0, 1), roll: 0, uv: TreeArchetype.medEvergreenUV,
+                           crownCentre: .zero, crownRadii: SIMD3(1, 1, 1), height: 3, ao: 0.9)
+        var near = VegetationBuilder.Cluster()
+        near.full.appendExactly(card)
+        near.full.appendExactly(card)
+        near.light.appendExactly(card)
+        near.light.appendExactly(card)
+        near.lightOnly.appendExactly(card)
+        let folded = VegetationBuilder.foldLightOnly(near)
+        XCTAssertEqual(folded.full.triangleCount, 3 * card.triangleCount)
+        XCTAssertTrue(folded.lightOnly.isEmpty)
+        assertChannels(folded.full, "folded full")
+        var far = VegetationBuilder.Cluster()
+        far.light.appendExactly(card)
+        far.lightOnly.appendExactly(card)
+        let kept = VegetationBuilder.foldLightOnly(far)
+        XCTAssertTrue(kept.full.isEmpty)
+        XCTAssertEqual(kept.light.triangleCount, card.triangleCount)
+    }
+
+    /// The Poggio's plants as built: both hand-placed Norfolk Island pines
+    /// (the second stood in a villa and was dropped), the prickly-pear
+    /// thicket at hairpin 2, and the maquis on the banks (`buildRivieraScrub`)
+    /// within reason; every cluster's channels whole.
+    func test_poggioVegetationKeepsItsSignaturePlants() throws {
+        let b = try CourseBundle.load(id: "poggio")
+        let corridor = RoadCorridor(bundle: b, vergeWidth: 13)
+        let out = VegetationBuilder.build(corridor: corridor, scenery: b.scenery, config: WorldConfig.make(.high).riviera(),
+                                          courseID: "poggio")
+        XCTAssertEqual(out.counts["trees: araucaria"], 2)
+        XCTAssertGreaterThanOrEqual(out.counts["riviera succulents"] ?? 0, 9)
+        let scrub = out.counts["riviera scrub"] ?? 0
+        XCTAssertGreaterThan(scrub, 12_000)
+        XCTAssertLessThan(scrub, 60_000)
+        for c in out.clusters {
+            XCTAssertTrue(c.lightOnly.isEmpty, "light-only plants folded or let go of")
+            if !c.full.isEmpty { assertChannels(c.full, "full") }
+            if !c.light.isEmpty { assertChannels(c.light, "light") }
+        }
+        // The light level of every cluster (the trees' and shrubs' light
+        // versions and the scrub, 2-6 triangles a clump): 0.44 M with the
+        // scrub of 30 October, before it thinned with distance.
+        let light = out.clusters.reduce(0) { $0 + $1.light.triangleCount }
+        XCTAssertLessThan(light, 520_000)
+        // Every clump's leaves stay behind the edge walls' footprints and
+        // off the carriageway (reviews2: cards through the render wall at
+        // route 2100), and the cameras know the scrub.
+        let field = try XCTUnwrap(VegetationBuilder.ScrubField.current(courseID: "poggio"))
+        XCTAssertEqual(field.discs.filter { !$0.shrub }.count, scrub)
+        let edge = VegetationBuilder.RivieraEdge(corridor: corridor, scenery: b.scenery)
+        var through = 0, onRoad = 0
+        for d in field.discs where !d.shrub {
+            let q = corridor.coarse.query(east: d.e, north: d.n)
+            let st = corridor.station(at: q.s)
+            let side: Double = (d.e - st.east) * st.rightE + (d.n - st.north) * st.rightN >= 0 ? 1 : -1
+            let beyond = q.dist - st.reach(side)
+            let wall = edge.back(q.s, side: side)
+            if wall > 0, beyond > wall - 0.5, beyond - Double(d.radius) < wall + 0.1 { through += 1 }
+            if beyond - Double(d.radius) < 0.2 { onRoad += 1 }
+        }
+        // (A few hundredths of a metre either way where the nearest station
+        // of a clump and of its lattice point differ round a bend.)
+        XCTAssertLessThan(through, scrub / 500, "clumps reaching through an edge wall's face")
+        XCTAssertLessThan(onRoad, scrub / 500, "clumps reaching over the carriageway")
+        let clearance = CameraClearance(bundle: b)
+        let near = try XCTUnwrap(field.discs.first { !$0.shrub && corridor.coarse.query(east: $0.e, north: $0.n).dist < 10 })
+        let s = corridor.coarse.query(east: near.e, north: near.n).s
+        XCTAssertGreaterThanOrEqual(clearance.groundTop(east: near.e, north: near.n, near: s), near.top - 0.01,
+                                    "the ride's clearance has the scrub")
     }
 }

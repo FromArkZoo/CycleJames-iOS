@@ -25,6 +25,7 @@ import json
 import math
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -70,6 +71,35 @@ def bake_asphalt(size: int = 512) -> None:
     rough = np.clip(0.82 - light * 0.4 + crack * 0.1, 0.4, 1)
     save_rgb(OUT / "cj_asphalt_albedo.jpg", tint, 90)
     detail_png(OUT / "cj_asphalt_detail.png", height, 1.4, rough)
+
+
+def bake_asphalt_fine(size: int = 512) -> None:
+    """cj_asphalt_fine_albedo.jpg + cj_asphalt_fine_detail.rgbz, 1.6 m x 1.6 m
+    tile: the Riviera's smooth, fine-grained provincial tarmac (the SP55 up
+    the Poggio, resurfaced in long stretches). Pale limestone chips of 4-8
+    mm sit in a grey binder, worn flat and a little polished; no cracks or
+    patches (the shader lays the repairs along the road). Mean about 0.29
+    sRGB, neutral with the faintest warmth (the look bible's paint base
+    #62625f is reached with the material's intensity)."""
+    r = rng(29)
+    binder = 0.255 + 0.025 * (fbm(size, size, 16, 4, r) - 0.5)
+    chips = blur(value_noise(size, size, 230, 230, r), 0.6)
+    chips2 = blur(value_noise(size, size, 120, 120, r), 0.8)
+    pits = value_noise(size, size, 170, 170, r)
+    light = smoothstep(0.64, 0.9, chips) * 0.13 + smoothstep(0.7, 0.93, chips2) * 0.07
+    dark = smoothstep(0.78, 0.96, pits) * -0.045
+    lum = binder + light + dark
+    # The chips a touch warmer than the binder.
+    warm = light / 0.2
+    tint = np.stack([lum * (1.0 + 0.02 * warm), lum * (0.995 + 0.01 * warm), lum * (0.975 - 0.01 * warm)], -1)
+    # Height: the chips over a gentle swell four cells to the tile. The
+    # shader reads the swell, magnified 9 and 32 times, as the road's
+    # large-scale mottle (`WorldShaders.rivieraAsphaltCore`).
+    swell = fbm(size, size, 4, 3, r)
+    height = np.clip(0.2 + 0.45 * swell + (chips - 0.5) * 0.22 + light * 0.8 + dark * 1.3, 0, 1)
+    rough = np.clip(0.84 - light * 0.9, 0.55, 1)
+    save_rgb(OUT / "cj_asphalt_fine_albedo.jpg", tint, 90)
+    detail_png(OUT / "cj_asphalt_fine_detail.rgbz", height, 1.1, rough)
 
 
 # ---------------------------------------------------------------- ground
@@ -938,20 +968,90 @@ def _perez(theta, gamma, c):
     return (1 + A * np.exp(B / np.maximum(np.cos(theta), 0.02))) * (1 + C * np.exp(D * gamma) + E * np.cos(gamma) ** 2)
 
 
-# Sky look, shared by the background and the lighting environment.
-SKY_TURBIDITY = 3.4       # clear but hazy late-summer air over Flanders
-SKY_ZENITH_LINEAR = 0.3   # linear luminance the zenith opposite the sun maps to
-
-
 def sun_vector() -> np.ndarray:
     az, el = math.radians(SUN_AZIMUTH_DEG), math.radians(SUN_ELEVATION_DEG)
     return np.array([math.sin(az) * math.cos(el), math.sin(el), -math.cos(az) * math.cos(el)], np.float32)
 
 
-def preetham_luminance(d: np.ndarray, T: float = SKY_TURBIDITY) -> np.ndarray:
-    """Relative sky luminance Y(d) / Y(zenith) from the Preetham model:
-    bright around the sun and towards the horizon, darkest about 90 degrees
-    from the sun. Directions below the horizon get the horizon's value."""
+@dataclass(frozen=True, eq=False)
+class SkyStyle:
+    """One region's sky, under the same sun (WorldSun). Every sky function
+    takes the style it draws, so nothing hangs on a module global (the
+    turbidity used to be frozen into default arguments).
+
+    `blue`, `haze` and `aureole` are sRGB: deep-sky blue at one air mass,
+    the near-white of a long, hazy path, and the warmer white of forward
+    scattering round the sun. The haze takes over from the blue with air
+    mass m as 1 - exp(-air_mass_k (m - 1)). The zenith opposite the sun
+    is `zenith_linear` bright; `low_gain` is the aerosol brightening of
+    the low sky the Preetham fit leaves out (at the horizon, falling off
+    over `low_scale` of the sine of elevation), `cyan` a photo's extra
+    green above 15 degrees. Clouds are
+    fair-weather cumulus on a 1.6 km layer, `cloud_on` the density band
+    their edges fade over; with `cloud_inland_km` they only stand that far
+    north and beyond (over the hills inland of a coast). `fog`, when set,
+    is the sRGB colour below the horizon, which the far land and sea fade
+    to: darker than the sky's haze band just above it, as a sea horizon is.
+    `ground` is what the lighting environment sees below the horizon.
+
+    SceneKit looks its cube maps up with z the other way round from
+    `cube_dirs` (seen in the app: the Riviera's inland clouds, baked to the
+    north, stood to the south until the faces were mirrored; the Flemish
+    sky's sun disc and clouds stand mirrored north-south too, and are left
+    as they were calibrated). A style with `mirror_z` bakes its faces so
+    each direction holds the sky SceneKit shows there."""
+    suffix: str
+    turbidity: float
+    blue: np.ndarray
+    haze: np.ndarray
+    aureole: np.ndarray
+    zenith_linear: float = 0.3
+    air_mass_k: float = 0.34
+    low_gain: float = 0.45
+    low_scale: float = 0.12
+    cyan: float = 0.05
+    cloud_on: tuple = (0.575, 0.665)
+    cloud_inland_km: tuple | None = None
+    fog: np.ndarray | None = None
+    ground: str = "fields"
+    mirror_z: bool = False
+
+
+# Clear but hazy late-summer air over Flanders, scattered fair-weather
+# cumulus: cj_sky_* as they have always been.
+FLANDERS = SkyStyle(
+    suffix="", turbidity=3.4,
+    blue=np.array([0.37, 0.55, 0.82], np.float32),
+    haze=np.array([0.80, 0.845, 0.90], np.float32),
+    aureole=np.array([1.0, 0.965, 0.9], np.float32),
+)
+
+# A clear March afternoon on the Ligurian coast (look.md section 2): dry,
+# clean air (turbidity 2.9 against 3.4) and a deep blue overhead (paint
+# #5f97d8 opposite the sun), whitening with air mass faster than over
+# Flanders to a pale, bluer horizon (#bccfe3) and a haze band over the sea
+# (#c8d6e4), with a few small cumulus over the Alpi Liguri inland and a
+# clean sky over the sea. Below the horizon the far coast and the sea's
+# horizon line fade to #9fb3c8-#9db5cc (Commons P1010130 and P1010170, 30
+# Mar 2008). The lighting environment keeps the calibrated ambient: 0.452
+# against ENV_IRRADIANCE.
+RIVIERA = SkyStyle(
+    suffix="_lig", turbidity=2.9,
+    blue=np.array([0.35, 0.56, 0.83], np.float32),
+    haze=np.array([0.74, 0.82, 0.885], np.float32),
+    aureole=np.array([1.0, 0.97, 0.92], np.float32),
+    zenith_linear=0.33, air_mass_k=0.6, low_gain=0.08, low_scale=0.25, cyan=0.03,
+    cloud_on=(0.59, 0.67), cloud_inland_km=(4.0, 9.0),
+    fog=np.array([0.625, 0.71, 0.795], np.float32),
+    ground="riviera", mirror_z=True,
+)
+
+
+def preetham_luminance(d: np.ndarray, T: float) -> np.ndarray:
+    """Relative sky luminance Y(d) / Y(zenith) from the Preetham model at
+    turbidity T: bright around the sun and towards the horizon, darkest
+    about 90 degrees from the sun. Directions below the horizon get the
+    horizon's value."""
     sun = sun_vector()
     ts = math.acos(float(sun[1]))
     theta = np.arccos(np.clip(d[..., 1], 0.02, 1.0))
@@ -960,14 +1060,7 @@ def preetham_luminance(d: np.ndarray, T: float = SKY_TURBIDITY) -> np.ndarray:
     return _perez(theta, gamma, c) / _perez(0.0, ts, c)
 
 
-# Sky colours (sRGB): deep-sky blue at one air mass, the near-white of a
-# long, hazy path, and the warmer white of forward scattering round the sun.
-SKY_BLUE = np.array([0.37, 0.55, 0.82], np.float32)
-SKY_HAZE = np.array([0.80, 0.845, 0.90], np.float32)
-SKY_AUREOLE = np.array([1.0, 0.965, 0.9], np.float32)
-
-
-def sky_chroma(d: np.ndarray) -> np.ndarray:
+def sky_chroma(d: np.ndarray, style: SkyStyle) -> np.ndarray:
     """Colour of the clear sky for directions d, unit luminance: Rayleigh
     blue overhead, washing out to haze with optical air mass (Kasten-Young)
     and near the sun (Mie forward scattering). The Preetham chromaticities
@@ -976,26 +1069,26 @@ def sky_chroma(d: np.ndarray) -> np.ndarray:
     up = np.clip(d[..., 1], 0.0, 1.0)
     zen = np.degrees(np.arccos(up))
     m = 1 / (np.cos(np.radians(zen)) + 0.50572 * np.maximum(96.07995 - zen, 0.5) ** -1.6364)
-    h = 1 - np.exp(-0.34 * (m - 1))
+    h = 1 - np.exp(-style.air_mass_k * (m - 1))
     cosg = np.clip((d * sun).sum(-1), 0, 1)
     h = 1 - (1 - h) * (1 - 0.6 * cosg ** 6)
     w = np.array([0.2126, 0.7152, 0.0722], np.float32)
     # Mixed at equal luminance, so `h` is the share of the colour.
-    blue, haze, aur = (c / float(c @ w) for c in (srgb_to_linear(x) for x in (SKY_BLUE, SKY_HAZE, SKY_AUREOLE)))
+    blue, haze, aur = (c / float(c @ w) for c in (srgb_to_linear(x) for x in (style.blue, style.haze, style.aureole)))
     white = haze + (aur - haze) * (cosg ** 10)[..., None]
     col = blue + (white - blue) * h[..., None]
     return col / (col @ w)[..., None]
 
 
-def preetham_rgb(d: np.ndarray, T: float = SKY_TURBIDITY) -> np.ndarray:
+def preetham_rgb(d: np.ndarray, style: SkyStyle) -> np.ndarray:
     """Linear sRGB clear-sky radiance for unit directions d (..., 3): the
     Preetham luminance distribution in the `sky_chroma` colours, scaled so
-    the zenith reads SKY_ZENITH_LINEAR, with the circumsolar glare rolled
-    off softly before it clips."""
-    Y = preetham_luminance(d, T) * SKY_ZENITH_LINEAR
+    the zenith reads the style's `zenith_linear`, with the circumsolar
+    glare rolled off softly before it clips."""
+    Y = preetham_luminance(d, style.turbidity) * style.zenith_linear
     knee = 0.6
     Y = np.where(Y > knee, knee + (Y - knee) / (1 + (Y - knee) / 0.55), Y)
-    return sky_chroma(d) * Y[..., None]
+    return sky_chroma(d, style) * Y[..., None]
 
 
 # Stored sky = linear radiance / scale, in sRGB encoding. The background's
@@ -1016,33 +1109,41 @@ CLOUD_KM = 1.6        # height of the cumulus layer
 CLOUD_TILE_KM = 9.0   # one tile of the cloud fields on that layer
 
 
-def low_sky_gain(up: np.ndarray) -> np.ndarray:
-    """Aerosol brightening of the low sky that the Preetham fit leaves out
-    at this turbidity: +45 % at the horizon, +11 % at 10 degrees."""
-    return 1 + 0.45 * np.exp(-np.maximum(up, 0) / 0.12)
+def low_sky_gain(up: np.ndarray, style: SkyStyle) -> np.ndarray:
+    """Aerosol brightening of the low sky that the Preetham fit leaves out:
+    for Flanders +45 % at the horizon, +11 % at 10 degrees."""
+    return 1 + style.low_gain * np.exp(-np.maximum(up, 0) / style.low_scale)
 
 
-def clear_sky(d: np.ndarray, background: bool = True) -> np.ndarray:
+def clear_sky(d: np.ndarray, style: SkyStyle, background: bool = True) -> np.ndarray:
     """Linear clear-sky radiance (`preetham_rgb`). For the background, as a
     photo shows it: brighter and whiter low down, and a touch more cyan
     above 15 degrees (photo G/B 0.80 against 0.73). The lighting
     environment keeps the plain model it was calibrated with."""
-    sky = preetham_rgb(d)
+    sky = preetham_rgb(d, style)
     if background:
         up = d[..., 1]
-        sky = sky * low_sky_gain(up)[..., None]
-        sky = sky * (1 + np.array([0.0, 0.05, 0.0], np.float32) * smoothstep(0.25, 0.6, up)[..., None])
+        sky = sky * low_sky_gain(up, style)[..., None]
+        sky = sky * (1 + np.array([0.0, style.cyan, 0.0], np.float32) * smoothstep(0.25, 0.6, up)[..., None])
     return sky
 
 
-def horizon_haze(background: bool = True) -> np.ndarray:
-    """Mean linear sky colour just above the horizon, all round: the fog
-    colour the far terrain fades to. Keep SkyLighting.horizonLinear in step
-    (bake_sky writes it to cj_sky_horizon.json; SkyBakeTests checks it)."""
+def horizon_haze(style: SkyStyle, background: bool = True) -> np.ndarray:
+    """Mean linear sky colour just above the horizon, all round: the colour
+    the lowest few degrees of sky settle on, and (without `style.fog`) the
+    fog colour the far terrain fades to. Keep SkyLighting's horizonLinear
+    in step (bake_sky writes the fog colour to cj_sky_horizon*.json;
+    SkyBakeTests checks it)."""
     az = np.linspace(0, 2 * math.pi, 256, endpoint=False)
     el = math.radians(1.0)
     d = np.stack([np.sin(az) * math.cos(el), np.full_like(az, math.sin(el)), -np.cos(az) * math.cos(el)], -1)
-    return clear_sky(d.astype(np.float32), background).mean(0)
+    return clear_sky(d.astype(np.float32), style, background).mean(0)
+
+
+def fog_colour(style: SkyStyle) -> np.ndarray:
+    """Linear colour below the horizon and of the fog: the all-round haze,
+    or the style's own."""
+    return horizon_haze(style) if style.fog is None else srgb_to_linear(style.fog)
 
 
 def cloud_fields(r: np.random.Generator) -> tuple:
@@ -1081,20 +1182,26 @@ def cloud_density(f: tuple, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return base + (sample_wrap(cn3, u, v) - 0.5) * 0.12 * edge
 
 
-def cloud_layer(d: np.ndarray, f: tuple) -> tuple:
+def cloud_layer(d: np.ndarray, f: tuple, style: SkyStyle) -> tuple:
     """Where directions d meet the cloud layer, in tiles (u, v), the density
     there and the cloud cover. The threshold rises near the horizon, where
     clouds are small on screen, so there are fewer specks; the rims are soft
-    enough not to stair-step on a cube face magnified about 2.5 times."""
+    enough not to stair-step on a cube face magnified about 2.5 times. A
+    style with `cloud_inland_km` keeps only the clouds that far north (the
+    scene's -z) of the viewer and beyond, fading in over that range."""
     up = d[..., 1]
     tt = CLOUD_KM / np.maximum(up, 0.02)
     u = d[..., 0] * tt / CLOUD_TILE_KM
     v = d[..., 2] * tt / CLOUD_TILE_KM
     dens = cloud_density(f, u, v) - 0.035 * (1 - smoothstep(0.05, 0.25, up))
-    return u, v, dens, smoothstep(0.575, 0.665, dens)
+    lo, hi = style.cloud_on
+    cover = smoothstep(lo, hi, dens)
+    if style.cloud_inland_km is not None:
+        cover = cover * smoothstep(*style.cloud_inland_km, -d[..., 2] * tt)
+    return u, v, dens, cover
 
 
-def cloud_cover(f: tuple, lo_deg: float = 5, hi_deg: float = 35) -> float:
+def cloud_cover(f: tuple, style: SkyStyle, lo_deg: float = 5, hi_deg: float = 35) -> float:
     """Share of the sky between lo_deg and hi_deg of elevation (by solid
     angle) under cloud: what a chase camera sees. Fair weather is 25-35 %."""
     az = (np.arange(1440, dtype=np.float32) + 0.5) / 1440 * 2 * math.pi
@@ -1102,32 +1209,49 @@ def cloud_cover(f: tuple, lo_deg: float = 5, hi_deg: float = 35) -> float:
     az, s = np.meshgrid(az, s)
     c = np.sqrt(1 - s * s)
     d = np.stack([np.sin(az) * c, s, -np.cos(az) * c], -1)
-    return float(cloud_layer(d, f)[3].mean())
+    return float(cloud_layer(d, f, style)[3].mean())
 
 
-def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None, background: bool = True,
-                 cloud_gain: float = 1.0) -> np.ndarray:
-    """Linear radiance of the late-summer sky for directions d (..., 3):
-    the clear sky (`clear_sky`), crisp self-shadowed fair-weather cumulus
-    on a 1.6 km layer, sun disc and a haze band at the horizon. Seen from
-    the sun's side a cloud shows its lit faces, sunlit tops brighter than
-    1; towards the sun, its shaded core with a bright rim. Below the
-    horizon: the haze colour (for the background, so the fogged far terrain
-    meets it without a seam) or, with `ground`, light bounced off sunlit
-    fields (for the lighting environment). `cloud_gain` scales the clouds'
-    own light."""
+def riviera_ground(d: np.ndarray, haze: np.ndarray) -> np.ndarray:
+    """What the lighting environment sees below the horizon on the Poggio:
+    the sea to the south, in a band below the horizon (a road 100-160 m up
+    sees it down to about 20 degrees), and sunlit hillsides of dry grass,
+    pale walls and greenhouses to the north, under pale asphalt and
+    sun-baked banks close by."""
+    up = d[..., 1]
+    south = smoothstep(-0.2, 0.5, d[..., 2])[..., None]
+    near = np.array([0.125, 0.118, 0.095], np.float32)
+    hills = np.array([0.105, 0.11, 0.085], np.float32)
+    sea = np.array([0.05, 0.085, 0.13], np.float32)
+    far = hills + (sea - hills) * south
+    t = smoothstep(0.0, 0.06, -up)[..., None]
+    low = haze + (far - haze) * t
+    return low + (near - low) * smoothstep(0.12, 0.45, -up)[..., None]
+
+
+def sky_radiance(d: np.ndarray, style: SkyStyle, clouds: bool, ground: bool, cloud_tex=None,
+                 background: bool = True, cloud_gain: float = 1.0, sun_disc: bool = True) -> np.ndarray:
+    """Linear radiance of the style's sky for directions d (..., 3): the
+    clear sky (`clear_sky`), crisp self-shadowed fair-weather cumulus on a
+    1.6 km layer, sun disc and a haze band at the horizon. Seen from the
+    sun's side a cloud shows its lit faces, sunlit tops brighter than 1;
+    towards the sun, its shaded core with a bright rim. Below the horizon:
+    the fog colour (for the background, so the fogged far terrain meets it
+    without a seam) or, with `ground`, light bounced off the land (for the
+    lighting environment). `cloud_gain` scales the clouds' own light;
+    without `sun_disc` the sun and its aureole are left out."""
     sun = sun_vector()
     up = d[..., 1]
     cosg = np.clip((d * sun).sum(-1), -1, 1)
-    haze = horizon_haze(background)
-    sky = clear_sky(d, background)
+    haze = horizon_haze(style, background)
+    sky = clear_sky(d, style, background)
     # The lowest few degrees settle on the all-round haze colour, all of
     # the way at the horizon itself, so the sky meets the haze below it
     # (and the fogged far terrain) without a line.
     band = 1 - smoothstep(0.0, 0.07, up)
     sky = sky + (haze - sky) * (band * (0.75 + 0.25 * band))[..., None]
     if clouds and cloud_tex is not None:
-        u, v, dens, cover = cloud_layer(d, cloud_tex)
+        u, v, dens, cover = cloud_layer(d, cloud_tex, style)
         # Light reaching the cloud: density marched towards the sun's
         # ground track over 0.15-0.9 km.
         sh = np.array([sun[0], sun[2]]) / math.hypot(sun[0], sun[2])
@@ -1135,7 +1259,7 @@ def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None, back
                                            v + sh[1] * km / CLOUD_TILE_KM) - 0.6, 0)
                   for km in (0.15, 0.35, 0.6, 0.9))
         lit = np.exp(-tau * 7.0 * (0.25 + 0.75 * smoothstep(-0.3, 0.9, cosg)))
-        lum = float(preetham_rgb(np.array([[0, 1, 0]], np.float32)).mean()) / SKY_ZENITH_LINEAR
+        lum = float(preetham_rgb(np.array([[0, 1, 0]], np.float32), style).mean()) / style.zenith_linear
         sunlit = np.array([1.0, 0.97, 0.93], np.float32) * 1.25 * lum
         # Shaded sides and bases: a fair-weather grey, not a shower's.
         shade = np.array([0.56, 0.59, 0.66], np.float32) * 0.70 * lum
@@ -1150,9 +1274,10 @@ def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None, back
         sky = sky * (1 - a) + cloud * a
     # Sun disc and a tight aureole (the disc clips in 8-bit; the key light
     # carries the sun's energy).
-    disc = smoothstep(0.99985, 0.99995, cosg)[..., None]
-    aureole = (np.clip(cosg, 0, 1) ** 400)[..., None] * 0.6
-    sky = sky + (disc * 8 + aureole) * np.array([1.0, 0.95, 0.85], np.float32)
+    if sun_disc:
+        disc = smoothstep(0.99985, 0.99995, cosg)[..., None]
+        aureole = (np.clip(cosg, 0, 1) ** 400)[..., None] * 0.6
+        sky = sky + (disc * 8 + aureole) * np.array([1.0, 0.95, 0.85], np.float32)
     below = up < 0
     if ground:
         # Light, not a picture: real skylight is whiter than a photo of the
@@ -1161,11 +1286,19 @@ def sky_radiance(d: np.ndarray, clouds: bool, ground: bool, cloud_tex=None, back
         # less saturated than the background.
         lum = (sky @ np.array([0.2126, 0.7152, 0.0722], np.float32))[..., None]
         sky = lum + (sky - lum) * 0.45
-        # Fields and hedges in afternoon sun, darkening away from the horizon.
-        g = np.array([0.105, 0.11, 0.075], np.float32)
-        t = smoothstep(0.0, 0.18, -up)[..., None]
-        low = haze + (g - haze) * t
+        if style.ground == "riviera":
+            low = riviera_ground(d, haze)
+        else:
+            # Fields and hedges in afternoon sun, darkening away from the horizon.
+            g = np.array([0.105, 0.11, 0.075], np.float32)
+            t = smoothstep(0.0, 0.18, -up)[..., None]
+            low = haze + (g - haze) * t
         sky = np.where(below[..., None], low, sky)
+    elif style.fog is not None:
+        # A sea horizon: the far water and coast, at the fog colour, meet
+        # the paler haze band in a soft line over the first half degree.
+        fog = fog_colour(style)
+        sky = fog + (sky - fog) * smoothstep(-0.002, 0.009, up)[..., None]
     else:
         sky = np.where(below[..., None], haze, sky)
     return sky
@@ -1186,51 +1319,82 @@ def up_irradiance(faces: list) -> float:
     return e / math.pi
 
 
-def bake_sky(n: int = 1024, env_n: int = 96) -> None:
-    """cj_sky_{px,nx,py,ny,pz,nz}.jpg: the background, a late-summer
-    afternoon sky (Preetham daylight model, turbidity SKY_TURBIDITY) with
-    scattered fair-weather cumulus, sun in the south-west. Scene axes: x =
-    east, y = up, z = south. Below the horizon the faces carry the haze
-    colour so the fogged far terrain meets them without a seam. Stored as
-    linear / SKY_SCALE, with a little dither and at JPEG quality 95 so the
-    smooth blue doesn't band.
+def bake_sky(n: int = 1024, env_n: int = 96, style: SkyStyle = FLANDERS) -> None:
+    """cj_sky{suffix}_{px,nx,py,ny,pz,nz}.jpg: the background, the style's
+    afternoon sky (Preetham daylight model) with fair-weather cumulus, sun
+    in the south-west. Scene axes: x = east, y = up, z = south. Below the
+    horizon the faces carry the fog colour so the fogged far terrain meets
+    them without a seam. Stored as linear / SKY_SCALE, with a little dither
+    and at JPEG quality 95 so the smooth blue doesn't band.
 
-    cj_skyenv_*.jpg: the same sky, small, without the background's photo
-    look, and with a ground hemisphere of sunlit fields, for image-based
-    lighting (shadows and undersides pick up green-brown bounce light
-    instead of blue). Stored as linear / SKY_ENV_SCALE.
+    cj_skyenv{suffix}_*.jpg: the same sky, small, without the background's
+    photo look, and with a ground hemisphere of sunlit land (and, on the
+    Riviera, the sea), for image-based lighting (shadows and undersides
+    pick up bounce light instead of blue). Stored as linear / SKY_ENV_SCALE.
 
     The Swift side draws the background at SkyLighting.skyScale and fades
-    the far terrain to SkyLighting.horizonLinear: the haze printed here and
-    written to cj_sky_horizon.json (beside this script, out of the app)."""
+    the far terrain to the region's horizonLinear (WorldLook+Sky): the fog
+    colour printed here and written to cj_sky_horizon{suffix}.json (beside
+    this script, out of the app)."""
     r = rng(131)
     f = cloud_fields(r)
     f_env = tuple(blur(c, 6) for c in f)
     dither = rng(137)
     names = ["px", "nx", "py", "ny", "pz", "nz"]
+    flip = np.array([1, 1, -1 if style.mirror_z else 1], np.float32)
     envs = []
     for k in range(6):
-        d = cube_dirs(k, n)
-        sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=f)
-        save_rgb_dithered(OUT / f"cj_sky_{names[k]}.jpg", np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), dither, 95)
+        d = cube_dirs(k, n) * flip
+        sky = sky_radiance(d, style, clouds=True, ground=False, cloud_tex=f)
+        save_rgb_dithered(OUT / f"cj_sky{style.suffix}_{names[k]}.jpg", np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1),
+                          dither, 95)
         del d, sky
-        de = cube_dirs(k, env_n)
-        env = np.clip(sky_radiance(de, clouds=True, ground=True, cloud_tex=f_env, background=False,
+        de = cube_dirs(k, env_n) * flip
+        env = np.clip(sky_radiance(de, style, clouds=True, ground=True, cloud_tex=f_env, background=False,
                                    cloud_gain=ENV_CLOUD_GAIN) / SKY_ENV_SCALE, 0, 1)
-        save_rgb(OUT / f"cj_skyenv_{names[k]}.jpg", linear_to_srgb(env), 90)
+        save_rgb(OUT / f"cj_skyenv{style.suffix}_{names[k]}.jpg", linear_to_srgb(env), 90)
         envs.append(env * SKY_ENV_SCALE)
-    haze = horizon_haze()
-    cover = cloud_cover(f)
+    haze = horizon_haze(style)
+    fog = fog_colour(style)
+    cover = cloud_cover(f, style)
     print("horizon haze, linear", np.round(haze, 4), "stored sRGB", np.round(linear_to_srgb(haze / SKY_SCALE), 4))
+    if style.fog is not None:
+        print("fog (below the horizon), linear", np.round(fog, 4))
     print(f"cloud cover 5-35 degrees: {cover * 100:.1f} %")
     print(f"lighting environment: up-facing irradiance {up_irradiance(envs):.3f} (calibrated {ENV_IRRADIANCE})")
-    record = {"horizonLinear": [round(float(x), 4) for x in haze], "skyScale": SKY_SCALE,
+    record = {"horizonLinear": [round(float(x), 4) for x in fog], "skyScale": SKY_SCALE,
               "cloudCover5to35Deg": round(cover, 3)}
-    (Path(__file__).resolve().parent / "cj_sky_horizon.json").write_text(json.dumps(record, indent=2) + "\n")
-    print("Keep SkyLighting.horizonLinear and skyScale in step with cj_sky_horizon.json.")
+    (Path(__file__).resolve().parent / f"cj_sky_horizon{style.suffix}.json").write_text(json.dumps(record, indent=2) + "\n")
+    print("Keep the region's horizonLinear (WorldLook+Sky.swift) and SkyLighting.skyScale in step with "
+          f"cj_sky_horizon{style.suffix}.json.")
 
 
-def preview_sky(path: Path, w: int = 1024, h: int = 384) -> None:
+def bake_sky_riviera() -> None:
+    """The Riviera's sky (`RIVIERA`): cj_sky_lig_*, cj_skyenv_lig_*, the
+    sea's reflection of it (`bake_sea_sky`) and its waves (`bake_sea_detail`)."""
+    bake_sky(style=RIVIERA)
+    bake_sea_sky()
+    bake_sea_detail()
+
+
+def bake_sea_sky(w: int = 1024, h: int = 256) -> None:
+    """cj_sea_sky.jpg: the Riviera's sky above the horizon for the sea to
+    reflect (WorldShaders+Sea), the background's radiance with its clouds
+    softened and without the sun (the sea shader draws its glitter), stored
+    as linear / SKY_SCALE like the background. Column u is the compass
+    azimuth (north at u = 0, east at a quarter), row v is 1 - sin(elevation),
+    so the low sky the sea mostly mirrors gets the most rows."""
+    f = tuple(blur(c, 2) for c in cloud_fields(rng(131)))
+    az = (np.arange(w, dtype=np.float32) + 0.5) / w * 2 * math.pi
+    s = 1 - (np.arange(h, dtype=np.float32) + 0.5) / h
+    az, s = np.meshgrid(az, s)
+    c = np.sqrt(1 - s * s)
+    d = np.stack([np.sin(az) * c, s, -np.cos(az) * c], -1).astype(np.float32)
+    sky = sky_radiance(d, RIVIERA, clouds=True, ground=False, cloud_tex=f, sun_disc=False)
+    save_rgb_dithered(OUT / "cj_sea_sky.jpg", np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), rng(139), 92)
+
+
+def preview_sky(path: Path, style: SkyStyle = FLANDERS, w: int = 1024, h: int = 384) -> None:
     """Equirectangular preview of the background sky from 10 degrees below
     the horizon to the zenith, north at the left edge, for checking the look
     without a build (linear / SKY_SCALE, as stored)."""
@@ -1239,18 +1403,74 @@ def preview_sky(path: Path, w: int = 1024, h: int = 384) -> None:
     el = np.radians(90 - (np.arange(h, dtype=np.float32) + 0.5) / h * 100)
     az, el = np.meshgrid(az, el)
     d = np.stack([np.sin(az) * np.cos(el), np.sin(el), -np.cos(az) * np.cos(el)], -1).astype(np.float32)
-    sky = sky_radiance(d, clouds=True, ground=False, cloud_tex=f)
+    sky = sky_radiance(d, style, clouds=True, ground=False, cloud_tex=f)
     save_rgb(path, np.clip(linear_to_srgb(sky / SKY_SCALE), 0, 1), 90)
-    print(f"cloud cover 5-35 degrees: {cloud_cover(f) * 100:.1f} %")
+    print(f"cloud cover 5-35 degrees: {cloud_cover(f, style) * 100:.1f} %")
+
+
+# ---------------------------------------------------------------- sea
+
+# Wind over the sea on the Riviera's spring afternoon: an onshore breeze
+# from the south-west at about 4 m/s (Cox & Munk 1954 put the mean square
+# slope of the sea at 0.003 + 0.00512 U, 0.023 at 4 m/s).
+SEA_WIND_MS = 4.0
+SEA_WIND_FROM_DEG = 225.0
+SEA_TILE_M = 32.0
+
+
+def bake_sea_detail(n: int = 512) -> None:
+    """cj_sea_detail.rgbz, a SEA_TILE_M square of wind sea that tiles: R, G
+    = the wave slopes along +u (east) and +v (south, down the image) as 0.5
+    + slope, B = whitecap and wash foam where the waves break (0-1), A = the
+    wave height, normalised (0 lowest). A Phillips spectrum (Tessendorf
+    2001, "Simulating Ocean Water") for SEA_WIND_MS from SEA_WIND_FROM_DEG,
+    the ripples under about 12 cm left out (two pixels), and its slopes
+    scaled to a mean square of 0.012: the half of Cox & Munk's 0.023 that
+    a map can hold; the sea shader adds the rest as roughness."""
+    r = rng(151)
+    g = 9.81
+    L = SEA_WIND_MS ** 2 / g
+    k1 = np.fft.fftfreq(n, SEA_TILE_M / n) * 2 * math.pi
+    kx, kz = np.meshgrid(k1, k1)
+    k = np.hypot(kx, kz)
+    k[0, 0] = 1
+    # Towards where the wind blows (scene x east, z south).
+    a = math.radians(SEA_WIND_FROM_DEG + 180)
+    wx, wz = math.sin(a), -math.cos(a)
+    align = (kx * wx + kz * wz) / k
+    spread = align ** 2 * 0.85 + 0.15
+    cut = 2 * math.pi / (2 * SEA_TILE_M / n * 2)
+    ph = np.exp(-1 / (k * L) ** 2) / k ** 4 * spread * np.exp(-(k / cut) ** 2)
+    ph[0, 0] = 0
+    amp = np.sqrt(ph / 2) * (r.standard_normal((n, n)) + 1j * r.standard_normal((n, n)))
+    h = np.real(np.fft.ifft2(amp))
+    sx = np.real(np.fft.ifft2(amp * 1j * kx))
+    sz = np.real(np.fft.ifft2(amp * 1j * kz))
+    scale = math.sqrt(0.012 / float((sx ** 2 + sz ** 2).mean()))
+    sx *= scale
+    sz *= scale
+    h *= scale
+    # Foam: breaking crests, where the sea is steepest and highest, in
+    # streaks along the wind, and a fine froth for the wash at the rocks.
+    steep = smoothstep(0.18, 0.4, np.hypot(sx, sz)) * smoothstep(0.3, 0.9, (h - h.min()) / np.ptp(h))
+    froth = fbm(n, n, 32, 4, r)
+    foam = np.clip(steep * 0.7 + smoothstep(0.45, 0.8, froth) * 0.6, 0, 1)
+    hn = (h - h.min()) / np.ptp(h)
+    rgba = np.stack([0.5 + sx, 0.5 + sz, foam, hn], -1)
+    print(f"sea slopes: rms {math.sqrt(float((sx ** 2 + sz ** 2).mean())):.3f}, "
+          f"clipped {float(((np.abs(sx) > 0.5) | (np.abs(sz) > 0.5)).mean()) * 100:.2f} %, "
+          f"wave height rms {float(h.std()):.3f} m")
+    save_raw(OUT / "cj_sea_detail.png", np.clip(rgba, 0, 1).astype(np.float32))
 
 
 # ---------------------------------------------------------------- main
 
 BAKERS = {
-    "asphalt": bake_asphalt, "ground": bake_ground,
+    "asphalt": bake_asphalt, "asphalt_fine": bake_asphalt_fine, "ground": bake_ground,
     "foliage": bake_foliage, "grass": bake_grass, "bark": bake_bark,
     "brick": bake_brick, "facades": bake_facades,
     "impostors": bake_impostors, "farfields": bake_far_fields, "sky": bake_sky,
+    "sky_lig": bake_sky_riviera,
 }
 
 
@@ -1258,10 +1478,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="", help="comma-separated subset of " + ",".join(BAKERS))
     ap.add_argument("--preview-sky", default="", help="write an equirectangular sky preview here and exit")
+    ap.add_argument("--sky-style", default="flanders", choices=["flanders", "riviera"],
+                    help="the sky --preview-sky draws")
     args = ap.parse_args()
     if args.preview_sky:
-        preview_sky(Path(args.preview_sky))
-        print("horizon haze, linear", np.round(horizon_haze(), 4))
+        style = RIVIERA if args.sky_style == "riviera" else FLANDERS
+        preview_sky(Path(args.preview_sky), style)
+        print("horizon haze, linear", np.round(horizon_haze(style), 4), "fog, linear", np.round(fog_colour(style), 4))
         return 0
     OUT.mkdir(parents=True, exist_ok=True)
     names = [n for n in args.only.split(",") if n] or list(BAKERS)

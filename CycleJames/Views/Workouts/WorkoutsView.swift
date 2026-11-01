@@ -61,6 +61,7 @@ struct WorkoutsView: View {
                 switch nav {
                 case .list: CourseListView()
                 case .detail(let id): CourseDetailView(courseID: id)
+                case .series: BergSeriesView()
                 }
             }
             .toolbar {
@@ -104,6 +105,11 @@ struct WorkoutsView: View {
     private func applyScreenshotPush() {
         guard navigationPath.isEmpty else { return }
         let args = ProcessInfo.processInfo.arguments
+        if CourseLaunchArgs.seriesDemoCourseIDs != nil || CourseLaunchArgs.screenshotCourseSeries {
+            navigationPath.append(CourseNav.list)
+            navigationPath.append(CourseNav.series)
+            return
+        }
         if let id = CourseLaunchArgs.rideDemoCourseID ?? CourseLaunchArgs.screenshotCourseID {
             navigationPath.append(CourseNav.list)
             navigationPath.append(CourseNav.detail(id))

@@ -62,7 +62,7 @@ final class WorldTextures: @unchecked Sendable {
             let url = Bundle.main.url(forResource: name, withExtension: ext)
                 ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "CourseTextures")
             if let url, let img = UIImage(contentsOfFile: url.path) {
-                found = downscaled(img)
+                found = downscaled(img, standardRange: !Self.wideColourDownscales.contains(name))
                 break
             }
         }
@@ -103,7 +103,30 @@ final class WorldTextures: @unchecked Sendable {
         return img
     }
 
-    private func downscaled(_ img: UIImage, to cap: Int? = nil) -> UIImage {
+    /// Bundled images over the battery tier's 1024 px that the Flemish
+    /// courses use: they keep the wide-colour downscale below, which the
+    /// user has not yet been asked about (see `downscaled`).
+    static let wideColourDownscales: Set<String> = ["cj_facade", "cj_signs"]
+
+    /// `img` scaled to fit `cap` (the tier's limit), or itself.
+    ///
+    /// SceneKit's own material slots take the drawn image as it is, but
+    /// MTKTextureLoader ignores `.SRGB` for any image drawn in memory: it
+    /// uploads it as plain `bgra8Unorm` / `rgba8Unorm`, so a colour map a
+    /// shader samples itself (`WorldTextures.metal(_:srgb:)`) held its
+    /// sRGB-encoded values as linear ones and came back 2-4 times too
+    /// bright on battery. The Poggio's far photo read 0.47 linear red where
+    /// high and balanced read 0.21, and the inland hills drew pale pinkish
+    /// grey (SeaTests `test_rivieraColourMapsKeepTheirColourOnEveryTier`;
+    /// the bark atlas the same, WorldMaterials+Plants). The same image
+    /// drawn into 8-bit sRGB gave `rgba8Unorm` too; decoded from PNG data,
+    /// as the bundled JPEG is from its file, it gives `rgba8Unorm_srgb`
+    /// (measured, 31 Oct 2026). `standardRange` therefore draws into plain
+    /// 8-bit sRGB and hands back the PNG decoded (about a tenth of a second
+    /// a map, on the battery tier only). Everything but
+    /// `wideColourDownscales` (the Riviera's maps) takes it; the ortho keeps
+    /// the old way, as it only fills a SceneKit slot.
+    private func downscaled(_ img: UIImage, to cap: Int? = nil, standardRange: Bool = false) -> UIImage {
         let limit = cap ?? self.limit
         guard let cg = img.cgImage else { return img }
         let w = cg.width, h = cg.height
@@ -113,10 +136,12 @@ final class WorldTextures: @unchecked Sendable {
         let nw = max(Int(Double(w) * f), 1), nh = max(Int(Double(h) * f), 1)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
+        if standardRange { format.preferredRange = .standard }
         format.opaque = cg.alphaInfo == .none || cg.alphaInfo == .noneSkipLast || cg.alphaInfo == .noneSkipFirst
         let out = UIGraphicsImageRenderer(size: CGSize(width: nw, height: nh), format: format).image { _ in
             img.draw(in: CGRect(x: 0, y: 0, width: nw, height: nh))
         }
+        if standardRange, let png = out.pngData(), let decoded = UIImage(data: png) { return decoded }
         return out
     }
 

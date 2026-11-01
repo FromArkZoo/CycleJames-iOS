@@ -6,7 +6,7 @@
 
     uv run --script scripts/courses/textures/bake_signs.py
 
-cj_signs.png (1024 x 1024, sRGB, opaque) and cj_signs_map.json go to
+cj_signs.png (1024 x 1536, sRGB, opaque) and cj_signs_map.json go to
 CycleJames/Resources/CourseTextures/. Every plate the climbs carry
 (CourseArt.signs: Belgian road signs, street plates, the climbs' own boards,
 cycle-node plates, traffic mirrors), drawn flat at 256 px per metre and
@@ -14,8 +14,10 @@ shelf-packed; the map gives each key its shape (rect, tri, triDown, disc),
 its size in metres and its uv rect (u0, v0, u1, v1, v down). BuildingBuilder
 cuts each face to its shape, so the atlas needs no alpha: each cell's corners
 carry the plate's rim colour, which keeps the mips from bleeding a dark edge.
-A few plain cells (paint.*) colour props: the chapel door, the kiosk's
-plinth, the pipeline marker; grate.* are the cast-iron gully grates; kiosk.*
+A few plain cells (paint.*) colour props: the chapel doors, the kiosk's
+plinth, the pipeline marker, the Oudenberg chapel's gilt statue, its stone
+dressings, white statue, timber door, window glass and niche; grate.* are
+the cast-iron gully grates; kiosk.*
 are the Paterberg summit kiosk's doors, end panels and roof, weathered, at
 half the density and packed after everything else, so they move no plate.
 
@@ -37,6 +39,7 @@ ROOT = Path(__file__).resolve().parents[3]
 OUT = ROOT / "CycleJames/Resources/CourseTextures"
 
 SIZE = 1024
+HEIGHT = 1536               # the plates outgrew a square 1024 with the Molenberg's and Taaienberg's
 SS = 2                      # supersampling
 PPM = 256 * SS              # pixels per metre while drawing
 PAD = 10 * SS               # between cells
@@ -109,6 +112,38 @@ def street_plate(name, header=None):
     return draw
 
 
+def town_plate(name, header, ink, rim, sub=None):
+    """A municipality's street plate: white, rounded, a coloured border,
+    the village (and municipality) small above the street's name (Zwalm:
+    blue; Maarkedal: green with white letters, `ink` WHITE on `rim`)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        field = rim if ink == WHITE else WHITE
+        d.rectangle(box, fill=rim)
+        d.rounded_rectangle(inset(box, h * 0.04), radius=h * 0.16, fill=field)
+        d.rounded_rectangle(inset(box, h * 0.09), radius=h * 0.12, outline=ink if ink == WHITE else rim,
+                            width=max(2, int(h * 0.05)))
+        x0, y0, x1, y1 = inset(box, h * 0.16)
+        top = (y1 - y0) * 0.32
+        text(d, (x0, y0, x1, y0 + top), header + (f"  {sub}" if sub else ""), top * 0.75, ink, FONT_C)
+        text(d, (x0, y0 + top, x1, y1), name, (y1 - y0 - top) * 0.78, ink)
+    return draw
+
+
+def village_board(town, municipality):
+    """A village's own name board (not an F1): yellow, a red border, black
+    letters (Sint-Denijs-Boekel, at the Molenberg's mill square)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        d.rectangle(box, fill=RED)
+        d.rectangle(inset(box, h * 0.07), fill=YELLOW)
+        text(d, (x0 + h * 0.15, y0 + h * 0.14, x1 - h * 0.15, y0 + h * 0.62), town, h * 0.36, BLACK)
+        text(d, (x0 + h * 0.15, y0 + h * 0.6, x1 - h * 0.15, y1 - h * 0.14), municipality, h * 0.2, BLACK)
+    return draw
+
+
 def tourist_arrow(name, left=True):
     def draw(d, box):
         x0, y0, x1, y1 = box
@@ -161,6 +196,19 @@ def steep(pct):                                       # A5: steep descent
         d.polygon([(x0 + w * 0.3, y0 + h * 0.8), (x0 + w * 0.7, y0 + h * 0.8), (x0 + w * 0.3, y0 + h * 0.56)], fill=BLACK)
         text(d, (x0 + w * 0.42, y0 + h * 0.5, x0 + w * 0.72, y0 + h * 0.66), pct, h * 0.15, BLACK)
     return draw
+
+
+def uneven(d, box):                                   # A7a: uneven road, two humps
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    base = y0 + h * 0.78
+    pts = [(x0 + w * 0.26, base)]
+    for k in range(41):
+        f = k / 40
+        hump = max(0.0, math.sin(f * 2 * math.pi)) ** 1.2 if f < 0.5 else max(0.0, -math.sin(f * 2 * math.pi)) ** 1.2
+        pts.append((x0 + w * (0.26 + 0.48 * f), base - h * 0.17 * hump))
+    pts.append((x0 + w * 0.74, base))
+    d.polygon(pts + [(x0 + w * 0.74, base + h * 0.035), (x0 + w * 0.26, base + h * 0.035)], fill=BLACK)
 
 
 def children(d, box):                                 # A23: two children
@@ -505,6 +553,7 @@ SIGNS = [
     ("f1.kwaremont", "rect", 1.10, 0.60, place_name("Kwaremont", "Kluisbergen")),
     ("a.steep20", "tri", 0.90, 0.78, triangle(steep("20%"))),
     ("a23.children", "tri", 0.90, 0.78, triangle(children)),
+    ("a7.uneven", "tri", 0.90, 0.78, triangle(uneven)),
     ("b1.giveway", "triDown", 0.90, 0.78, triangle(down=True)),
     ("c3", "disc", 0.70, 0.70, disc()),
     ("c1.noentry", "disc", 0.70, 0.70, no_entry),
@@ -515,13 +564,23 @@ SIGNS = [
     ("node.65", "rect", 0.32, 0.32, node(65)),
     ("node.69", "rect", 0.32, 0.32, node(69)),
     ("node.19", "rect", 0.32, 0.32, node(19)),
+    ("node.76", "rect", 0.32, 0.32, node(76)),
+    ("node.32", "rect", 0.32, 0.32, node(32)),
     ("street.steengat", "rect", 0.80, 0.26, street_plate("STEENGAT", "Stad Oudenaarde")),
     ("tourist.koppenberg.left", "rect", 1.10, 0.25, tourist_arrow("KOPPENBERG", left=True)),
     ("cycle.route.left", "rect", 0.30, 0.20, cycle_route(left=True)),
+    ("cycle.route.right", "rect", 0.30, 0.20, cycle_route(left=False)),
     ("street.paterbergstraat", "rect", 0.95, 0.20, street_plate("PATERBERGSTRAAT")),
     ("plate.landbouw", "rect", 0.70, 0.16, sub_plate("uitgezonderd landbouwvoertuigen", blue=True)),
     ("plate.m11", "rect", 0.45, 0.16, sub_plate("", pictogram=True)),
     ("plate.100m", "rect", 0.45, 0.16, sub_plate("100 m")),
+    ("plate.aangelanden", "rect", 0.70, 0.16, sub_plate("uitgezonderd aangelanden", blue=True)),
+    ("plate.wegdek", "rect", 0.90, 0.18, sub_plate("WEGDEK IN SLECHTE STAAT", blue=True)),
+    ("street.molenberg", "rect", 0.80, 0.30, town_plate("MOLENBERG", "SINT-DENIJS-BOEKEL", BLUE, BLUE, "zwalm")),
+    ("street.wijlegem", "rect", 0.80, 0.30, town_plate("WIJLEGEM", "SINT-DENIJS-BOEKEL", BLUE, BLUE, "zwalm")),
+    ("street.boitsbank", "rect", 0.80, 0.22, town_plate("Boitsbank", "MAARKEDAL", WHITE, GREEN)),
+    ("street.taaienberg", "rect", 0.80, 0.22, town_plate("Taaienberg", "MAARKEDAL", WHITE, GREEN)),
+    ("place.stdenijsboekel", "rect", 1.10, 0.55, village_board("St-Denijs-Boekel", "Zwalm")),
     ("grate.round", "disc", 0.45, 0.45, grate_round),
     ("grate.rect", "rect", 0.50, 0.30, grate_rect),
     ("paint.blue", "rect", 0.06, 0.06, paint((44, 78, 140))),
@@ -529,6 +588,13 @@ SIGNS = [
     ("paint.yellow", "rect", 0.06, 0.06, paint((232, 186, 22))),
     ("paint.cabinet", "rect", 0.06, 0.06, paint((118, 124, 116))),
     ("paint.plinth", "rect", 0.06, 0.06, paint((46, 46, 43))),
+    ("paint.gold", "rect", 0.06, 0.06, paint((201, 158, 62))),
+    ("paint.stone", "rect", 0.06, 0.06, paint((214, 205, 186))),
+    ("paint.marble", "rect", 0.06, 0.06, paint((232, 229, 220))),
+    ("paint.door", "rect", 0.06, 0.06, paint((92, 56, 34))),
+    ("paint.glass", "rect", 0.06, 0.06, paint((30, 34, 40))),
+    ("paint.niche", "rect", 0.06, 0.06, paint((96, 62, 48))),
+    ("paint.darkgrey", "rect", 0.06, 0.06, paint((64, 68, 72))),
 ]
 
 # The kiosk's faces (`BuildingBuilder.buildFurniture`), at PROP_SCALE of the
@@ -542,12 +608,295 @@ PROPS = [
 ]
 
 
-def bake() -> None:
-    big = SIZE * SS
-    atlas = Image.new("RGB", (big, big), (128, 128, 128))
+# The Poggio di Sanremo's plates (Codice della Strada, as photographed on the
+# SP55 and at the summit, scripts/courses research look.md sections 5-6):
+# Italian warning triangles (red rim, white field, as the Belgian ones),
+# the old black hairpin plates with a white chevron, an orange-rimmed convex
+# mirror, blue extra-urban direction arrows, the white place board of the
+# frazione, blue square crossing signs, a bus-stop plate, the phone box's
+# disc and the 2026 sculpture's inscriptions. Text in the same DIN faces
+# (the Italian "alfabeto normale" is close; macOS doesn't ship it).
+IT_HEIGHT = 1536
+IT_BLUE = (26, 88, 162)          # the SP55 arrows in the 2008 Commons photo, sunlit #2570be, painted a touch darker
+IT_ORANGE = (222, 86, 42)        # traffic-mirror rims
+NAVY = (36, 40, 98)              # the sculpture's lettering
+FONT_SCRIPT = "/System/Library/Fonts/Supplemental/Brush Script.ttf"
+
+
+def curve_picto(left: bool):
+    """Pericolo curva: a thick black road line up the middle, bending
+    hard to one side near the top."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        w, h = x1 - x0, y1 - y0
+        s = -1 if left else 1
+        cx = (x0 + x1) / 2 - s * w * 0.05
+        lw = int(w * 0.075)
+        pts = [(cx, y0 + h * 0.84), (cx, y0 + h * 0.62)]
+        for k in range(1, 13):
+            t = k / 12
+            ang = t * math.pi * 0.5
+            pts.append((cx + s * w * 0.12 * (1 - math.cos(ang)), y0 + h * 0.62 - h * 0.12 * math.sin(ang)))
+        pts.append((pts[-1][0] + s * w * 0.08, pts[-1][1]))
+        d.line(pts, fill=BLACK, width=lw, joint="curve")
+    return draw
+
+
+def double_curve_picto(left_first: bool):
+    """Doppia curva: an S, first to one side then the other."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        w, h = x1 - x0, y1 - y0
+        s = -1 if left_first else 1
+        cx = (x0 + x1) / 2
+        lw = int(w * 0.07)
+        pts = []
+        for k in range(25):
+            t = k / 24
+            pts.append((cx + s * w * 0.09 * math.sin(t * 2 * math.pi), y0 + h * 0.82 - h * 0.42 * t))
+        d.line(pts, fill=BLACK, width=lw, joint="curve")
+    return draw
+
+
+def danger_picto(d, box):
+    """Altri pericoli: a black exclamation mark."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    cx = (x0 + x1) / 2
+    d.polygon([(cx - w * 0.035, y0 + h * 0.4), (cx + w * 0.035, y0 + h * 0.4), (cx + w * 0.02, y0 + h * 0.68),
+               (cx - w * 0.02, y0 + h * 0.68)], fill=BLACK)
+    r = w * 0.035
+    d.ellipse([cx - r, y0 + h * 0.74 - r, cx + r, y0 + h * 0.74 + r], fill=BLACK)
+
+
+def walker(d, cx, cy, h, fill):
+    """A plain walking figure `h` tall, centred on (cx, cy)."""
+    r = h * 0.09
+    d.ellipse([cx - r, cy - h * 0.5, cx + r, cy - h * 0.5 + 2 * r], fill=fill)
+    lw = max(2, int(h * 0.1))
+    hip, neck = (cx, cy + h * 0.08), (cx + h * 0.02, cy - h * 0.26)
+    d.line([neck, hip], fill=fill, width=int(lw * 1.3))
+    d.line([hip, (cx - h * 0.16, cy + h * 0.5)], fill=fill, width=lw)
+    d.line([hip, (cx + h * 0.06, cy + h * 0.28), (cx + h * 0.2, cy + h * 0.5)], fill=fill, width=lw, joint="curve")
+    d.line([(cx + h * 0.02, cy - h * 0.2), (cx - h * 0.17, cy + h * 0.02)], fill=fill, width=int(lw * 0.8))
+    d.line([(cx + h * 0.02, cy - h * 0.2), (cx + h * 0.18, cy - h * 0.02)], fill=fill, width=int(lw * 0.8))
+
+
+def crossing_square(d, box):
+    """Attraversamento pedonale: blue square, a white triangle with a
+    black figure on a zebra."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    d.rectangle(box, fill=IT_BLUE)
+    d.rectangle(inset(box, w * 0.03), outline=WHITE, width=max(2, int(w * 0.02)))
+    tri = [(x0 + w * 0.12, y1 - h * 0.14), (x1 - w * 0.12, y1 - h * 0.14), ((x0 + x1) / 2, y0 + h * 0.1)]
+    d.polygon(tri, fill=WHITE)
+    for k in range(5):
+        xa = x0 + w * (0.3 + 0.085 * k)
+        d.rectangle([xa, y1 - h * 0.24, xa + w * 0.05, y1 - h * 0.19], fill=BLACK)
+    walker(d, (x0 + x1) / 2, y0 + h * 0.5, h * 0.36, BLACK)
+
+
+def chevron(left: bool):
+    """The old black hairpin plates on the outside walls, one white
+    chevron pointing round the bend (PEZ 2007 hairpin photo)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        w, h = x1 - x0, y1 - y0
+        d.rectangle(box, fill=(18, 18, 20))
+        s = -1 if left else 1
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        tip = (cx + s * w * 0.26, cy)
+        arm = w * 0.36
+        lw = int(w * 0.17)
+        d.line([(tip[0] - s * arm, cy - arm), tip, (tip[0] - s * arm, cy + arm)], fill=WHITE, width=lw, joint="curve")
+        d.rectangle(inset(box, w * 0.02), outline=(70, 70, 72), width=max(1, int(w * 0.012)))
+    return draw
+
+
+def mirror_it(d, box):
+    """A convex traffic mirror with a plain orange-red rim."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    d.rectangle(box, fill=IT_ORANGE)
+    d.ellipse(box, fill=IT_ORANGE)
+    g = inset(box, w * 0.09)
+    gw = g[2] - g[0]
+    cx = (g[0] + g[2]) / 2
+    for i in range(int(gw)):
+        t = (i + 0.5) / gw
+        half = math.sqrt(max(0.0, 0.25 - (t - 0.5) ** 2)) * gw
+        sky = (146 + 58 * t, 178 + 34 * t, 214 + 12 * t)
+        ground = (110 - 24 * t, 104 - 20 * t, 92 - 22 * t)
+        c = sky if t < 0.52 else ground
+        d.line([(cx - half, g[1] + i), (cx + half, g[1] + i)], fill=tuple(int(v) for v in c))
+    d.arc(inset(box, w * 0.2), 200, 250, fill=(240, 244, 248), width=int(w * 0.04))
+
+
+def direction(name: str, km: str = "", sp: str = "", right: bool = True, ground=IT_BLUE):
+    """A blue (extra-urban) direction arrow: white rim round the arrow
+    outline, the road's number boxed, the place, its distance."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        w, h = x1 - x0, y1 - y0
+        d.rectangle(box, fill=ground)
+        tipw = h * 0.5
+        k = h * 0.06
+        if right:
+            pts = [(x0 + k, y0 + k), (x1 - tipw, y0 + k), (x1 - k * 1.2, (y0 + y1) / 2), (x1 - tipw, y1 - k), (x0 + k, y1 - k)]
+        else:
+            pts = [(x1 - k, y0 + k), (x0 + tipw, y0 + k), (x0 + k * 1.2, (y0 + y1) / 2), (x0 + tipw, y1 - k), (x1 - k, y1 - k)]
+        d.line(pts + [pts[0]], fill=WHITE, width=max(2, int(h * 0.045)), joint="curve")
+        a, b = (x0 + h * 0.2, x1 - tipw) if right else (x0 + tipw, x1 - h * 0.2)
+        if sp:
+            sw = h * 1.05
+            sb = (a, y0 + h * 0.28, a + sw, y1 - h * 0.28)
+            d.rounded_rectangle(sb, radius=h * 0.06, outline=WHITE, width=max(2, int(h * 0.04)))
+            text(d, inset(sb, h * 0.04), sp, h * 0.3, WHITE)
+            a += sw + h * 0.15
+        if km:
+            kw = d.textlength(km, font=font(FONT, h * 0.46)) + h * 0.05
+            text(d, (b - kw, y0, b, y1), km, h * 0.46, WHITE, fit=1.0)
+            b -= kw + h * 0.25
+        text(d, (a, y0, b, y1), name, h * 0.5, WHITE)
+    return draw
+
+
+def place_board(name: str, sub: str):
+    """The frazione's board: white, a black rim, the name and its comune."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        d.rectangle(box, fill=(236, 238, 232))
+        d.rounded_rectangle(inset(box, h * 0.05), radius=h * 0.06, outline=BLACK, width=max(2, int(h * 0.035)))
+        text(d, (x0 + h * 0.2, y0 + h * 0.1, x1 - h * 0.2, y0 + h * 0.66), name, h * 0.42, BLACK, fit=0.84)
+        text(d, (x0 + h * 0.2, y0 + h * 0.62, x1 - h * 0.2, y1 - h * 0.12), sub, h * 0.16, BLACK, FONT_C)
+    return draw
+
+
+def bus_stop(d, box):
+    """A bus-stop plate: blue, FERMATA over a white bus (no operator's logo)."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    d.rectangle(box, fill=IT_BLUE)
+    d.rectangle(inset(box, w * 0.04), outline=WHITE, width=max(2, int(w * 0.03)))
+    text(d, (x0, y0 + h * 0.06, x1, y0 + h * 0.3), "FERMATA", h * 0.14, WHITE, FONT_C)
+    bx = (x0 + w * 0.18, y0 + h * 0.38, x1 - w * 0.18, y0 + h * 0.72)
+    d.rounded_rectangle(bx, radius=w * 0.05, fill=WHITE)
+    for k in range(3):
+        xa = bx[0] + (bx[2] - bx[0]) * (0.08 + 0.3 * k)
+        d.rectangle([xa, bx[1] + h * 0.04, xa + (bx[2] - bx[0]) * 0.22, bx[1] + h * 0.14], fill=IT_BLUE)
+    for xf in (0.25, 0.75):
+        cx = bx[0] + (bx[2] - bx[0]) * xf
+        r = w * 0.07
+        d.ellipse([cx - r, bx[3] - r, cx + r, bx[3] + r], fill=(30, 30, 34))
+    text(d, (x0, y0 + h * 0.78, x1, y1 - h * 0.06), "BUS", h * 0.12, WHITE)
+
+
+def phone_disc(d, box):
+    """The phone box's mast sign: a white disc, a red handset."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    d.rectangle(box, fill=(232, 232, 228))
+    d.ellipse(box, fill=(232, 232, 228), outline=(180, 176, 170), width=max(1, int(w * 0.02)))
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    lw = int(w * 0.12)
+    d.line([(cx - w * 0.24, cy - w * 0.14), (cx + w * 0.24, cy + w * 0.14)], fill=(200, 34, 36), width=lw)
+    for sx in (-1, 1):
+        ex, ey = cx + sx * w * 0.24, cy + sx * w * 0.14
+        d.ellipse([ex - w * 0.1, ey - w * 0.1, ex + w * 0.1, ey + w * 0.1], fill=(200, 34, 36))
+
+
+def inscription(lines, size=0.32):
+    """Navy script on the white plinth (the 2026 sculpture)."""
+    def draw(d, box):
+        x0, y0, x1, y1 = box
+        h = y1 - y0
+        d.rectangle(box, fill=(238, 236, 228))
+        n = len(lines)
+        for k, line in enumerate(lines):
+            band = (x0 + h * 0.08, y0 + h * k / n, x1 - h * 0.08, y0 + h * (k + 1) / n)
+            text(d, band, line, h * size * 1.6 / n, NAVY, FONT_SCRIPT, fit=0.94)
+    return draw
+
+
+def telecom_panel(d, box):
+    """The phone box's red lower panel, faded a little."""
+    x0, y0, x1, y1 = box
+    d.rectangle(box, fill=(158, 34, 30))
+    d.rectangle(inset(box, (x1 - x0) * 0.06), fill=(176, 40, 34))
+
+
+# key, shape, width m, height m, painter. "arrowR"/"arrowL": a direction
+# arrow, cut to a point half its height long (`BuildingBuilder.outline`).
+IT_SIGNS = [
+    ("it.dir.sp55.baiardo", "arrowR", 1.60, 0.40, direction("BAIARDO", "22.5", "SP55")),
+    ("it.dir.sp55.ceriana", "arrowR", 1.60, 0.40, direction("CERIANA", "", "SP55")),
+    ("it.dir.sp55.poggio", "arrowR", 1.60, 0.40, direction("POGGIO", "4", "SP55")),
+    ("it.place.poggio", "rect", 1.25, 0.62, place_board("POGGIO", "(comune di SAN REMO)")),
+    ("it.dir.ventimiglia", "arrowR", 0.95, 0.20, direction("VENTIMIGLIA", "22")),
+    ("it.dir.sanremo", "arrowR", 0.95, 0.20, direction("SAN REMO")),
+    ("it.dir.imperia", "arrowL", 0.95, 0.20, direction("IMPERIA", right=False)),
+    ("it.dir.armataggia", "arrowL", 0.95, 0.20, direction("ARMA DI TAGGIA", right=False)),
+    ("it.tri.curve.left", "tri", 0.90, 0.78, triangle(curve_picto(True))),
+    ("it.tri.curve.right", "tri", 0.90, 0.78, triangle(curve_picto(False))),
+    ("it.tri.doublecurve.left", "tri", 0.90, 0.78, triangle(double_curve_picto(True))),
+    ("it.tri.doublecurve.right", "tri", 0.90, 0.78, triangle(double_curve_picto(False))),
+    ("it.tri.danger", "tri", 0.90, 0.78, triangle(danger_picto)),
+    ("it.crossing", "rect", 0.60, 0.60, crossing_square),
+    ("it.chevron.left", "rect", 0.60, 0.60, chevron(True)),
+    ("it.chevron.right", "rect", 0.60, 0.60, chevron(False)),
+    ("it.mirror", "disc", 0.60, 0.60, mirror_it),
+    ("it.c.3_5t", "disc", 0.60, 0.60, disc(inner=lambda d, b: text(d, b, "3,5t", (b[3] - b[1]) * 0.3, BLACK))),
+    ("it.c.50", "disc", 0.60, 0.60, disc(inner=lambda d, b: text(d, b, "50", (b[3] - b[1]) * 0.42, BLACK))),
+    ("it.bus.stop", "rect", 0.40, 0.60, bus_stop),
+    ("it.phone", "disc", 0.42, 0.42, phone_disc),
+    ("it.telecom.panel", "rect", 0.40, 0.50, telecom_panel),
+    ("it.inscription.classicissima", "rect", 1.60, 0.62, inscription(["La Classicissima", "di Primavera"])),
+    ("it.inscription.sanremo", "rect", 1.60, 0.62, inscription(["SanremoWomen", "MilanoSanremo"])),
+    ("grate.round", "disc", 0.45, 0.45, grate_round),
+    ("grate.rect", "rect", 0.50, 0.30, grate_rect),
+    # The Flemish paints, so the props that take them keep their colours.
+    ("paint.blue", "rect", 0.06, 0.06, paint((44, 78, 140))),
+    ("paint.green", "rect", 0.06, 0.06, paint((30, 64, 44))),
+    ("paint.yellow", "rect", 0.06, 0.06, paint((232, 186, 22))),
+    ("paint.cabinet", "rect", 0.06, 0.06, paint((118, 124, 116))),
+    ("paint.plinth", "rect", 0.06, 0.06, paint((46, 46, 43))),
+    ("paint.gold", "rect", 0.06, 0.06, paint((201, 158, 62))),
+    ("paint.stone", "rect", 0.06, 0.06, paint((214, 205, 186))),
+    ("paint.marble", "rect", 0.06, 0.06, paint((227, 220, 200))),     # the piazza's white marble edging, #e3dcc8
+    ("paint.door", "rect", 0.06, 0.06, paint((92, 56, 34))),
+    ("paint.glass", "rect", 0.06, 0.06, paint((30, 34, 40))),
+    ("paint.niche", "rect", 0.06, 0.06, paint((96, 62, 48))),
+    ("paint.darkgrey", "rect", 0.06, 0.06, paint((64, 68, 72))),
+    # The Riviera's: jersey blocks, the growers' vans, wheelie bins, the
+    # sculpture's corten and white plinth, the phone box, the planter's brick.
+    ("paint.white", "rect", 0.06, 0.06, paint((232, 231, 226))),
+    ("paint.red", "rect", 0.06, 0.06, paint((188, 36, 34))),
+    ("paint.corten", "rect", 0.06, 0.06, paint((122, 74, 50))),       # #7a4a32
+    ("paint.render", "rect", 0.06, 0.06, paint((238, 234, 224))),
+    ("paint.silver", "rect", 0.06, 0.06, paint((178, 172, 166))),     # the phone box's frame, #b2a49e weathered
+    ("paint.tyre", "rect", 0.06, 0.06, paint((24, 24, 26))),
+    ("paint.bin.green", "rect", 0.06, 0.06, paint((46, 108, 60))),
+    ("paint.bin.brown", "rect", 0.06, 0.06, paint((98, 64, 40))),
+    ("paint.bin.blue", "rect", 0.06, 0.06, paint((34, 74, 150))),
+    ("paint.brick", "rect", 0.06, 0.06, paint((168, 92, 66))),
+    ("paint.timber", "rect", 0.06, 0.06, paint((70, 52, 38))),        # the piazza's dark benches
+    ("paint.orange", "rect", 0.06, 0.06, paint(IT_ORANGE)),
+]
+IT_PROPS: list = []
+
+
+def bake(signs=None, props=None, name: str = "cj_signs", height: int = HEIGHT, out_dir: Path = OUT) -> None:
+    """Packs `signs` (shelves by height) then `props` into `<name>.png` and
+    `<name>_map.json` in `out_dir`: the Flemish atlas by default."""
+    signs = SIGNS if signs is None else signs
+    props = PROPS if props is None else props
+    big, tall = SIZE * SS, height * SS
+    atlas = Image.new("RGB", (big, tall), (128, 128, 128))
     d = ImageDraw.Draw(atlas)
-    order = [(*c, 1.0) for c in sorted(SIGNS, key=lambda c: -c[3])]        # shelves by height
-    order += [(*c, PROP_SCALE) for c in PROPS]
+    order = [(*c, 1.0) for c in sorted(signs, key=lambda c: -c[3])]        # shelves by height
+    order += [(*c, PROP_SCALE) for c in props]
     x = y = row_h = 0
     cells = {}
     for key, shape, w_m, h_m, painter, scale in order:
@@ -555,34 +904,42 @@ def bake() -> None:
         if x + w + 2 * PAD > big:
             x, y, row_h = 0, y + row_h, 0
         box = (x + PAD, y + PAD, x + PAD + w, y + PAD + h)
-        if box[3] + PAD > big:
+        if box[3] + PAD > tall:
             raise SystemExit(f"atlas full at {key}")
         face = painter(d, box)
         if face is not None:
             atlas.paste(face, box[:2])
         # The cell's padding takes its edge colours, so mips don't bleed grey.
         cells[key] = dict(key=key, shape=shape, w=w_m, h=h_m,
-                          uv=[round(box[0] / big, 6), round(box[1] / big, 6),
-                              round(box[2] / big, 6), round(box[3] / big, 6)])
+                          uv=[round(box[0] / big, 6), round(box[1] / tall, 6),
+                              round(box[2] / big, 6), round(box[3] / tall, 6)])
         x += w + 2 * PAD
         row_h = max(row_h, h + 2 * PAD)
     # Bleed every cell's border into its padding.
     px = atlas.load()
     for c in cells.values():
-        u0, v0, u1, v1 = (int(round(t * big)) for t in c["uv"])
+        u0, v0, u1, v1 = (int(round(t * n)) for t, n in zip(c["uv"], (big, tall, big, tall)))
         for yy in range(v0 - PAD + 2, v1 + PAD - 2):
             for xx in range(u0 - PAD + 2, u1 + PAD - 2):
                 if u0 <= xx < u1 and v0 <= yy < v1:
                     continue
                 px[xx, yy] = px[min(max(xx, u0), u1 - 1), min(max(yy, v0), v1 - 1)]
-    out = atlas.resize((SIZE, SIZE), Image.LANCZOS)
-    OUT.mkdir(parents=True, exist_ok=True)
-    out.save(OUT / "cj_signs.png", optimize=True)
-    keys = [k for k, *_ in SIGNS + PROPS]
-    (OUT / "cj_signs_map.json").write_text(json.dumps([cells[k] for k in keys], indent=1) + "\n")
-    used = (y + row_h) / big
-    print(f"cj_signs.png: {len(cells)} cells, {used * 100:.0f} % of the height used")
+    out = atlas.resize((SIZE, height), Image.LANCZOS)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out.save(out_dir / f"{name}.png", optimize=True)
+    keys = [k for k, *_ in signs + props]
+    (out_dir / f"{name}_map.json").write_text(json.dumps([cells[k] for k in keys], indent=1) + "\n")
+    used = (y + row_h) / tall
+    print(f"{name}.png: {len(cells)} cells, {used * 100:.0f} % of the height used")
 
 
 if __name__ == "__main__":
-    bake()
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--it", action="store_true", help="bake the Italian atlas (cj_signs_it) instead of the Flemish one")
+    ap.add_argument("--out", type=Path, default=OUT, help="output folder (default: the app's CourseTextures)")
+    a = ap.parse_args()
+    if a.it:
+        bake(IT_SIGNS, IT_PROPS, "cj_signs_it", IT_HEIGHT, a.out)
+    else:
+        bake(out_dir=a.out)

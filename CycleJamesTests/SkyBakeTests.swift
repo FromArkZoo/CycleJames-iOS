@@ -2,12 +2,12 @@ import XCTest
 import UIKit
 @testable import CycleJames
 
-/// The baked sky (scripts/courses/textures/bake_materials.py `bake_sky`)
+/// The baked skies (scripts/courses/textures/bake_materials.py `bake_sky`)
 /// and the Swift side agree. Below the horizon the background faces carry
 /// the haze the far terrain fogs to (`SkyLighting.horizon`), so a re-bake
-/// that moves the haze without updating `SkyLighting.horizonLinear` (from
-/// cj_sky_horizon.json) would show as a bright or dark ring where the
-/// terrain meets the sky.
+/// that moves the haze without updating the region's `horizonLinear`
+/// (from cj_sky_horizon*.json) would show as a bright or dark ring where
+/// the terrain meets the sky.
 final class SkyBakeTests: XCTestCase {
     /// Mean linear colour of a face's bottom row, as the background shows
     /// it (sRGB-decoded, times the stored scale).
@@ -45,12 +45,25 @@ final class SkyBakeTests: XCTestCase {
     /// bottom face looks straight down: all haze. (The top face's bottom
     /// edge is up in the sky.)
     func test_facesBelowTheHorizonMatchTheFogColour() throws {
-        let want = SkyLighting.horizonLinear
+        try checkBelowHorizon(look: .flanders)
+        XCTAssertEqual(WorldLook.flanders.horizonLinear, SkyLighting.horizonLinear)
+    }
+
+    /// The Riviera's sky (cj_sky_lig_*, from cj_sky_horizon_lig.json):
+    /// below the horizon, the far coast's and the sea horizon's blue-grey
+    /// that the clearer air fades to.
+    func test_rivieraFacesBelowTheHorizonMatchItsFogColour() throws {
+        try checkBelowHorizon(look: .riviera)
+    }
+
+    private func checkBelowHorizon(look: WorldLook) throws {
+        let want = look.horizonLinear
         for face in ["px", "nx", "pz", "nz", "ny"] {
-            let got = try bottomRow("cj_sky_\(face)")
+            let name = "\(look.skyPrefix)_\(face)"
+            let got = try bottomRow(name)
             for c in 0..<3 {
                 XCTAssertEqual(got[c], want[c], accuracy: want[c] * 0.02,
-                               "cj_sky_\(face) channel \(c): \(got) against horizonLinear \(want)")
+                               "\(name) channel \(c): \(got) against horizonLinear \(want)")
             }
         }
     }

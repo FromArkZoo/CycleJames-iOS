@@ -9,7 +9,7 @@ import XCTest
 /// centre line, so the bound is checked against every cobbled surface the
 /// courses really have.
 final class SettStyleTests: XCTestCase {
-    private let looks: [CourseArt.SettLook] = [.mixedGrey, .paleSplit, .darkRegular]
+    private let looks: [CourseArt.SettLook] = [.mixedGrey, .paleSplit, .darkRegular, .smallWorn, .mossyGrey, .warmOblong]
 
     private func bundle(_ id: String) throws -> CourseBundle {
         do {
@@ -52,6 +52,8 @@ final class SettStyleTests: XCTestCase {
                 // same setts twice across the strip.
                 XCTAssertLessThan(Float(abs(us[1] - us[0])), SettFarMap.span, "\(id): paved strip \(strip.span) repeats its setts")
             }
+            // An all-asphalt course with no sett pavements (the Poggio) has no setts to search.
+            guard widestU > 0 else { continue }
             XCTAssertGreaterThan(widestU, 1, id)
             // Each course's setts repeat across the road every span: never
             // twice across one road (a pavement beyond it shows stones its
@@ -160,7 +162,9 @@ final class SettStyleTests: XCTestCase {
                 }
                 XCTAssertGreaterThan(near, 100, "\(id): \(areas[i].name) shares setts with the carriageway \(near) m off")
             }
-            if id != "paterberg" { XCTAssertFalse(areas.isEmpty, id) }
+            // Every cobbled berg but the Paterberg has sett pavements; the Poggio has no setts at all.
+            let cobbled = stride(from: 0.0, through: r.length, by: 1).contains { r.surfaceName(at: $0) == "cobbles" }
+            if id != "paterberg" && cobbled { XCTAssertFalse(areas.isEmpty, id) }
         }
     }
 
@@ -190,6 +194,16 @@ final class SettStyleTests: XCTestCase {
         let kopp = CourseArt.SettLook.mixedGrey.style
         let kwar = CourseArt.SettLook.paleSplit.style
         let pat = CourseArt.SettLook.darkRegular.style
+        let muur = CourseArt.SettLook.smallWorn.style
+        // The Muur's setts the smallest ("kleiner" than the other bergs'),
+        // close, unsplit, with the most polished wheel tracks.
+        for st in [kopp, kwar, pat] {
+            XCTAssertLessThan(muur.layout.x, st.layout.x)
+            XCTAssertLessThan(muur.layout.y, st.layout.y)
+            XCTAssertGreaterThan(muur.wear.z, st.wear.z)
+        }
+        XCTAssertLessThanOrEqual(muur.joint.y, pat.joint.y)
+        XCTAssertEqual(muur.split, SIMD4(0, 0, 0.016, 0.48))
         // Photos: the Koppenberg's stones near square (not bricks along the
         // road), its damage light for a climb kept up for the race.
         XCTAssertEqual(kopp.layout.x / kopp.layout.y, 1, accuracy: 0.15)
@@ -209,18 +223,30 @@ final class SettStyleTests: XCTestCase {
         XCTAssertGreaterThan(kwar.split.y, 0)
         XCTAssertGreaterThan(kwar.layout.w, max(kopp.layout.w, pat.layout.w))
         XCTAssertGreaterThan(kwar.grainNormal, 1)
-        XCTAssertGreaterThan(kopp.shape.y, max(kwar.shape.y, pat.shape.y))
+        XCTAssertGreaterThan(kopp.shape.y, max(kwar.shape.y, pat.shape.y, muur.shape.y))
         for st in [kopp, pat] {
             XCTAssertEqual(st.split, SIMD4(0, 0, 0.016, 0.48))
         }
         // Warm-neutral stones, never blue: red at least blue in every family.
-        for st in [kopp, kwar, pat] {
+        for st in [kopp, kwar, pat, muur] {
             for c in [st.stoneA, st.stoneB, st.stoneC] {
                 XCTAssertGreaterThanOrEqual(c.x, c.z * 0.95)
             }
         }
-        let ids = Set([CourseArt.SettLook.mixedGrey, .paleSplit, .darkRegular].map(\.seed))
-        XCTAssertEqual(ids.count, 3)
+        // The Molenberg's near square, on joints as wide as the Koppenberg's;
+        // the Taaienberg's longer across the road than along it, warm, domed.
+        let mol = CourseArt.SettLook.mossyGrey.style, taai = CourseArt.SettLook.warmOblong.style
+        XCTAssertEqual(mol.layout.x / mol.layout.y, 1, accuracy: 0.1)
+        XCTAssertGreaterThan(taai.layout.y, taai.layout.x * 1.15)
+        for st in [mol, taai] {
+            XCTAssertGreaterThan(st.meanJoint, pat.meanJoint)
+            for c in [st.stoneA, st.stoneB, st.stoneC] { XCTAssertGreaterThanOrEqual(c.x, c.z * 0.95) }
+            XCTAssertEqual(st.split, SIMD4(0, 0, 0.016, 0.48))
+        }
+        XCTAssertGreaterThan(taai.shape.y, mol.shape.y)
+        XCTAssertGreaterThan(taai.stoneC.w, mol.stoneC.w)
+        let ids = Set(looks.map(\.seed))
+        XCTAssertEqual(ids.count, looks.count)
     }
 
     func test_tiersFadeInOrder() {

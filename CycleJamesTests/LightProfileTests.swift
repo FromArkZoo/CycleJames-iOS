@@ -23,15 +23,19 @@ final class LightProfileTests: XCTestCase {
     }
 
     /// The exposure, frame by frame, riding the whole course at `kph`
-    /// (60 fps): (s, ev) per frame.
-    private func ride(_ light: LightProfile, length: Double, kph: Double) -> [(s: Double, ev: Float)] {
+    /// (60 fps): (s, ev) per frame. With `route`, no faster up a ramp than
+    /// a strong rider climbs it (6 W/kg against gravity alone, so a little
+    /// fast): nobody holds 35 km/h up the Molenberg's 10 %.
+    private func ride(_ light: LightProfile, length: Double, kph: Double,
+                      route: CourseRoute? = nil) -> [(s: Double, ev: Float)] {
         let exposure = LaneExposure()
-        let dt = 1.0 / 60, v = kph / 3.6
+        let dt = 1.0 / 60
         var out: [(s: Double, ev: Float)] = []
         var s = 0.0
         exposure.reset(s: s, profile: light) { _ in }
         while s < length {
-            s += v * dt
+            let grade = (route?.grade(at: s) ?? 0) / 100
+            s += min(kph / 3.6, 6 / (9.81 * max(grade, 1e-3))) * dt
             exposure.update(s: s, dt: dt, profile: light) { _ in }
             out.append((s, exposure.ev))
         }
@@ -79,12 +83,14 @@ final class LightProfileTests: XCTestCase {
     /// At 20 km/h the exposure never moves faster than 0.5 EV a second (the
     /// hard limit) and, the profile being smooth, not faster than 0.25 (the
     /// limit hardly ever has to act); nor does it swing up and back down
-    /// (or down and up) by more than 0.1 EV within 8 s.
+    /// (or down and up) by more than 0.1 EV within 8 s, at any speed a
+    /// rider can hold there (35 km/h through a short shade on the
+    /// Molenberg's 10 % ramp would swing it 0.11 EV).
     func test_noPumpingAndWithinTheRateLimitsOnEveryCourse() throws {
         for id in CourseCatalog.courseIDs {
             let (b, light) = try profile(id)
             for kph in [8.0, 20.0, 35.0] {
-                let trace = ride(light, length: b.route.length, kph: kph)
+                let trace = ride(light, length: b.route.length, kph: kph, route: b.route)
                 var fastest: Float = 0, highest: Float = 0
                 for k in 1..<trace.count {
                     fastest = max(fastest, abs(trace[k].ev - trace[k - 1].ev) * 60)

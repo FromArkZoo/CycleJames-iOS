@@ -24,6 +24,17 @@ final class CourseCatalogTests: XCTestCase {
         "oudekwaremont": Published(lengthM: 2150...2250, avgPct: 3.7...4.4, max25Pct: 9.5...12, cobblesM: 1450...1550),
         // Roadbook 360 m, 12.9 %, max 20.3 %, 360 m of cobbles.
         "paterberg": Published(lengthM: 345...380, avgPct: 12...13.5, max25Pct: 17.5...21, cobblesM: 345...380),
+        // From the Dender to the chapel: climbfinder 1143 m, +91 m (18.6 -> 109.5 m), 8 %, cobbles
+        // from 200 m; the Ronde's 1075 m, 9.3 %, max 19.8 %.
+        "muur": Published(lengthM: 1075...1150, avgPct: 7.5...9.5, max25Pct: 17.5...20.5, cobblesM: 900...1000),
+        // Ronde 2025 roadmap: 463 m, 7 %, max 14.2 %, 300 m of cobbles; climbfinder 431 m, 7.7 %,
+        // cobbles for 250 m. The setts end at the Caildenberg junction, 257 m up.
+        "molenberg": Published(lengthM: 430...480, avgPct: 6.5...7.8, max25Pct: 12.5...14.5, cobblesM: 240...310),
+        // Roadmap 530 m, 6.6 %, max 15.8 %, 500 m of cobbles; here the setts junction to junction.
+        "taaienberg": Published(lengthM: 520...570, avgPct: 6.2...7.0, max25Pct: 14.5...16.5, cobblesM: 495...570),
+        // RCS 2026 (Milano-Sanremo): 3.7 km, 24 -> 160 m, 136 m, 3.7 %, max 8 %; climbfinder 3.7 km, 3.8 %,
+        // steepest 100 m 7.3 %. All asphalt.
+        "poggio": Published(lengthM: 3650...3800, avgPct: 3.5...3.9, max25Pct: 6.5...8.5, cobblesM: 0...0),
     ]
 
     private func bundle(_ id: String) throws -> CourseBundle {
@@ -34,8 +45,8 @@ final class CourseCatalogTests: XCTestCase {
         }
     }
 
-    func test_catalogListsTheThreeBergsInOrder() {
-        XCTAssertEqual(CourseCatalog.courseIDs, ["koppenberg", "oudekwaremont", "paterberg"])
+    func test_catalogListsTheBergsInOrder() {
+        XCTAssertEqual(CourseCatalog.courseIDs, ["koppenberg", "oudekwaremont", "paterberg", "muur", "molenberg", "taaienberg", "poggio"])
         XCTAssertEqual(CourseCatalog.all.map(\.id), CourseCatalog.courseIDs)
     }
 
@@ -92,11 +103,12 @@ final class CourseCatalogTests: XCTestCase {
     }
 
     /// The race direction is uphill and the route starts before the climb.
+    /// The Molenberg is the lowest berg, about 32 m.
     func test_routesRunUphillWithARunIn() throws {
         for id in CourseCatalog.courseIDs {
             let b = try bundle(id)
             let r = b.route
-            XCTAssertGreaterThan(r.elevation(at: b.climb.endS) - r.elevation(at: b.climb.startS), 40, id)
+            XCTAssertGreaterThan(r.elevation(at: b.climb.endS) - r.elevation(at: b.climb.startS), 28, id)
             XCTAssertGreaterThanOrEqual(b.climb.startS, 250, "\(id): too short a run-in")
             XCTAssertGreaterThanOrEqual(r.length - b.climb.endS, 150, "\(id): too short a run-out")
         }
@@ -112,14 +124,27 @@ final class CourseCatalogTests: XCTestCase {
             spans += art.lamps.map { ("lamps", $0.span) } + art.walls.map { ("wall", $0.span) }
             spans += art.fences.map { ("fence", $0.span) } + art.rails.map { ("rails", $0.span) }
             spans += art.poles.map { ("poles", $0.span) } + art.houseLooks.map { ("houses", $0.span) }
+            spans += art.stoneWalls.map { ("stone wall", $0.span) } + art.unmarked.map { ("unmarked", $0) }
+            spans += art.lawns.map { ("lawn", $0.span) } + art.palings.map { ("paling", $0.span) }
             for (kind, span) in spans {
                 XCTAssertGreaterThanOrEqual(span.lowerBound, 0, "\(id) \(kind) \(span)")
                 XCTAssertLessThanOrEqual(span.upperBound, length, "\(id) \(kind) \(span)")
                 XCTAssertLessThan(span.lowerBound, span.upperBound, "\(id) \(kind) \(span)")
             }
             for side in art.kerbs.map(\.side) + art.gutters.map(\.side) + art.lamps.map(\.side) + art.walls.map(\.side)
-                + art.fences.map(\.side) + art.rails.map(\.side) + art.poles.map(\.side) {
+                + art.fences.map(\.side) + art.rails.map(\.side) + art.poles.map(\.side) + art.stoneWalls.map(\.side)
+                + art.lawns.map(\.side) {
                 XCTAssertEqual(abs(side), 1, "\(id): side must be -1 or +1")
+            }
+            for wall in art.stoneWalls { XCTAssert((0.2...2.5).contains(wall.height), "\(id): stone wall \(wall.span) \(wall.height) m") }
+            for wall in art.walls {
+                XCTAssert((0.3...2.5).contains(wall.height), "\(id): wall \(wall.span) \(wall.height) m")
+                XCTAssert((0...3).contains(wall.offset), "\(id): wall \(wall.span) \(wall.offset) m off")
+            }
+            for g in art.gutters { XCTAssert((0.4...0.8).contains(g.width), "\(id): gutter \(g.span) \(g.width) m") }
+            for p in art.palings {
+                XCTAssertEqual(abs(p.side), 1, id)
+                XCTAssert((0.8...1.8).contains(p.height), "\(id): paling \(p.span)")
             }
             for run in art.lamps { XCTAssertGreaterThan(run.spacing, 5, id) }
             for run in art.poles { XCTAssertGreaterThan(run.spacing, 15, id) }
@@ -154,8 +179,9 @@ final class CourseCatalogTests: XCTestCase {
             // plate in the atlas. A pole stands clear of the broadcast
             // camera's moto, which keeps within about 2.35 m of the centre
             // line (`CameraRig`: the rider's 0.4 m plus a 1.95 m swing).
-            let cells = BuildingBuilder.signCells
-            XCTAssertFalse(cells.isEmpty, "cj_signs_map.json not in the bundle")
+            // The Riviera's plates are on its own atlas (cj_signs_it).
+            let cells = BuildingBuilder.signCells(for: art.look)
+            XCTAssertFalse(cells.isEmpty, "\(id): \(art.look.signAtlas)_map.json not in the bundle")
             for post in art.signs {
                 XCTAssert((0...length).contains(post.s), "\(id): sign at \(post.s)")
                 XCTAssertEqual(abs(post.side), 1, "\(id): sign at \(post.s)")
@@ -188,7 +214,8 @@ final class CourseCatalogTests: XCTestCase {
             }
         }
         // The signs' paints and grates are in the atlas too.
-        for key in ["paint.blue", "paint.green", "paint.yellow", "paint.cabinet", "grate.round", "grate.rect"] {
+        for key in ["paint.blue", "paint.green", "paint.yellow", "paint.cabinet", "paint.gold", "paint.stone", "paint.marble",
+                    "paint.door", "paint.glass", "paint.niche", "grate.round", "grate.rect"] {
             XCTAssertNotNil(BuildingBuilder.signCells[key], key)
         }
         // The Paterberg's concrete gutter runs the whole climb on the left.
@@ -220,6 +247,86 @@ final class CourseCatalogTests: XCTestCase {
                 XCTAssertTrue(used.contains(k), "\(id): house look \(k) (\(look.span), \(look.look)) matches no building")
             }
         }
+    }
+
+    /// The Muur starts at the Dender bridge, rides the Brugstraat's pavers
+    /// like asphalt and the setts from the Markt to the chapel, which is
+    /// built whole on its footprint near the top. The LiDAR ground under the
+    /// bridge is the river; the deck is carried across instead.
+    func test_muurCrossesTheDenderAndEndsAtTheChapel() throws {
+        let b = try bundle("muur")
+        let r = b.route
+        // The bridge (s ≈ 265-290) lies level with its ends, not down at the water.
+        let ends = min(r.elevation(at: 256), r.elevation(at: 298))
+        var s = 262.0
+        while s <= 292 {
+            XCTAssertGreaterThan(r.elevation(at: s), ends - 0.3, "dip at s \(s)")
+            s += 1
+        }
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 100), "asphalt")
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 250), "cobbles")
+        XCTAssertEqual(r.surfaceName(at: b.climb.endS - 10), "cobbles")
+        let corridor = RoadCorridor(bundle: b, vergeWidth: 12)
+        let sites = BuildingBuilder.domedChapelSites(corridor: corridor, scenery: b.scenery)
+        XCTAssertEqual(sites.count, 1)
+        let site = try XCTUnwrap(sites.first)
+        XCTAssertEqual(b.scenery?.buildings?[site.index].kind, "chapel")
+        XCTAssertLessThan(abs(site.s - b.climb.endS), 30)
+    }
+
+    /// The Molenberg turns off the concrete Smarre onto the setts and crosses
+    /// the beek by the mill on a deck carried level (the LiDAR ground there
+    /// is the water) between low brick parapets; the setts end at the
+    /// Caildenberg, 257 m up, and the climb on asphalt at Moldergem.
+    func test_molenbergCrossesTheBeekAtTheMill() throws {
+        let b = try bundle("molenberg")
+        let r = b.route
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS - 50), "concrete")
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 20), "cobbles")
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 245), "cobbles")
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 270), "asphalt")
+        XCTAssertEqual(r.surfaceName(at: b.climb.endS + 20), "concrete")
+        // The deck (s ≈ 329-340) no lower than the road either side of it.
+        let ends = min(r.elevation(at: 327), r.elevation(at: 342))
+        var s = 329.0
+        while s <= 340 {
+            XCTAssertGreaterThan(r.elevation(at: s), ends - 0.2, "dip at s \(s)")
+            s += 1
+        }
+        let art = CourseArt.make(bundle: b)
+        let parapets = art.walls.filter { $0.height < 1 && $0.span.overlaps(328...341) }
+        XCTAssertEqual(Set(parapets.map(\.side)), [-1, 1])
+        XCTAssertTrue(art.kerbs.isEmpty && art.gutters.isEmpty, "setts to the verges, an edge row laid lengthwise")
+    }
+
+    /// The Taaienberg's cobbled carriageway: a narrow concrete strip on the
+    /// left, the setts, and the concrete gutter riders take on the right,
+    /// from the foot of the setts to the top; the bronze legs stand at the
+    /// top on the left.
+    func test_taaienbergHasItsGutterAndTheLegsAtTheTop() throws {
+        let b = try bundle("taaienberg")
+        let r = b.route
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS - 20), "concrete")
+        XCTAssertEqual(r.surfaceName(at: b.climb.startS + 10), "cobbles")
+        XCTAssertEqual(r.surfaceName(at: b.climb.endS + 20), "concrete")
+        let art = CourseArt.make(bundle: b)
+        let gutter = try XCTUnwrap(art.gutters.first)
+        XCTAssertEqual(gutter.side, 1)
+        XCTAssertEqual(gutter.width, 0.7, accuracy: 0.05)
+        XCTAssertLessThan(abs(gutter.span.lowerBound - b.climb.startS), 3)
+        XCTAssertLessThan(abs(gutter.span.upperBound - b.climb.endS), 3)
+        let strip = try XCTUnwrap(art.kerbs.first)
+        XCTAssertEqual(strip.side, -1)
+        // About 3.25 m of setts between the strip (0.24 m drawn) and the gutter.
+        var s = b.climb.startS + 5
+        while s < b.climb.endS - 5 {
+            let setts = r.width(at: s) - 0.24 - gutter.width
+            XCTAssert((2.9...3.6).contains(setts), "setts \(setts) m wide at s \(s)")
+            s += 10
+        }
+        let legs = try XCTUnwrap(art.furniture.first { if case .bronzeLegs = $0.kind { true } else { false } })
+        XCTAssertEqual(legs.side, -1)
+        XCTAssertLessThan(abs(legs.s - b.climb.endS), 20)
     }
 
     /// The Paterberg leaves the top on the concrete Stooktestraat.

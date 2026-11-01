@@ -14,6 +14,12 @@ import simd
 /// and its verge are their own road-aligned meshes (`RoadBuilder`), and the
 /// grid only reappears where the verge mesh ends, crossing it at an angle.
 ///
+/// On a coast (`seaLevel`) the rasters hold the sea a metre under its
+/// level; cells wholly under it are left out, so the sea (`SeaBuilder`)
+/// shows there and the shore is where the land's slope meets it. Beyond
+/// the far grid a coarse horizon ring (`buildHorizon`) carries the land out
+/// to the skyline.
+///
 /// A cancelled task gets back what was built so far, at the next chunk.
 enum TerrainBuilder {
     struct Chunk {
@@ -174,13 +180,19 @@ enum TerrainBuilder {
 
     // MARK: - Near grid
 
-    static func buildNear(corridor: RoadCorridor, config: WorldConfig) -> [Chunk] {
+    static func buildNear(corridor: RoadCorridor, config: WorldConfig, seaLevel: Double? = nil) -> [Chunk] {
+        let seaFloor = seaLevel.map { Float($0) - 0.5 } ?? -.infinity
         let r = corridor.terrain.near
         let sampler = corridor.terrain
+        // The Riviera's blocks are 16 m (chunks still 128 m), so the 1 m and
+        // 2 m lattices keep closer to their radii: on the Poggio's 4.3 km
+        // of zig-zags that is 7 % fewer triangles, all of them more than
+        // 64 m from the road (`WorldBudget`).
+        let riviera = corridor.art.look.isRiviera
         // Lattice on the cell centres, so 1 m vertices carry the raw LiDAR.
         let L = Lattice(nx: r.cols, nz: r.rows,
                         x0: Float(r.originEast + r.cellM / 2), z0: Float(-(r.originNorth - r.cellM / 2)),
-                        step: Float(r.cellM), blockSize: 32)
+                        step: Float(r.cellM), blockSize: riviera ? 16 : 32)
         let bxN = L.blocksX, bzN = L.blocksZ
 
         // Block spacing from the distance to the route.
@@ -241,12 +253,13 @@ enum TerrainBuilder {
                     }
                 }
             }
+            if h <= seaFloor { hid = true }
             cacheH[k] = h; cacheHidden[k] = hid
             return (h, hid)
         }
 
-        // Chunks of 4 x 4 blocks.
-        let chunkBlocks = 4
+        // Chunks of 4 x 4 blocks (8 x 8 on the Riviera).
+        let chunkBlocks = riviera ? 8 : 4
         var chunks: [Chunk] = []
         for cz in stride(from: 0, to: bzN, by: chunkBlocks) {
             for cx in stride(from: 0, to: bxN, by: chunkBlocks) {
@@ -294,8 +307,11 @@ enum TerrainBuilder {
 
     // MARK: - Far grid
 
-    static func buildFar(corridor: RoadCorridor, config: WorldConfig) -> [Chunk] {
+    static func buildFar(corridor: RoadCorridor, config: WorldConfig, seaLevel: Double? = nil) -> [Chunk] {
         guard let far = corridor.terrain.far else { return [] }
+        // On a coast a cell without data is open sea, on the sea floor.
+        let seaFloor = seaLevel.map { Float($0) - 0.5 } ?? -.infinity
+        let noData: Float = seaLevel.map { Float($0) - 1 } ?? 0
         let sampler = corridor.terrain
         let L = Lattice(nx: far.cols, nz: far.rows,
                         x0: Float(far.originEast + far.cellM / 2), z0: Float(-(far.originNorth - far.cellM / 2)),
@@ -324,15 +340,15 @@ enum TerrainBuilder {
         let cols = far.cols
         func baseAt(_ i: Int, _ j: Int) -> Float {
             let v = far.values[min(max(j, 0), far.rows - 1) * cols + min(max(i, 0), far.cols - 1)]
-            return v.isNaN ? 0 : v
+            return v.isNaN ? noData : v
         }
         func heightAt(_ i: Int, _ j: Int) -> (h: Float, hidden: Bool) {
             let h = baseAt(i, j)
             let e = Double(L.x(i)), n = -Double(L.z(j))
             let edge = sampler.nearEdgeDistance(east: e, north: n)
             // Sink under the near grid; the near grid's skirt covers the step.
-            if edge > 0 { return (h - 2.5, edge > 25) }
-            return (h, false)
+            if edge > 0 { return (h - 2.5, edge > 25 || h <= seaFloor) }
+            return (h, h <= seaFloor)
         }
         var chunks: [Chunk] = []
         let chunkBlocks = 2
@@ -351,6 +367,97 @@ enum TerrainBuilder {
                 }
                 guard !mesh.isEmpty else { continue }
                 let midI = min((cx + 1) * L.blockSize, L.nx - 1), midJ = min((cz + 1) * L.blockSize, L.nz - 1)
+                chunks.append(Chunk(mesh: mesh, lod: nil,
+                                    centre: SIMD3(L.x(midI), baseAt(midI, midJ), L.z(midJ)), nearRoute: false))
+            }
+        }
+        return chunks
+    }
+
+    // MARK: - Horizon ring
+
+    /// The course's horizon raster (`terrain.horizon`, `u16le_dm`): coarse
+    /// land out to the skyline beyond the far grid, decoded for this build
+    /// only. Nil when the course has none (every Flemish one).
+    static func horizonRaster(bundle: CourseBundle) -> HeightRaster? {
+        guard let header = bundle.course.terrain.horizon else { return nil }
+        return try? HeightRaster.load(from: bundle.directory.appendingPathComponent(header.file), header: header)
+    }
+
+    /// The horizon ring: the horizon raster's land beyond the far grid (the
+    /// Alpi Liguri behind the Poggio, the coast to Capo Berta and
+    /// Bordighera), its sea left to `SeaBuilder`. Vertex spacing grows with
+    /// the distance from the far grid, from one cell to eight, so the ridges
+    /// a few kilometres off keep their shape and the far ones cost little;
+    /// the battery tier takes half as many. Inside the far grid it is sunk
+    /// out of sight (the far grid's 60 m skirts cover the step at its edge)
+    /// and blocks wholly inside are left out.
+    static func buildHorizon(corridor: RoadCorridor, raster r: HeightRaster, config: WorldConfig,
+                             seaLevel: Double?) -> [Chunk] {
+        let inner = corridor.terrain.far ?? corridor.terrain.near
+        // The sea's cells (`SeaBuilder.seaMask`: this raster codes its sea
+        // less tidily than the near and far grids).
+        let sea = seaLevel.map { SeaBuilder.seaMask(r, level: Float($0), coarse: true) }
+        let noData: Float = seaLevel.map { Float($0) - 1 } ?? 0
+        let L = Lattice(nx: r.cols, nz: r.rows,
+                        x0: Float(r.originEast + r.cellM / 2), z0: Float(-(r.originNorth - r.cellM / 2)),
+                        step: Float(r.cellM), blockSize: 16)
+        let bxN = L.blocksX, bzN = L.blocksZ
+        func rectDistance(_ e0: Double, _ e1: Double, _ n0: Double, _ n1: Double) -> Double {
+            let dx = max(inner.minEast - e1, 0, e0 - inner.maxEast)
+            let dy = max(inner.minNorth - n1, 0, n0 - inner.maxNorth)
+            return sqrt(dx * dx + dy * dy)
+        }
+        // Wanted spacing: 40 m plus 1.2 % of the distance from the far grid
+        // (75 m at 3 km, 160 m at 10 km, 280 m at 20 km), in whole cells.
+        let coarse = config.quality == .battery ? 2.0 : 1.0
+        var spacing = [Int](repeating: 1, count: bxN * bzN)
+        var skip = [Bool](repeating: false, count: bxN * bzN)
+        for bz in 0..<bzN {
+            for bx in 0..<bxN {
+                let e0 = Double(L.x(bx * L.blockSize)), e1 = Double(L.x(min((bx + 1) * L.blockSize, L.nx - 1)))
+                let n1 = -Double(L.z(bz * L.blockSize)), n0 = -Double(L.z(min((bz + 1) * L.blockSize, L.nz - 1)))
+                let d = rectDistance(e0, e1, n0, n1)
+                let cells = (40 + 0.012 * d) * coarse / r.cellM
+                var sp = 1
+                while sp * 2 <= Int(cells), sp < 8 { sp *= 2 }
+                spacing[bz * bxN + bx] = sp
+                let m = r.cellM * 2
+                skip[bz * bxN + bx] = e0 > inner.minEast + m && e1 < inner.maxEast - m
+                    && n0 > inner.minNorth + m && n1 < inner.maxNorth - m
+            }
+        }
+        let cols = r.cols
+        func baseAt(_ i: Int, _ j: Int) -> Float {
+            let v = r.values[min(max(j, 0), r.rows - 1) * cols + min(max(i, 0), r.cols - 1)]
+            return v.isNaN ? noData : v
+        }
+        func heightAt(_ i: Int, _ j: Int) -> (h: Float, hidden: Bool) {
+            let h = baseAt(i, j)
+            let e = Double(L.x(i)), n = -Double(L.z(j))
+            let edge = min(e - inner.minEast, inner.maxEast - e, n - inner.minNorth, inner.maxNorth - n)
+            let wet = sea?[min(max(j, 0), r.rows - 1) * cols + min(max(i, 0), r.cols - 1)] ?? false
+            // Under the far grid by more than a coarse cell's sag.
+            if edge > 0 { return (h - 30, edge > r.cellM * 1.5 || wet) }
+            return (h, wet)
+        }
+        var chunks: [Chunk] = []
+        let chunkBlocks = 4
+        for cz in stride(from: 0, to: bzN, by: chunkBlocks) {
+            for cx in stride(from: 0, to: bxN, by: chunkBlocks) {
+                if Task.isCancelled { return chunks }
+                var mesh = MeshBuffer()
+                for bz in cz..<min(cz + chunkBlocks, bzN) {
+                    for bx in cx..<min(cx + chunkBlocks, bxN) where !skip[bz * bxN + bx] {
+                        meshBlock(into: &mesh, lattice: L, bx: bx, bz: bz,
+                                  spacing: { spacing[$1 * bxN + $0] },
+                                  heightAt: heightAt, baseAt: baseAt, dropHidden: true,
+                                  skirt: (bx == 0, bx == bxN - 1, bz == 0, bz == bzN - 1),
+                                  skirtDepth: 200)
+                    }
+                }
+                guard !mesh.isEmpty else { continue }
+                let midI = min((cx + 2) * L.blockSize, L.nx - 1), midJ = min((cz + 2) * L.blockSize, L.nz - 1)
                 chunks.append(Chunk(mesh: mesh, lod: nil,
                                     centre: SIMD3(L.x(midI), baseAt(midI, midJ), L.z(midJ)), nearRoute: false))
             }

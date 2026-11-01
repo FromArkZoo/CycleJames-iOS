@@ -22,12 +22,25 @@ struct CourseFile: Codable, Sendable {
     let canopy: RasterHeader?
     let ortho: OrthoHeader?
     let scenery: String?
+    /// The sea, when the course is on a coast (the Poggio): nil inland.
+    let sea: Sea?
 
     struct Origin: Codable, Sendable {
-        /// Lambert 72 (EPSG:31370) easting, northing of the local origin.
-        let lambert72: [Double]
+        /// Lambert 72 (EPSG:31370) easting, northing of the local origin,
+        /// for the Flemish courses.
+        let lambert72: [Double]?
+        /// The projected CRS of every local coordinate ("EPSG:7791") and
+        /// the origin in it, for courses outside Flanders.
+        let crs: String?
+        let projected: [Double]?
         /// Latitude, longitude of the local origin.
         let wgs84: [Double]
+    }
+
+    /// Mean sea level in the course's vertical datum. Terrain cells over
+    /// the sea hold a little less, so the water covers them.
+    struct Sea: Codable, Sendable {
+        let levelM: Double
     }
 
     struct Source: Codable, Sendable {
@@ -83,6 +96,9 @@ struct CourseFile: Codable, Sendable {
     struct TerrainSet: Codable, Sendable {
         let near: RasterHeader
         let far: RasterHeader?
+        /// Coarse land out to the skyline beyond `far` (the Alpi Liguri
+        /// behind the Poggio), `u16le_dm`: nil for the Flemish courses.
+        let horizon: RasterHeader?
     }
 
     struct RasterHeader: Codable, Sendable {
@@ -124,6 +140,9 @@ struct SceneryFile: Codable, Sendable {
     let roads: [Road]?
     let fences: [Fence]?
     let water: [Water]?
+    /// Walls from a regional map with their crests (the Poggio's Liguria
+    /// CTR): retaining walls, terraces, dividing walls, parapets, fences.
+    var walls: [Wall]? = nil
 
     struct Building: Codable, Sendable {
         /// Footprint, counter-clockwise (east, north), not closed.
@@ -170,6 +189,15 @@ struct SceneryFile: Codable, Sendable {
         let kind: String
         let points: [[Double]]
         let closed: Bool?
+    }
+
+    struct Wall: Codable, Sendable {
+        /// "retaining", "terrace", "masonry", "parapet" or "fence".
+        let kind: String
+        /// (east, north, crest elevation), metres.
+        let points: [[Double]]
+        /// Its typical height, metres.
+        let heightM: Double?
     }
 }
 
