@@ -55,11 +55,13 @@ enum WorldDebugShots {
                     configure: (SCNCamera) -> Void, frame: FrameUpdater, dir: String,
                     terrainHeight: (Float, Float) -> Float,
                     light: LightProfile = .open, setExposure: (Float) -> Void = { _ in },
-                    partNames: [ObjectIdentifier: String] = [:]) {
+                    partNames: [ObjectIdentifier: String] = [:], post: SCNTechnique? = nil) {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let renderer = SCNRenderer(device: device, options: nil)
         renderer.scene = scene
         renderer.autoenablesDefaultLighting = false
+        // The region's camera response (`CoursePost`), as the ride has it.
+        renderer.technique = post
         let camNode = SCNNode()
         let camera = SCNCamera()
         configure(camera)
@@ -109,6 +111,8 @@ enum WorldDebugShots {
                 if spec.view.hasSuffix("nolut") || spec.view.hasSuffix("raw") { camera.colorGrading.contents = nil }
                 if spec.view.hasSuffix("nocontrast") || spec.view.hasSuffix("raw") { camera.contrast = 0 }
                 if spec.view.hasSuffix("raw") { camera.vignettingIntensity = 0; camera.screenSpaceAmbientOcclusionIntensity = 0 }
+                // chart-nopost: without the region's camera response.
+                if spec.view.hasSuffix("nopost") { renderer.technique = nil }
                 // Tone-curve calibration: unlit patches of known linear
                 // radiance (see `chart`), or the sky straight up, from high
                 // above the course.
@@ -126,6 +130,7 @@ enum WorldDebugShots {
                 let img = renderer.snapshot(atTime: t, with: size, antialiasingMode: .none)
                 t += 0.5
                 board?.removeFromParentNode()
+                renderer.technique = post
                 configure(camera)
                 camera.fieldOfView = 62
                 let name = "w_0_\(spec.view)_\(quality.rawValue)\(tag).png"

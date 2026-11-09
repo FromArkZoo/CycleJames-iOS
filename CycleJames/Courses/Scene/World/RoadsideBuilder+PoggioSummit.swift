@@ -25,6 +25,10 @@ extension BuildingBuilder {
     /// to -447.1/572.3).
     static func poggioWestFace(_ north: Double) -> Double { -441.6 - 3.0 * (north - 531.0) / 41.3 }
     static let poggioWestSpan = 531.0...571.0
+    /// The wall's height over the bays, and how far its planted strip
+    /// runs back from its face, to the foot of the CTR's upper wall.
+    static let poggioWestWallHeight = 3.0
+    static let poggioWestStrip = 2.45
 
     /// The bus shelter at the wall's north end (2023 video: pink-beige
     /// render, a flat roof, open to the road), its back to the wall.
@@ -83,6 +87,21 @@ extension BuildingBuilder {
                 let h = v[i]
                 guard !h.isNaN, h > pad[r - r0] else { continue }
                 v[i] = h + (pad[r - r0] - h) * Float(w)
+            }
+            // Behind that, to the CTR's upper wall 2.5 m behind the face,
+            // the planted strip on the wall's top (`westCarParkWall`): the
+            // bank cut down to just under it, so its humps don't stand
+            // through the strip.
+            for c in c0...c1 {
+                let (e, n) = centre(c, r)
+                let face = poggioWestFace(n)
+                guard e > face - 3.0, e <= face - 1.5, pad[r - r0].isFinite else { continue }
+                let w = smooth(529.8, 531.2, n) * (1 - smooth(570.0, 573.0, n))
+                guard w > 0 else { continue }
+                let i = r * raster.cols + c
+                let h = v[i], strip = pad[r - r0] + Float(poggioWestWallHeight - 0.2)
+                guard !h.isNaN, h > strip else { continue }
+                v[i] = h + (strip - h) * Float(w)
             }
         }
         return HeightRaster(cols: raster.cols, rows: raster.rows, cellM: raster.cellM, originEast: raster.originEast,
@@ -204,7 +223,7 @@ extension BuildingBuilder {
         let out = SIMD2(d.y, -d.x)
         let up = SIMD3<Float>(0, 1, 0)
         let n3 = SIMD3<Float>(Float(out.x), 0, Float(-out.y))
-        let lean = simd_normalize(n3 + up * 0.35), bank = simd_normalize(up + n3 * 0.5)
+        let lean = simd_normalize(n3 + up * 0.35)
         // The foot on the levelled strip; the top 3 m over it, its course
         // line wandering a few centimetres and stepping where the stones do.
         var foot: [Double] = [], top: [Double] = []
@@ -212,12 +231,16 @@ extension BuildingBuilder {
             let f = ground(q + out * 0.6)
             foot.append(f - 0.3)
             let a = Double(k)
-            top.append(f + 3.0 + 0.06 * sin(a * 0.83) + 0.04 * sin(a * 2.1 + 1.3) + (k % 7 < 3 ? 0.05 : 0))
+            top.append(f + poggioWestWallHeight + 0.06 * sin(a * 0.83) + 0.04 * sin(a * 2.1 + 1.3) + (k % 7 < 3 ? 0.05 : 0))
         }
-        let capH = 0.16, capOut = 0.035, ledge = 1.9, lift = 6.0
-        // The ledge's back on the bank's DTM where that is higher: a planted
-        // slope up to the CTR's upper wall, not a trench behind the top.
-        let back = pts.indices.map { max(top[$0] + 0.1, ground(pts[$0] - out * ledge) - 0.05) }
+        let capH = 0.16, capOut = 0.035, ledge = poggioWestStrip, lift = 6.0
+        // The planted strip on the wall's top: level, back to the foot of
+        // the CTR's upper wall (2023 video: dense oleander and pittosporum
+        // along the wall's top, the upper wall behind them). The bank
+        // under it is cut down to it (`levelledNear`); on the bank's own
+        // heights the strip rose and fell in stone-faced mounds with dark
+        // gaps between them.
+        let back = pts.indices.map { top[$0] - 0.04 }
         for k in 0..<(pts.count - 1) {
             let a = pts[k], b = pts[k + 1]
             let a0 = Double(k), a1 = Double(k + 1)
@@ -234,12 +257,12 @@ extension BuildingBuilder {
             kit.stoneQuad([P(ca, top[k] - capH - 0.02), P(cb, top[k + 1] - capH - 0.02), P(b, top[k + 1] - capH - 0.02),
                            P(a, top[k] - capH - 0.02)],
                           normals: [-up, -up, -up, -up], along: [a0, a1, a1, a0], foot: fq, stone: .greySquared)
-            // The planted slope behind it, back into the DTM's bank: its
-            // normals kept within 30 degrees of up, so the shader grasses it
-            // as a top (steeper, it drew a second stone face over the wall).
+            // The strip's earth: a flat top of the render's kind, which
+            // the shader grasses over a pale, mottled ground with no stone
+            // courses in it.
             let la = a - out * ledge, lb = b - out * ledge
             kit.stoneQuad([P(ba, top[k] - 0.04), P(bb, top[k + 1] - 0.04), P(lb, back[k + 1]), P(la, back[k])],
-                          normals: [bank, bank, bank, bank], along: [a0, a1, a1, a0], foot: fq, stone: .dryStone)
+                          normals: [up, up, up, up], along: [a0, a1, a1, a0], foot: fq, stone: .render)
         }
         // The ends, back into the bank.
         for (k, sign) in [(0, -1.0), (pts.count - 1, 1.0)] {

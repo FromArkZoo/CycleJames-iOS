@@ -70,6 +70,9 @@ enum BuildingBuilder {
     enum PropPart: Int, CaseIterable {
         case darkMetal = 0, lampGlass, wood, wire, whitePaint, concrete, darkWood, greyMetal, signFace
         case masonry, galvanised, chainLink, shadeNet
+        /// Parked cars' bodywork (lacquered paint) and the glazing of cars
+        /// and the phone box (`WorldMaterials.carProps`).
+        case carPaint, carGlass
     }
 
     struct Style {

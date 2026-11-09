@@ -70,6 +70,8 @@ extension BuildingBuilder {
         var timber = MeshBuffer(parts: 1)
         var concrete = MeshBuffer(parts: 1)
         var glass = MeshBuffer(parts: 1)
+        var carBody = MeshBuffer(parts: 1)
+        var carGlass = MeshBuffer(parts: 1)
 
         init(cells: [String: SignCell]) { self.cells = cells }
 
@@ -77,7 +79,7 @@ extension BuildingBuilder {
             let parts: [(MeshBuffer, PropPart)] = [
                 (stone, .masonry), (galvanised, .galvanised), (dark, .darkMetal), (chain, .chainLink), (net, .shadeNet),
                 (white, .whitePaint), (wire, .wire), (sign, .signFace), (timber, .darkWood), (concrete, .concrete),
-                (glass, .lampGlass),
+                (glass, .lampGlass), (carBody, .carPaint), (carGlass, .carGlass),
             ]
             for (m, part) in parts where !m.isEmpty { appendParts(&out.props, m, map: [0: part.rawValue]) }
         }
@@ -89,6 +91,15 @@ extension BuildingBuilder {
             let (u, v) = cells[key]?.centre ?? (0, 0)
             for i in 0..<m.vertexCount { m.uvs[2 * i] = u; m.uvs[2 * i + 1] = v }
             sign.append(m, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
+        }
+
+        /// `m` in a car's lacquered paint, its colour the plain sign-atlas
+        /// cell `key` (`paint.*`).
+        mutating func carPaint(_ m: MeshBuffer, _ key: String) {
+            var m = m
+            let (u, v) = cells[key]?.centre ?? (0, 0)
+            for i in 0..<m.vertexCount { m.uvs[2 * i] = u; m.uvs[2 * i + 1] = v }
+            carBody.append(m, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
         }
 
         /// A masonry quad, corners counter-clockwise or not (it is wound to
@@ -565,45 +576,63 @@ extension BuildingBuilder {
         return (face, face + fascePitch * (k == m.terraces - 1 ? 0.85 : 1.0))
     }
 
+    /// The height of one tier's face: the 2024 frame at 1064 m has faces
+    /// of a metre to a metre and a half, each the same along its run.
+    static let fasceRise = 1.3
+
     /// The terraces behind `m` at route `s`, as `buildFasce` lays them
     /// (before it keeps them off lanes, houses and other legs of the road):
     /// each tier's face and tread end beyond the edge, its face's foot and
-    /// its tread's height. The bank's rise from the road wall's top to the
-    /// ground at the back of the top tread is shared out evenly, tier by
-    /// tier, 0.8 to 1.8 m a face (the 1 m LiDAR smooths the steps into a
-    /// ramp; its rise is the survey's), up to 2.2 m where the bank humps
-    /// over a tread: the treads level, the top one meeting the bank. Fewer tiers where the bank rises less, none where
-    /// it does not rise 0.8 m.
+    /// its tread's height.
+    ///
+    /// Every tier is `fasceRise` over the one below, the first over the
+    /// road wall's top, so a tier's tread runs on at one height over the
+    /// road beside it for as long as it runs: the bank's own humps and
+    /// gullies (the 1 m LiDAR's, a ramp where the real steps are) don't
+    /// lift one station's tread over its neighbour's. As many tiers as the
+    /// bank behind them carries: tier k stands where the ground at its
+    /// tread's back is within 0.4 m of its top, the bank read as the mean
+    /// of five sections over 16 m of road, relative to the road at each, so
+    /// a tier ends once, where the bank does, not at every dip. (Each
+    /// section's tops used to follow its own ground: treads tilted from
+    /// one station to the next, slabs stood out of the faces and capstone
+    /// lines cut across the courses, route 880-1060 and 1296-1330.)
     static func fasceTiers(_ m: CourseArt.Masonry, at s: Double, corridor: RoadCorridor)
         -> [(face: Double, treadEnd: Double, foot: Double, top: Double)] {
         guard m.terraces > 0 else { return [] }
+        let side = m.side
+        var wall = 0.0
+        var back = [Double](repeating: 0, count: m.terraces), front = [Double](repeating: 0, count: m.terraces)
+        let offsets: [Double] = [-8, -4, 0, 4, 8]
+        for d in offsets {
+            let sj = min(max(s + d, m.span.lowerBound), min(m.span.upperBound, corridor.route.length - 1))
+            let st = corridor.station(at: sj)
+            let reach = st.reach(side)
+            let road = corridor.roadHeight(st, lateral: side * reach)
+            func ground(_ o: Double) -> Double {
+                let p = st.point(lateral: side * (reach + o))
+                return Double(corridor.terrain.height(east: p.east, north: p.north))
+            }
+            wall += fasceRoadWallTop(corridor, st, side: side, offset: m.offset, height: m.height) - road
+            for k in 0..<m.terraces {
+                let face = fasceTier(m, k: k).face
+                back[k] += min(ground(face + fascePitch * 0.85), road + 14) - road
+                front[k] += ground(face) - road
+            }
+        }
+        let count = Double(offsets.count)
         let st = corridor.station(at: s)
-        let side = m.side, reach = st.reach(side)
-        let road = corridor.roadHeight(st, lateral: side * reach)
-        func ground(_ o: Double) -> Double {
-            let p = st.point(lateral: side * (reach + o))
-            return Double(corridor.terrain.height(east: p.east, north: p.north))
-        }
-        let wallTop = fasceRoadWallTop(corridor, st, side: side, offset: m.offset, height: m.height)
-        var n = m.terraces, rise = 0.0
-        while n > 0 {
-            let back = fasceTier(m, k: n - 1).face + fascePitch * 0.85
-            rise = (min(ground(back), road + 14) - wallTop) / Double(n)
-            if rise >= 0.8 { break }
-            n -= 1
-        }
-        guard n > 0 else { return [] }
-        rise = min(rise, 1.8)
+        let road = corridor.roadHeight(st, lateral: side * st.reach(side))
+        let wallTop = road + wall / count
+        var n = 0
+        while n < m.terraces, back[n] / count - wall / count >= fasceRise * Double(n + 1) - 0.4 { n += 1 }
         var out: [(face: Double, treadEnd: Double, foot: Double, top: Double)] = []
         var below = wallTop
         for k in 0..<n {
             let face = fasceTier(m, k: k).face
             let treadEnd = face + fascePitch * (k == n - 1 ? 0.85 : 1.0)
-            // Over the bank wherever it humps above the even share (else the
-            // grass came up through the tread in front of the next face).
-            let hump = max(ground(face + fascePitch * 0.5), ground(treadEnd - 0.2)) + 0.05
-            let top = min(max(wallTop + rise * Double(k + 1), hump), below + 2.2)
-            out.append((face, treadEnd, min(below, ground(face)) - 0.3, top))
+            let top = wallTop + fasceRise * Double(k + 1)
+            out.append((face, treadEnd, min(below, road + front[k] / count) - 0.3, top))
             below = top
         }
         return out
@@ -629,6 +658,9 @@ extension BuildingBuilder {
             var top: Double
             var toRoad: SIMD3<Float>
             var dir: SIMD3<Float>
+            /// The ground at the tread's back where this is the top tier
+            /// there and the bank lies under its tread (nil otherwise).
+            var behind: Double?
         }
         let side = m.side
         func clear(_ p: SIMD2<Double>) -> Bool {
@@ -665,6 +697,14 @@ extension BuildingBuilder {
                               normals: [-up, -up, -up, -up], along: [along, a1, a1, along], foot: feet, stone: .dryStone)
                 kit.stoneQuad([P(la, a.top + 0.02), P(lb, b.top + 0.02), P(b.faceTop, b.top + 0.02), P(a.faceTop, a.top + 0.02)],
                               normals: [up, up, up, up], along: [along, a1, a1, along], foot: feet, stone: .dryStone)
+                // The top tread's back, down to the bank where that falls
+                // away behind it (its edge hung in the air).
+                if let ga = a.behind, let gb = b.behind {
+                    let away = [-a.toRoad, -b.toRoad, -b.toRoad, -a.toRoad]
+                    kit.stoneQuad([P(b.tread, gb - 0.3), P(a.tread, ga - 0.3), P(a.tread, a.top), P(b.tread, b.top)],
+                                  normals: [away[1], away[0], away[0], away[1]], along: [a1, along, along, a1],
+                                  foot: [Float(gb - 0.3), Float(ga - 0.3), Float(ga - 0.3), Float(gb - 0.3)], stone: .dryStone)
+                }
                 along = a1
             }
             for (c, sign) in [(secs[0], Float(-1)), (secs[secs.count - 1], Float(1))] {
@@ -694,8 +734,14 @@ extension BuildingBuilder {
                     let folds = st.curvature * side > 0 && 1 / max(abs(st.curvature), 1e-6) < reach + t.treadEnd
                     if !folds, clear(face), clear(tread) {
                         // Battered about 1 in 8, the face's top set back.
+                        var behind: Double?
+                        if k == tiers.count - 1 {
+                            let g = Double(corridor.terrain.height(east: tread.x, north: tread.y))
+                            if g < t.top - 0.1 { behind = g }
+                        }
                         sec = Sec(face: face, faceTop: face + back * (0.12 * (t.top - t.foot - 0.3)), tread: tread,
-                                  foot: t.foot, top: t.top, toRoad: toRoad, dir: SIMD3(Float(st.dirE), 0, Float(-st.dirN)))
+                                  foot: t.foot, top: t.top, toRoad: toRoad, dir: SIMD3(Float(st.dirE), 0, Float(-st.dirN)),
+                                  behind: behind)
                     }
                 }
                 if let sec {

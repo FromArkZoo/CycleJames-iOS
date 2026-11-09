@@ -301,6 +301,7 @@ struct CourseSceneView: UIViewRepresentable {
                 view.preferredFramesPerSecond = world.preferredFramesPerSecond
             }
             view.scene = world.scene
+            view.technique = world.post
             view.pointOfView = cameraRig.node
             (view as? CourseRenderView)?.sceneReady = true
             onView?(view)
@@ -343,7 +344,9 @@ struct CourseSceneView: UIViewRepresentable {
                 let config = WorldConfig.make(q)
                 world.applyLiveConfig(config)
                 skyFloor = WorldMaterials.skyFloor(config)
-                if let camera = renderer.pointOfView?.camera { SkyLighting.applyEffects(camera, config: config) }
+                if let camera = renderer.pointOfView?.camera {
+                    SkyLighting.applyEffects(camera, config: config, look: world.look)
+                }
                 DispatchQueue.main.async { [weak self] in
                     MainActor.assumeIsolated {
                         guard let view = self?.view as? CourseRenderView else { return }

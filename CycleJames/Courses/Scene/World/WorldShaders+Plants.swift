@@ -103,7 +103,9 @@ extension WorldShaders {
     /// through to the side of a crown facing away from the sun (cards with
     /// crown-bent normals), 0 lets every card take it (grass blades, whose
     /// normals point up); `exposureGain` scales that light with the
-    /// exposure, as the lights are scaled (1 = none). Per-leaf normals wait
+    /// exposure, as the lights are scaled (1 = none); `canopyFill` is the
+    /// light passed on among the leaves (0: none, as on the Flemish
+    /// climbs). Per-leaf normals wait
     /// for a leaf atlas with a normal map (leaf atlas v2). `mipCoverage`
     /// (0: unset) keeps the cut where it is and scales the alpha up by that
     /// much per mip level instead (`mipCoverageMed`).
@@ -117,6 +119,7 @@ extension WorldShaders {
     float throughCrown;
     float exposureGain;
     float mipCoverage;
+    float canopyFill;
     #pragma body
     // Lower mip levels average leaf coverage into the gaps, which would
     // turn distant cards into solid squares; raise the cut-off with the
@@ -156,7 +159,11 @@ extension WorldShaders {
     // Light through leaves is yellower than light off them.
     float3 tcol = c * float3(1.3, 1.45, 0.55);
     float k = translucency * through * (0.15 + 0.85 * back * back) * exposureGain;
-    _surface.emission = float4(tcol * k, 1.0);
+    // `canopyFill` (0: none): the light the leaves round a leaf pass on to
+    // it, which no shadow takes away. Through a camera that keeps its
+    // shadows deep (`CoursePost`) a crown's shaded side, lit by the sky
+    // alone, went to black.
+    _surface.emission = float4(tcol * k + c * (canopyFill * exposureGain), 1.0);
     """
 
     /// Leaf cards and impostors: opaque (as `opaqueFragment`), keeping a
@@ -214,6 +221,7 @@ extension WorldShaders {
     float exposureGain;
     float impostorNormals;
     float mipCoverage;
+    float canopyFill;
     texture2d<float> impDetail;
     #pragma body
     float2 tc = _surface.diffuseTexcoord * atlasPx;
@@ -243,7 +251,7 @@ extension WorldShaders {
     float back = saturate(dot(-V, L));
     float through = saturate(0.3 - dot(N, L) * 0.7);
     float k = translucency * through * (0.15 + 0.85 * back * back) * exposureGain;
-    _surface.emission = float4(c * float3(1.3, 1.45, 0.55) * k, 1.0);
+    _surface.emission = float4(c * float3(1.3, 1.45, 0.55) * k + c * (canopyFill * exposureGain), 1.0);
     """
 
     /// Bark sways with the crown; detail normals from its packed texture.

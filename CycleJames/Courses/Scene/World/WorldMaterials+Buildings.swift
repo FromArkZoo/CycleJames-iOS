@@ -24,7 +24,10 @@ extension WorldMaterials {
         m.setValue(NSNumber(value: lig ? 1.0 : 0.0), forKey: "riviera")
         bindLight(m)
         m.shaderModifiers = [.geometry: WorldShaders.wallGeometry, .surface: WorldShaders.wallSurface]
-        if lig { m.shaderModifiers?[.fragment] = WorldShaders.wallFragment }
+        // (Through the Riviera's camera a sunlit wall rolls off towards
+        // white by itself; `wallFragment` did that by hand for a display
+        // that clipped, and is kept for where the pass isn't available.)
+        if lig, !CoursePost.isAvailable { m.shaderModifiers?[.fragment] = WorldShaders.wallFragment }
         return m
     }
 
@@ -129,7 +132,26 @@ extension WorldMaterials {
 
     /// In `BuildingBuilder.PropPart` order.
     var props: [SCNMaterial] {
-        [darkMetal, lampGlass, wood, wire, whitePaint, poleConcrete, darkWood, greyMetal, signFace] + roadsideProps
+        [darkMetal, lampGlass, wood, wire, whitePaint, poleConcrete, darkWood, greyMetal, signFace] + roadsideProps + carProps
+    }
+
+    /// A parked car's bodywork: the sign atlas's plain paints (each car's
+    /// colour is a cell of it) under a clear lacquer, so the body carries
+    /// the sun's highlight and a soft mirror of the sky over its colour.
+    func makeCarPaint() -> SCNMaterial {
+        let m = pbr(UIColor(white: 0.8, alpha: 1), roughness: 0.45)
+        if let img = textures.image(art.look.signAtlas) { m.diffuse.clamped(img) }
+        m.clearCoat.contents = 1.0
+        m.clearCoatRoughness.contents = 0.07
+        return m
+    }
+
+    /// Glazing seen from outside in daylight: dark straight on, the sky's
+    /// mirror at a slant. A little more of a mirror than plain glass
+    /// (which shows what is behind it, and these panes have nothing behind
+    /// them to show): a tinted pane.
+    func makeCarGlass() -> SCNMaterial {
+        pbr(UIColor(red: 0.05, green: 0.06, blue: 0.07, alpha: 1), roughness: 0.05, metalness: 0.3)
     }
 
     func makeWater() -> SCNMaterial {

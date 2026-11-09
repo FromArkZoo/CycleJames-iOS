@@ -115,40 +115,43 @@ extension WorldShaders {
     /// `edge` (0 centre .. 1 edge); leaves `d` (the detail texel), `big`,
     /// `alb` (linear), `rough` and `nts` (tangent normal).
     ///
-    /// Smooth fine-grained tarmac laid at different times, bleached by the
-    /// sun to a pale, neutral silver-grey: in the 2024 frames the sunlit
-    /// road is about as bright as the sandstone walls beside it, and the
-    /// summit photo measures #9fa09d-#b4b5b0 (look.md section 3, sunlit
-    /// #a4a6a1). The limestone-chip texture is a little warm and the 5100 K
-    /// sun warmer: a cool tint brings the sunlit road to neutral. Long
-    /// stretches of the base, older and paler, or fresh and darker; patch
-    /// repairs over one lane, a trench strip, the full width or a small
-    /// square, sealed at their edges (none before `asphaltK.y`); oil and
-    /// tyre darkening down the middle of each lane; sunken cast-iron
-    /// inspection covers in their collars here and there.
+    /// Fine-grained tarmac laid at different times and bleached by the sun
+    /// to a neutral mid grey (look.md section 3; its albedo is
+    /// `WorldMaterials.rivieraAsphaltGain`'s). The limestone-chip texture is
+    /// a little warm and the 5100 K sun warmer: a cool tint brings the
+    /// sunlit road to neutral. No stretch is one even grey: binder-rich and
+    /// leaner patches a few metres across (`mid`); long stretches of the
+    /// base, older and paler, or fresh and darker; patch repairs (mostly a
+    /// trench's strip, now and then a square or a lane's width), sealed at
+    /// their edges (none before `asphaltK.y`); the paver's joint down the
+    /// middle and cracks across the road, some poured with bitumen; oil
+    /// and tyre darkening down each lane, the wheel tracks polished; dust
+    /// and grit along the edges; sunken cast-iron inspection covers in
+    /// their collars here and there.
     ///
     /// The chips' contrast is compressed about the tile's mean luminance
-    /// (`asphaltK.x`, linear, the material's intensity included): at 5.9
-    /// times the texture's brightest chips reach 0.87 linear against a mean
-    /// of 0.34, and read up close as a white salt-and-pepper speckle that
-    /// glowed in the shade (3950 chase, #4d5a6b with white flecks). The 2024
-    /// POV and the 2026 summit photo show an even, fine silver-grey. Kept
-    /// at 0.38 of the texture's: about the grain the road had at 2.55 times.
-    /// Linear about the mean, so the mean, and the distant road the mipmaps
+    /// (`asphaltK.x`, linear, the material's intensity included), to 0.55
+    /// of the texture's: at full contrast the brightest chips read up close
+    /// as a white salt-and-pepper speckle that glowed in the shade. Linear
+    /// about the mean, so the mean, and the distant road the mipmaps
     /// average to it, keep their tone. No compression where it is unset (0).
     static let rivieraAsphaltCore = """
     constexpr sampler rep(filter::linear, mip_filter::linear, address::repeat, max_anisotropy(16));
     float4 d = detailTex.sample(rep, uv);
     float big = detailTex.sample(rep, uv * 0.113 + float2(0.37, 0.11)).a;
     float big2 = detailTex.sample(rep, uv * 0.031 + float2(0.71, 0.29)).a;
+    float mid = detailTex.sample(rep, uv * 0.37 + float2(0.19, 0.53)).a;
     float2 nxy = (d.rg * 2.0 - 1.0) * normalStrength;
     float3 alb = _surface.diffuse.rgb;
     float grainL = dot(alb, float3(0.2126, 0.7152, 0.0722));
     float grainM = asphaltK.x > 0.0 ? asphaltK.x : grainL;
-    alb *= (grainM + (grainL - grainM) * 0.38) / max(grainL, 1e-4);
+    alb *= (grainM + (grainL - grainM) * 0.55) / max(grainL, 1e-4);
     alb *= (0.93 + 0.14 * big2) * float3(0.92, 1.0, 1.09);
+    // Binder-rich and leaner patches a few metres across: no stretch of
+    // road is one even grey.
+    alb *= 0.86 + 0.28 * mid;
     // The chips are a little smoother than the binder: by half as much.
-    float rough = mix(0.84, d.b, 0.5);
+    float rough = mix(0.86, d.b, 0.5) + 0.06 * (mid - 0.5);
     float aw = max(fwidth(rs), 0.004);
     float lw = max(fwidth(lat), 0.004);
     // Stretches laid in different years.
@@ -156,33 +159,63 @@ extension WorldShaders {
     float warm = smoothstep(0.6, 0.72, lay);
     float fresh = 1.0 - smoothstep(0.27, 0.37, lay);
     alb *= mix(float3(1.0), float3(1.1, 1.08, 1.04), warm);
-    alb *= mix(1.0, 0.7, fresh);
-    rough = mix(rough, rough * 0.92, fresh);
-    // Patch repairs, in about one 23 m cell in four.
+    alb *= mix(1.0, 0.74, fresh);
+    rough = mix(rough, rough * 0.9, fresh);
+    // Patch repairs, in about one 23 m cell in four: mostly the strip of a
+    // trench 0.5-1 m wide, now and then a square or one lane's width.
     float pc = floor(rs / 23.0);
     float h0 = cjrHash(pc * 7.31 + 1.7), h1 = cjrHash(pc * 3.17 + 5.3);
     float h2 = cjrHash(pc * 11.9 + 2.1), h3 = cjrHash(pc * 5.77 + 8.9);
     float ps0 = pc * 23.0 + 1.0 + h1 * 8.0;
     float ps1 = ps0 + 2.5 + h2 * 11.0;
     float pl0 = -20.0, pl1 = 20.0;
-    if (h3 < 0.35) { pl0 = h2 < 0.5 ? -20.0 : -0.05; pl1 = h2 < 0.5 ? 0.05 : 20.0; }
-    else if (h3 < 0.6) { float c = (h2 - 0.5) * 3.0; pl0 = c - 0.35; pl1 = c + 0.35; }
-    else if (h3 >= 0.8) { float c = (h1 - 0.5) * 2.6; pl0 = c - 0.6 - 0.4 * h2; pl1 = c + 0.6 + 0.4 * h2; ps1 = ps0 + 1.2 + h3; }
+    if (h3 < 0.12) { pl0 = h2 < 0.5 ? -20.0 : -0.05; pl1 = h2 < 0.5 ? 0.05 : 20.0; }
+    else if (h3 < 0.72) { float c = (h2 - 0.5) * 3.4; float hw = 0.26 + 0.24 * h1; pl0 = c - hw; pl1 = c + hw; }
+    else { float c = (h1 - 0.5) * 2.6; pl0 = c - 0.6 - 0.4 * h2; pl1 = c + 0.6 + 0.4 * h2; ps1 = ps0 + 1.2 + h3; }
     float inPatch = h0 < 0.27 && ps0 > asphaltK.y ? cjrBox(rs, ps0, ps1, aw) * cjrBox(lat, pl0, pl1, lw) : 0.0;
-    // Fresh repairs darker (look.md: #4a4a4c on the #62625f base, 0.56
-    // linear), but the base is now the sun-bleached road, and at 0.6 a
-    // lane-wide repair read as a black block (route 310-330): 0.74.
-    float3 patchTint = h1 > 0.45 ? float3(0.74) : float3(1.1, 1.09, 1.07);
+    // A repair is a shade darker and smoother while it is new, paler and
+    // rougher once it has weathered past the road round it.
+    float3 patchTint = h1 > 0.45 ? float3(0.82) : float3(1.08, 1.07, 1.05);
     alb *= mix(float3(1.0), patchTint, inPatch);
+    rough += (h1 > 0.45 ? -0.07 : 0.04) * inPatch;
     // The sealed seam round a patch: a dark band 4 cm wide.
     float seam = inPatch * (1.0 - inPatch) * 4.0;
-    alb *= 1.0 - 0.45 * seam * smoothstep(0.08, 0.02, max(aw, lw));
-    // Oil and tyre darkening down each lane, patchy.
+    float near = smoothstep(0.08, 0.02, max(aw, lw));
+    alb *= 1.0 - 0.5 * seam * near;
+    rough -= 0.25 * seam * near;
+    // Cracks. Along the middle, the joint between the two passes of the
+    // paver, open for stretches and poured with bitumen for others; across
+    // the road every several metres, each wandering as it goes. A crack is
+    // a few millimetres wide: under a pixel it darkens by the share of the
+    // pixel it covers, and so fades out with distance.
+    float cjx = lat - 0.05 * (cjrNoise(rs * 0.23 + 4.1) - 0.5) - 0.014 * (cjrNoise(rs * 2.1) - 0.5);
+    float cjHas = smoothstep(0.5, 0.62, cjrNoise(rs / 23.0 + 5.7)) * (0.55 + 0.45 * cjrNoise(rs * 0.9 + 2.2));
+    float cjSeal = smoothstep(0.66, 0.72, cjrNoise(rs / 67.0 + 11.3));
+    float cjw = mix(0.004, 0.028, cjSeal);
+    float crackL = saturate((cjw - abs(cjx)) / lw + 0.5) * saturate(2.0 * cjw / lw) * cjHas;
+    float tc = floor(rs / 6.3);
+    float t0 = cjrHash(tc * 13.7 + 0.9), t1 = cjrHash(tc * 4.9 + 7.7), t2 = cjrHash(tc * 8.3 + 3.1);
+    float tx = rs - (tc * 6.3 + 1.0 + 4.3 * t1) - 0.22 * (cjrNoise(lat * 1.6 + tc * 3.1) - 0.5)
+             - 0.05 * (cjrNoise(lat * 8.7 + tc) - 0.5);
+    float tSpan = t2 < 0.4 ? 1.0 : (t2 < 0.7 ? step(0.0, lat) : step(lat, 0.0));
+    float tSeal = step(0.72, t0 * 3.0);
+    float tw = mix(0.003, 0.022, tSeal);
+    float crackT = t0 < 0.33 && rs > asphaltK.y ? saturate((tw - abs(tx)) / aw + 0.5) * saturate(2.0 * tw / aw) * tSpan : 0.0;
+    float crack = max(crackL, crackT);
+    float sealed = max(crackL * cjSeal, crackT * tSeal);
+    alb *= 1.0 - 0.5 * crack;
+    rough = mix(rough, mix(0.95, 0.42, saturate(sealed / max(crack, 1e-3))), crack);
+    // Oil and tyre darkening down each lane, patchy; the wheel tracks
+    // polished smoother, so they shine towards a low sun.
     float eo = (edge - 0.5) / 0.11, et0 = (edge - 0.24) / 0.07, et1 = (edge - 0.78) / 0.07;
     float oil = exp(-eo * eo) * (0.55 + 0.9 * big);
     float tyres = exp(-et0 * et0) + exp(-et1 * et1);
     alb *= (1.0 - 0.2 * saturate(oil)) * (1.0 - 0.07 * tyres * (0.5 + big));
-    rough -= 0.07 * tyres;
+    rough -= 0.11 * tyres * (0.6 + 0.8 * mid);
+    // Dust, grit and dry leaves gather along the edges, more in places.
+    float edgeDust = smoothstep(0.84, 1.0, edge + 0.16 * (mid - 0.5) + 0.1 * (big - 0.5));
+    alb = mix(alb, float3(0.27, 0.24, 0.185) * (0.75 + 0.5 * big), edgeDust * 0.6);
+    rough = mix(rough, 0.96, edgeDust * 0.8);
     // Inspection covers: one in about half the 61 m cells.
     float cc = floor(rs / 61.0);
     float k0 = cjrHash(cc * 4.13 + 0.7), k1 = cjrHash(cc * 9.71 + 3.3), k2 = cjrHash(cc * 2.39 + 6.1);

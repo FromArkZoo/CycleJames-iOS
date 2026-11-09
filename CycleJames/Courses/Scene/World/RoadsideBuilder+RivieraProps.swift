@@ -411,7 +411,10 @@ extension BuildingBuilder {
         TreeArchetype.tube(&silver, at(SIMD3(0, 2.36, 0)), at(SIMD3(0, 2.95, 0)), 0.025, 0.025, sides: 6, height: 100)
         kit.paint(silver, "paint.silver")
         kit.paint(red, "paint.red")
-        kit.paint(glass, "paint.glass")
+        // Clear panes, which from outside in daylight are dark and mirror
+        // the sky (as the cars' glazing): the atlas's glass paint is the
+        // church windows', opaque.
+        kit.carGlass.append(glass, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
         if let cell = kit.cells["it.phone"] {
             var back = MeshBuffer(parts: 1)
             plate(&kit.sign, &back, cell: cell, centre: at(SIMD3(0, 3.15, 0.03)), right: x, normal: fwd)

@@ -663,6 +663,12 @@ extension BuildingBuilder {
                     self.palazzina = true
                     minStoreys = 3
                     if !old { style.row = .redBrick }
+                } else if !old {
+                    // A placed house is named by its shutters' colour (the
+                    // pale pink house's light blue, look s 1150): smooth
+                    // render with persiane, whatever window row its seed
+                    // drew (a row of roll shutters has none to colour).
+                    style.row = .painted
                 }
                 self.balconies = self.balconies || balconies
                 if balconies { balconyFront = 0 }

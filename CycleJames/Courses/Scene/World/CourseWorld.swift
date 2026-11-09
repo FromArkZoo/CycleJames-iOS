@@ -28,6 +28,12 @@ final class CourseWorld {
     /// the camera opening up in a sunken lane (`LaneExposure`). Render
     /// thread, or before the world is shown.
     let setExposure: (Float) -> Void
+    /// The region's camera response (`CoursePost`), for whatever draws the
+    /// scene: the ride's view, a snapshot renderer. Nil where SceneKit's
+    /// own camera is the look (the Flemish climbs).
+    let post: SCNTechnique?
+    /// The region the world is drawn as.
+    let look: WorldLook
     let preferredFramesPerSecond: Int
 
     var route: CourseRoute { bundle.route }
@@ -43,7 +49,9 @@ final class CourseWorld {
         onFrame: @escaping (SIMD3<Float>, TimeInterval) -> Void = { _, _ in },
         applyLiveConfig: @escaping (WorldConfig) -> Void = { _ in },
         light: LightProfile = .open,
-        setExposure: @escaping (Float) -> Void = { _ in }
+        setExposure: @escaping (Float) -> Void = { _ in },
+        post: SCNTechnique? = nil,
+        look: WorldLook = .flanders
     ) {
         self.scene = scene
         self.bundle = bundle
@@ -56,5 +64,7 @@ final class CourseWorld {
         self.applyLiveConfig = applyLiveConfig
         self.light = light
         self.setExposure = setExposure
+        self.post = post
+        self.look = look
     }
 }

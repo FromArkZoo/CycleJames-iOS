@@ -102,6 +102,8 @@ enum CourseWorldBuilder {
             materials = WorldMaterials(config: config, textures: textures, bundle: bundle, art: corridor.art)
             for m in materials.warmUp { _ = m }
             seaMaterial = seaLevel == nil ? nil : materials.makeSea()
+            materials.airEverything()
+            if let seaMaterial { materials.air(seaMaterial) }
             attempts += 1
             #if DEBUG
             if textures.uploadFailed { print("world textures: GPU upload failed (attempt \(attempts)), retrying") }
@@ -117,7 +119,7 @@ enum CourseWorldBuilder {
         var far = await farChunks.take()
         try Task.checkCancellation()
         log.mark("terrain meshes (wait)")
-        progress(0.45, "Laying the cobbles")
+        progress(0.45, look.isRiviera ? "Laying the road" : "Laying the cobbles")
         var road = await roadMeshes.take()
         try Task.checkCancellation()
         var town = await houses.take()
@@ -456,6 +458,8 @@ enum CourseWorldBuilder {
         let exposure: (Float) -> Void = sun.light.map {
             SkyLighting.exposure(scene: scene, sun: $0, glow: glow, look: look)
         } ?? { _ in }
+        // The Riviera's camera response; the Flemish climbs keep SceneKit's.
+        let post = look.isRiviera ? CoursePost.technique() : nil
         #if DEBUG
         if let dir = WorldDebugShots.directory {
             progress(1, "Taking world shots")
@@ -466,7 +470,8 @@ enum CourseWorldBuilder {
                                 light: light, setExposure: exposure,
                                 partNames: Dictionary(zip(materials.props.map(ObjectIdentifier.init),
                                                           BuildingBuilder.PropPart.allCases.map { "\($0)" }),
-                                                      uniquingKeysWith: { a, _ in a }))
+                                                      uniquingKeysWith: { a, _ in a }),
+                                post: post)
         }
         #endif
         progress(1, "Ready")
@@ -487,7 +492,9 @@ enum CourseWorldBuilder {
                 materials.applyLive(live)
             },
             light: light,
-            setExposure: exposure
+            setExposure: exposure,
+            post: post,
+            look: look
         )
     }
 }

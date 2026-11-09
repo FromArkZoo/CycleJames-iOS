@@ -53,9 +53,15 @@ enum SkyLighting {
 
     static func install(in scene: SCNScene, config: WorldConfig, textures: WorldTextures,
                         look: WorldLook = .flanders) -> SCNNode {
-        let sky = skyFaces(textures: textures, prefix: look.skyPrefix, look: look)
-        scene.background.contents = sky.faces
-        scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
+        if look.isRiviera, CoursePost.isAvailable, let cube = textures.hdrCube(look.skyPrefix) {
+            // The Riviera's sky at its real radiance, for `CoursePost`.
+            scene.background.contents = cube
+            scene.background.intensity = CGFloat(pow(2, -exposureOffset))
+        } else {
+            let sky = skyFaces(textures: textures, prefix: look.skyPrefix, look: look)
+            scene.background.contents = sky.faces
+            scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
+        }
         // Image-based light from the sky (the rider's metals, clear coat
         // and lenses rely on it too), at its stored radiance: the
         // calibrated ambient (WorldDebugShots `litchart`).
@@ -68,7 +74,9 @@ enum SkyLighting {
         // summer afternoon; on the Riviera clearer (`WorldLook+Sky`).
         scene.fogColor = horizon(scale: 1, look: look)
         scene.fogStartDistance = 0
-        scene.fogEndDistance = look.fogEndDistance
+        // (On the Riviera the materials draw the air themselves, by
+        // direction and height: `WorldShaders.aerialFragment`. No fog.)
+        scene.fogEndDistance = look.isRiviera ? 0 : look.fogEndDistance
         scene.fogDensityExponent = look.fogExponent
 
         let light = SCNLight()
@@ -165,18 +173,38 @@ enum SkyLighting {
         camera.vignettingPower = 0.55
         camera.saturation = 1.06
         camera.contrast = 0.05
-        applyEffects(camera, config: config)
+        applyEffects(camera, config: config, look: look)
         // No lookup-table grade: SceneKit applies colorGrading in a space
         // that lifts black to navy and crushes the darks (measured with the
         // calibration chart in WorldDebugShots), so the grade is just the
         // gentle contrast and saturation above.
         camera.colorGrading.contents = nil
+        if look.isRiviera, CoursePost.isAvailable {
+            // The Riviera's look is `CoursePost`'s: here only the white
+            // point its pass decodes, and nothing after SceneKit's curve
+            // that the pass couldn't undo.
+            camera.whitePoint = CGFloat(CoursePost.whitePoint)
+            camera.vignettingIntensity = 0
+            camera.saturation = 1
+            camera.contrast = 0
+        }
     }
 
     /// The tier's costly post-process passes (bloom, SSAO). Also used live
     /// when an automatic tier steps down mid-ride.
-    static func applyEffects(_ camera: SCNCamera, config: WorldConfig) {
-        if config.bloom {
+    ///
+    /// On the Riviera the image is not clipped at white (`CoursePost`), so
+    /// only what outshines a sunlit white wall blooms: the sun and the sky
+    /// hard by it, its glints on glass and on the sea. With the Flemish
+    /// threshold of 1 the sky within twenty degrees of the sun, as bright
+    /// as sunlit paper, spread into a white sheet over half the frame.
+    static func applyEffects(_ camera: SCNCamera, config: WorldConfig, look: WorldLook = .flanders) {
+        if config.bloom, look.isRiviera, CoursePost.isAvailable {
+            camera.bloomIntensity = 0.22
+            camera.bloomThreshold = 2.4
+            camera.bloomBlurRadius = 9
+            camera.bloomIterationCount = 3
+        } else if config.bloom {
             camera.bloomIntensity = 0.18
             camera.bloomThreshold = 1.0
             camera.bloomBlurRadius = 7

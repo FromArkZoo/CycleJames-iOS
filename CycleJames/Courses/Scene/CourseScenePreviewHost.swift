@@ -378,7 +378,7 @@ struct CourseScenePreviewHost: View {
         let size = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
         // SceneKit objects may be rendered from any thread; the wrapper only
         // tells the compiler so.
-        let source = RenderSource(scene: scene, camera: camera, device: view.device)
+        let source = RenderSource(scene: scene, camera: camera, device: view.device, technique: view.technique)
         let box = ImageBox()
         return await withCheckedContinuation { (done: CheckedContinuation<UIImage?, Never>) in
             box.continuation = done
@@ -386,6 +386,7 @@ struct CourseScenePreviewHost: View {
                 let renderer = SCNRenderer(device: source.device, options: nil)
                 renderer.scene = source.scene
                 renderer.pointOfView = source.camera
+                renderer.technique = source.technique
                 box.finish(renderer.snapshot(atTime: CACurrentMediaTime(), with: size, antialiasingMode: .multisampling4X))
             }
             DispatchQueue.global().asyncAfter(deadline: .now() + 8) { box.finish(nil) }
@@ -418,6 +419,7 @@ private struct RenderSource: @unchecked Sendable {
     let scene: SCNScene
     let camera: SCNNode
     let device: MTLDevice?
+    let technique: SCNTechnique?
 }
 
 /// Hands one image to a continuation, from whichever side finishes first.

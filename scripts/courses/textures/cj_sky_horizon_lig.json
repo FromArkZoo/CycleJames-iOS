@@ -1,9 +1,20 @@
 {
+  "horizonBase": [
+    0.2773,
+    0.374,
+    0.4874
+  ],
+  "horizonGlow": [
+    0.3778,
+    0.4729,
+    0.582
+  ],
+  "horizonPower": 5.25,
   "horizonLinear": [
-    0.3485,
-    0.4624,
-    0.5954
+    0.3681,
+    0.4877,
+    0.6273
   ],
   "skyScale": 1.6,
-  "cloudCover5to35Deg": 0.023
+  "envIrradiance": 0.4476
 }

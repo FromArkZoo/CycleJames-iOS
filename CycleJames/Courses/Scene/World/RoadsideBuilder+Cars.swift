@@ -6,9 +6,8 @@ import simd
 /// Puntos, Golfs, a white Duster, estates, in white, silver, grey, black,
 /// dark blue and the odd red) and the growers' vans on the ridge. A shaped
 /// body (bonnet, glasshouse, boot or hatch) on four tyred wheels standing
-/// on the ground, dark glazing that takes the sky's reflection (the props'
-/// dark metal), the paint in the sign atlas's cells or, for silver, the
-/// galvanised steel's metal, simple lamps and plates. About 300 triangles
+/// on the ground, dark glazing that mirrors the sky, lacquered paint in
+/// the sign atlas's colours, simple lamps and plates. About 300 triangles
 /// a car, built straight into the props (no instancing: 20-40 of them).
 extension BuildingBuilder {
     /// The body shapes, with their makers' dimensions.
@@ -210,15 +209,19 @@ extension BuildingBuilder {
         // A dark underside between the wheels: shade there in any light.
         carQuad(&trim, [W(-hw + 0.05, 0.03, tail + 0.3), W(hw - 0.05, 0.03, tail + 0.3), W(hw - 0.05, 0.03, nose - 0.3),
                      W(-hw + 0.05, 0.03, nose - 0.3)], hint: N(0, 1, 0))
+        // Lacquered paint (`WorldMaterials.makeCarPaint`) and glass that
+        // mirrors the sky (`makeCarGlass`): as the props' flat paint and
+        // dark metal the cars stood as matt boxes with black slabs for
+        // windows.
         switch paint {
-        case .white: kit.paint(body, "paint.white")
-        case .silver: kit.galvanised.append(body, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
-        case .grey: kit.paint(body, "paint.darkgrey")
-        case .black: kit.dark.append(body, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
-        case .blue: kit.paint(body, "paint.blue")
-        case .red: kit.paint(body, "paint.red")
+        case .white: kit.carPaint(body, "paint.white")
+        case .silver: kit.carPaint(body, "paint.silver")
+        case .grey: kit.carPaint(body, "paint.darkgrey")
+        case .black: kit.carPaint(body, "paint.tyre")
+        case .blue: kit.carPaint(body, "paint.blue")
+        case .red: kit.carPaint(body, "paint.red")
         }
-        kit.dark.append(glass, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
+        kit.carGlass.append(glass, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)
         kit.paint(trim, "paint.tyre")
         kit.paint(tyre, "paint.tyre")
         kit.galvanised.append(rims, sx: 1, sy: 1, sz: 1, yaw: 0, tx: 0, ty: 0, tz: 0)

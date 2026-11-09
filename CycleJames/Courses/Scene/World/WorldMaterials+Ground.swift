@@ -36,10 +36,6 @@ extension WorldMaterials {
         bindLight(m)
         m.shaderModifiers = [.geometry: geometry,
                              .surface: art.look.isRiviera ? WorldShaders.terrainSurfaceRiviera : WorldShaders.terrainSurface]
-        if art.look.isRiviera {
-            // The land's own haze (`rivieraLandHaze`), not the sea's.
-            m.shaderModifiers?[.fragment] = "#pragma body\n" + WorldShaders.rivieraLandHaze
-        }
         return m
     }
 
@@ -51,12 +47,10 @@ extension WorldMaterials {
     func makeTerrain() -> SCNMaterial {
         groundMaterial(geometry: art.look.isRiviera ? WorldShaders.terrainGeometryRiviera : WorldShaders.terrainGeometry)
     }
-    /// The verge, with the mud's reflection damped (`vergeFragment`), and
-    /// on the Riviera hazed as the land beside it.
+    /// The verge, with the mud's reflection damped (`vergeFragment`).
     func makeVerge() -> SCNMaterial {
         let m = groundMaterial(geometry: WorldShaders.vergeGeometry)
         m.shaderModifiers?[.fragment] = WorldShaders.vergeFragment
-            + (art.look.isRiviera ? "\n" + WorldShaders.rivieraLandHaze : "")
         return m
     }
 }

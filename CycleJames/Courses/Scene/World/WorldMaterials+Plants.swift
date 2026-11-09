@@ -28,6 +28,9 @@ extension WorldMaterials {
         m.setValue(NSNumber(value: 1.0), forKey: "throughCrown")
         m.setValue(NSNumber(value: 1.0), forKey: "exposureGain")
         m.setValue(NSNumber(value: 0.0), forKey: "mipCoverage")
+        // The Riviera's camera keeps its shadows deep: its leaves pass a
+        // little light on among themselves (`foliageSurface`).
+        m.setValue(NSNumber(value: art.look.isRiviera ? 0.12 : 0.0), forKey: "canopyFill")
         m.shaderModifiers = [
             .geometry: WorldShaders.windGeometry,
             .surface: WorldShaders.foliageSurface,

@@ -103,6 +103,9 @@ final class WorldMaterials {
     /// The Riviera's roadside: masonry, galvanised steel, chain-link, shade
     /// net (`WorldMaterials+Roadside`).
     lazy var roadsideProps: [SCNMaterial] = makeRoadsideProps()
+    /// Parked cars' paint and glass (`BuildingBuilder.PropPart.carPaint`,
+    /// `.carGlass`).
+    lazy var carProps: [SCNMaterial] = [makeCarPaint(), makeCarGlass()]
 
     /// Ponds: still, open water.
     lazy var water: SCNMaterial = makeWater()
