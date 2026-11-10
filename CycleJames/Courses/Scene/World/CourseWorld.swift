@@ -15,9 +15,10 @@ final class CourseWorld {
     /// Applies the world's look (HDR, exposure, bloom, SSAO, colour grading,
     /// clipping planes) to whichever camera is rendering it.
     let configureCamera: (SCNCamera) -> Void
-    /// Called every frame on the render thread with the camera position, for
-    /// streaming detail (grass, LOD swaps, shadow re-centring).
-    let onFrame: (_ cameraPosition: SIMD3<Float>, _ time: TimeInterval) -> Void
+    /// Called every frame on the render thread with the camera's position
+    /// and the way it looks, for streaming detail (grass, LOD swaps) and
+    /// placing the sun's shadow map.
+    let onFrame: (_ cameraPosition: SIMD3<Float>, _ cameraForward: SIMD3<Float>, _ time: TimeInterval) -> Void
     /// Applies a cheaper tier's live scene knobs (sun shadows, grass reach)
     /// without rebuilding anything. Render thread.
     let applyLiveConfig: (WorldConfig) -> Void
@@ -46,7 +47,7 @@ final class CourseWorld {
         sun: SCNNode?,
         preferredFramesPerSecond: Int,
         configureCamera: @escaping (SCNCamera) -> Void,
-        onFrame: @escaping (SIMD3<Float>, TimeInterval) -> Void = { _, _ in },
+        onFrame: @escaping (SIMD3<Float>, SIMD3<Float>, TimeInterval) -> Void = { _, _, _ in },
         applyLiveConfig: @escaping (WorldConfig) -> Void = { _ in },
         light: LightProfile = .open,
         setExposure: @escaping (Float) -> Void = { _ in },

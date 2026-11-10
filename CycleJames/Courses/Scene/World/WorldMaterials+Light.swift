@@ -58,7 +58,26 @@ extension WorldMaterials {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-lightFloor"), i + 1 < args.count, let v = Float(args[i + 1]) { minSky = v }
         #endif
+        // Where the shadow map is one square held still, y and z are
+        // metres from its centre instead (`WorldShaders.lightShadeByBox`).
+        if let box = SkyLighting.ShadowBox(config: config) {
+            let fade = SkyLighting.ShadowBox.fadeShares
+            return SCNVector4(4.8, box.half * fade.from, box.half * fade.to, minSky)
+        }
         return SCNVector4(4.8, Float(config.shadowDistance * 0.88), Float(config.shadowDistance), minSky)
+    }
+
+    /// On a tier whose shadow map is held still (`WorldConfig.shadowBoxHalf`),
+    /// every lit material takes the baked sun shade from the map's edge,
+    /// not from a camera depth (`WorldShaders.lightShadeByBox`). Once the
+    /// materials are made (`CourseWorldBuilder`); again does nothing.
+    func holdLightToShadowBox() {
+        guard config.shadowBoxHalf != nil else { return }
+        for m in lit {
+            guard let surface = m.shaderModifiers?[.surface], surface.contains(WorldShaders.lightShadeByDepth) else { continue }
+            m.shaderModifiers?[.surface] = surface.replacingOccurrences(of: WorldShaders.lightShadeByDepth,
+                                                                        with: WorldShaders.lightShadeByBox)
+        }
     }
 
     /// `lightK`'s floor on sky visibility, for the plants (`SkyRaster`).

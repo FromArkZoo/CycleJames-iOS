@@ -23,6 +23,11 @@ struct WorldConfig: Sendable {
     var shadowCascades: Int
     var shadowMapSize: Int
     var shadowSamples: Int
+    /// Half the width, metres, of the sun's one shadow map where it is held
+    /// still on the ground instead of being fitted to the view as cascades
+    /// (`SkyLighting.ShadowBox`); nil: cascades. The Riviera's tiers set it
+    /// (`holdingShadows`).
+    var shadowBoxHalf: Double? = nil
 
     // Vegetation.
     /// Trees nearer the route than this get full branch-and-card geometry.

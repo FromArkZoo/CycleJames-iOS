@@ -149,7 +149,7 @@ extension WorldConfig {
     func riviera() -> WorldConfig {
         var c = self
         #if DEBUG
-        if Self.budgetRound1 { return rivieraRound1() }
+        if Self.budgetRound1 { return rivieraRound1().holdingShadows() }
         #endif
         switch quality {
         case .high:
@@ -161,6 +161,44 @@ extension WorldConfig {
             c.terrain2mRadius = 30; c.terrain4mRadius = 100
             c.shrubMaxRouteRadius = 130
         }
+        return c.holdingShadows()
+    }
+
+    /// The tier with the sun's shadow in one map held still on the ground
+    /// (`SkyLighting.ShadowBox`) in place of cascades fitted to the view.
+    ///
+    /// SceneKit refits its cascades to the camera every frame and nothing
+    /// snaps them to their texels, so every shadow edge crawled by up to a
+    /// texel as the camera moved. On the battery tier, which a hot iPhone 14
+    /// starts a ride on, that texel was about 7 cm (1024 px over the 74 m or
+    /// so its one cascade comes to in landscape): the rider's shadow drew
+    /// as blurred blocks, and every shadow edge on the road and the hedges
+    /// crawled. Balanced and high were as coarse in their far cascades,
+    /// from about 22 m out, and finer than this (1.5-2 cm) nearer.
+    ///
+    /// Here every tier draws 3.1 cm a texel, still: 128 m across at 4096 px
+    /// on high, 96 m at 3072 on balanced, 48 m at 1536 on battery, the
+    /// square's centre ahead of the camera. That is one pass over the
+    /// casters where cascades took up to three, over more texels (2.25
+    /// times battery's, a tenth to a third more on the others); the baked
+    /// sun shade takes over at the map's edge (`lightShadeByBox`), 38 m
+    /// ahead at the least on battery where the cascade reached 45.
+    func holdingShadows() -> WorldConfig {
+        var c = self
+        #if DEBUG
+        // -sunShadowBox 0: the cascades, to set beside it on one build.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-sunShadowBox"), i + 1 < args.count, args[i + 1] == "0" { return c }
+        #endif
+        let half: Double
+        switch quality {
+        case .high: half = 64; c.shadowMapSize = 4096
+        case .balanced: half = 48; c.shadowMapSize = 3072
+        case .battery: half = 24; c.shadowMapSize = 1536
+        }
+        c.shadowBoxHalf = half
+        c.shadowCascades = 1
+        c.shadowDistance = half
         return c
     }
 

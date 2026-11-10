@@ -113,7 +113,7 @@ enum WorldDebugShots {
                 let board = litChart()
                 board.simdPosition = SIMD3(0, 600, 0)
                 scene.rootNode.addChildNode(board)
-                frame.update(camera: SIMD3(0, 601.6, 0), time: t)
+                frame.update(camera: SIMD3(0, 601.6, 0), forward: camNode.simdWorldFront, time: t)
                 _ = renderer.snapshot(atTime: t, with: CGSize(width: 64, height: 128), antialiasingMode: .none)
                 t += 0.5
                 let img = renderer.snapshot(atTime: t, with: size, antialiasingMode: .none)
@@ -183,7 +183,7 @@ enum WorldDebugShots {
                     let f = simd_normalize(SIMD3(p.forward.x, 0, p.forward.z))
                     camNode.simdPosition = p.position + SIMD3(0, 20, 0)
                     camNode.simdLook(at: p.position, up: f, localFront: SIMD3(0, 0, -1))
-                    frame.update(camera: camNode.simdPosition, time: t)
+                    frame.update(camera: camNode.simdPosition, forward: camNode.simdWorldFront, time: t)
                     tiles.append(renderer.snapshot(atTime: t, with: size, antialiasingMode: .multisampling4X))
                     t += 0.1
                 }
@@ -283,7 +283,7 @@ enum WorldDebugShots {
             let eyeY = aim(at: spec.s)
             let ev = ["top", "high", "plan", "plan30"].contains(spec.view) ? 0 : LaneExposure.target(at: spec.s, profile: light)
             setExposure(ev)
-            frame.update(camera: eyeY, time: t)
+            frame.update(camera: eyeY, forward: camNode.simdWorldFront, time: t)
             let photo = spec.view == "eye"
             camera.fieldOfView = photo ? 46 : spec.view == "follow" ? 84 : 62
             let shotSize = photo ? CGSize(width: 1140, height: 900) : size
@@ -311,7 +311,7 @@ enum WorldDebugShots {
                         camNode.simdOrientation = turn * camNode.simdOrientation
                     }
                     let time = t + Double(k) * seq.dt
-                    frame.update(camera: eye, time: time)
+                    frame.update(camera: eye, forward: camNode.simdWorldFront, time: time)
                     let f = renderer.snapshot(atTime: time, with: shotSize, antialiasingMode: antialiasing)
                     let frameName = "w_\(at)_\(spec.view)_\(quality.rawValue)\(tag)_f\(String(format: "%02d", k)).png"
                     if let data = f.pngData() {

@@ -40,10 +40,24 @@ extension WorldShaders {
     #pragma body
     out.nrmM = _geometry.normal;
     float2 bo = _geometry.texcoords[3];
+    float2 sw = _geometry.texcoords[1];
+    float backLayer = step(\(TreeArchetype.backLayerPhase / 2), sw.y);
+    sw.y -= \(TreeArchetype.backLayerPhase) * backLayer;
     float3 sunP = _geometry.position.xyz + sunR * bo.x + sunU * bo.y;
     if (bo.x != 0.0 || bo.y != 0.0) {
         float3 camR = normalize(scn_frame.inverseViewTransform[0].xyz);
         float3 camU = normalize(scn_frame.inverseViewTransform[1].xyz);
+        float3 camB = normalize(scn_frame.inverseViewTransform[2].xyz);
+        // A back card (`TreeArchetype.card`) behind the one it shares its
+        // centre with: 4 cm, and further with the distance, by more than
+        // the depth buffer can tell apart out there (on screen it moves
+        // by nothing).
+        float backBy = 0.04;
+        if (scn_frame.projectionTransform[3][3] < 0.5) {
+            float3 eyeP = (scn_frame.viewTransform * (scn_node.modelTransform * float4(_geometry.position.xyz, 1.0))).xyz;
+            backBy = max(backBy, 0.0015 * length(eyeP));
+        }
+        _geometry.position.xyz -= camB * (backBy * backLayer);
         _geometry.position.xyz += camR * bo.x + camU * bo.y;
         // In the (orthographic) shadow pass the card faces the sun, not
         // the camera, so it would shade half of its own camera-facing
@@ -53,10 +67,9 @@ extension WorldShaders {
         // sunlit patch across it; deeper, the cut falls on the crown's far
         // side, which faces away from the sun.)
         if (scn_frame.projectionTransform[3][3] > 0.5) {
-            _geometry.position.xyz -= normalize(scn_frame.inverseViewTransform[2].xyz) * (1.6 * length(bo));
+            _geometry.position.xyz -= camB * (1.6 * length(bo));
         }
     }
-    float2 sw = _geometry.texcoords[1];
     \(shadeDecode)
     float t = scn_frame.time;
     float3 wp = _geometry.position.xyz;

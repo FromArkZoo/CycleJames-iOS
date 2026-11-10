@@ -149,6 +149,66 @@ enum SkyLighting {
         light.maximumShadowDistance = CGFloat(config.shadowDistance)
         light.shadowSampleCount = config.shadowSamples
         light.shadowRadius = config.quality == .battery ? 1 : look.shadowRadius
+        if let box = ShadowBox(config: config) {
+            // One map, drawn from where `FrameUpdater` stands the light.
+            // (More than one cascade here and SceneKit draws the shadow
+            // at a fraction of its strength.)
+            light.automaticallyAdjustsShadowProjection = false
+            light.orthographicScale = CGFloat(box.half)
+            light.zNear = 1
+            light.zFar = CGFloat(2 * ShadowBox.lift)
+        } else if !light.automaticallyAdjustsShadowProjection {
+            light.automaticallyAdjustsShadowProjection = true
+        }
+    }
+
+    /// The sun's shadow in one map held still on the ground
+    /// (`WorldConfig.shadowBoxHalf`): a square `2 * half` metres across in
+    /// the plane that faces the sun, `mapSize` texels a side, its centre a
+    /// whole number of texels from the world's origin whatever the camera
+    /// does. A shadow's edge then falls on the same texels from one frame
+    /// to the next and keeps still; fitted to the view, as SceneKit fits
+    /// its cascades, the texels slide under it with every move of the
+    /// camera and the edge crawls.
+    struct ShadowBox: Equatable {
+        var half: Float
+        var mapSize: Float
+
+        /// How far ahead of the camera the centre sits, as a share of
+        /// `half`: more of the map where the camera looks than behind it.
+        static let aheadShare: Float = 0.6
+        /// The light stands this far up the sunlight from the centre, and
+        /// its map reaches as far again beyond.
+        static let lift: Float = 300
+        /// The baked sun shade takes over from the map between these
+        /// shares of `half` from its centre (`WorldShaders.lightShadeByBox`).
+        static let fadeShares: (from: Float, to: Float) = (0.86, 0.98)
+
+        init?(config: WorldConfig) {
+            guard let half = config.shadowBoxHalf else { return nil }
+            self.half = Float(half)
+            mapSize = Float(config.shadowMapSize)
+        }
+
+        var texel: Float { 2 * half / mapSize }
+
+        /// The map's centre for a camera here, looking this way: ahead of
+        /// it along the ground. The shaders work the same point out from
+        /// the camera (`lightShadeByBox`), to within the half texel the
+        /// light's own is rounded by.
+        func centre(camera: SIMD3<Float>, forward: SIMD3<Float>) -> SIMD3<Float> {
+            camera + SIMD3(forward.x, 0, forward.z) * (half * Self.aheadShare)
+        }
+
+        /// Where the light stands for that camera: up the sunlight from
+        /// the centre, a whole number of texels along its own right and up.
+        func sunPosition(camera: SIMD3<Float>, forward: SIMD3<Float>) -> SIMD3<Float> {
+            let c = centre(camera: camera, forward: forward)
+            let r = WorldSun.right, u = WorldSun.up, s = WorldSun.toSun
+            let x = (simd_dot(c, r) / texel).rounded() * texel
+            let y = (simd_dot(c, u) / texel).rounded() * texel
+            return r * x + u * y + s * (simd_dot(c, s) + Self.lift)
+        }
     }
 
     /// Points the light's −z along the sunlight.

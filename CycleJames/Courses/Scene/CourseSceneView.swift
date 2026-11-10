@@ -400,7 +400,7 @@ struct CourseSceneView: UIViewRepresentable {
                 headHidden = cameraRig.hidesRiderHead
                 rider.setHeadVisible(!headHidden)
             }
-            world.onFrame(cameraRig.node.simdWorldPosition, time)
+            world.onFrame(cameraRig.node.simdWorldPosition, cameraRig.node.simdWorldFront, time)
         }
     }
 }
