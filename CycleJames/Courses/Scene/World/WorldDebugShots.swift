@@ -12,13 +12,36 @@ import Metal
 ///     -worldShotList 150:chase,590:broadcast,760:back
 ///                                     distances and views (chase, broadcast,
 ///                                     back, high, top, sun, plan, plan30,
-///                                     graze, eye, strip<metres>); default
-///                                     covers the climb
+///                                     graze, eye, follow, strip<metres>);
+///                                     default covers the climb
 ///     -worldShotTag v3                file name suffix
+///     -worldShotSeq 12,0.09,0.0167    after each view from the road, that
+///                                     many more frames, each so many metres
+///                                     up the road and seconds later (here a
+///                                     ride at 20 km/h and 60 fps), saved as
+///                                     ..._f00.png on: what moves or flickers
+///                                     in motion. 0 metres holds the camera,
+///                                     0 seconds the wind. A fourth number
+///                                     turns the camera that many degrees
+///                                     about the vertical per frame where it
+///                                     stands (12,0,0,0.5: a pan); each
+///                                     frame's camera is written beside them
+///                                     (..._cams.txt), so a pan's frames can
+///                                     be laid over one another exactly.
 enum WorldDebugShots {
     struct Spec {
         let s: Double
         let view: String
+    }
+
+    /// `-worldShotSeq`: frames, the metres and seconds between them, and
+    /// the degrees of pan.
+    static var sequence: (frames: Int, ds: Double, dt: Double, yawDeg: Double)? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-worldShotSeq"), i + 1 < args.count else { return nil }
+        let parts = args[i + 1].split(separator: ",").compactMap { Double($0) }
+        guard parts.count >= 3, parts[0] >= 1 else { return nil }
+        return (Int(parts[0]), parts[1], parts[2], parts.count > 3 ? parts[3] : 0)
     }
 
     static var directory: String? {
@@ -182,82 +205,93 @@ enum WorldDebugShots {
                 }
                 continue
             }
-            let pose = route.pose(at: spec.s, lateral: 0.4)
-            let fwdH = simd_normalize(SIMD3(pose.forward.x, 0, pose.forward.z))
-            let right = pose.right
-            let eye: SIMD3<Float>
-            let target: SIMD3<Float>
-            switch spec.view {
-            case "broadcast":
-                target = pose.position + SIMD3(0, 1.0, 0) - fwdH * 1.5
-                // Over or out of the Poggio's scrub and shrubs (no field
-                // elsewhere: unchanged): up to 2.5 m higher, else on the
-                // road's right edge as the ride's moto (pulled in along the
-                // line, the 2400 station ended behind the edge wall's top).
-                let station = pose.position + right * 6.5 + fwdH * 5 + SIMD3(0, 1.9, 0)
-                let moto = route.pose(at: spec.s + 5, lateral: 2.4).position + SIMD3(0, 1.9, 0)
-                eye = VegetationBuilder.ScrubField.current(routeLength: route.length)?
-                    .clearSight(eye: station, target: target, maxRaise: 2.5, fallback: moto) ?? station
-            case "back":
-                eye = route.pose(at: spec.s + 6, lateral: 0.2).position + SIMD3(0, 2.4, 0)
-                target = route.pose(at: spec.s - 60).position + SIMD3(0, 3, 0)
-            case "sun":
-                // Looking towards the sun: its disc in the baked sky must sit
-                // where the light comes from (shadows run towards the camera).
-                let ts = WorldSun.toSun
-                eye = pose.position + SIMD3(0, 2.0, 0)
-                target = eye + simd_normalize(SIMD3(ts.x, ts.y * 0.6, ts.z)) * 20
-            case "top":
-                // Straight down from 110 m, north up: every footprint near
-                // this distance should show as a roof.
-                eye = pose.position + SIMD3(0, 110, 0)
-                target = pose.position + SIMD3(0, 0, -0.01)
-            case "high":
-                eye = pose.position - fwdH * 30 + SIMD3(0, 28, 0)
-                target = route.pose(at: spec.s + 40).position
-            case "plan", "plan30":
-                // Straight down on the road, which runs up the frame: from 6 m
-                // about 3.3 x 7.2 m (182 px/m: setts, joints, any tile repeat;
-                // scripts/courses/debug/sett_repeat.py); from 30 m about
-                // 17 x 36 m (the 10-100 m variation).
-                let h: Float = spec.view == "plan" ? 6 : 30
-                eye = route.pose(at: spec.s, lateral: 0).position + SIMD3(0, h, 0)
-                target = route.pose(at: spec.s, lateral: 0).position
-            case "graze":
-                // Low along the lane, 40 m of road ahead: where a repeat would
-                // show as a rhythm, and where the setts fade to their mean.
-                eye = pose.position - fwdH * 2 + SIMD3(0, 1.2, 0)
-                target = route.pose(at: spec.s + 40).position + SIMD3(0, 0.4, 0)
-            case "eye":
-                // A photographer standing in the road, landscape and a
-                // normal lens, looking 20 m up the road and 4 m above it:
-                // to set beside a photo taken from the same spot.
-                eye = pose.position + SIMD3(0, 1.6, 0)
-                target = route.pose(at: spec.s + 20).position + SIMD3(0, 4.0, 0)
-            default:
-                eye = pose.position - fwdH * 5.2 + SIMD3(0, 2.3, 0)
-                target = route.pose(at: spec.s + 14).position + SIMD3(0, 1.1, 0)
+            /// Puts the camera where the view stands with the route at `s`;
+            /// returns its eye.
+            func aim(at s: Double) -> SIMD3<Float> {
+                let pose = route.pose(at: s, lateral: 0.4)
+                let fwdH = simd_normalize(SIMD3(pose.forward.x, 0, pose.forward.z))
+                let right = pose.right
+                let eye: SIMD3<Float>
+                let target: SIMD3<Float>
+                switch spec.view {
+                case "broadcast":
+                    target = pose.position + SIMD3(0, 1.0, 0) - fwdH * 1.5
+                    // Over or out of the Poggio's scrub and shrubs (no field
+                    // elsewhere: unchanged): up to 2.5 m higher, else on the
+                    // road's right edge as the ride's moto (pulled in along the
+                    // line, the 2400 station ended behind the edge wall's top).
+                    let station = pose.position + right * 6.5 + fwdH * 5 + SIMD3(0, 1.9, 0)
+                    let moto = route.pose(at: s + 5, lateral: 2.4).position + SIMD3(0, 1.9, 0)
+                    eye = VegetationBuilder.ScrubField.current(routeLength: route.length)?
+                        .clearSight(eye: station, target: target, maxRaise: 2.5, fallback: moto) ?? station
+                case "back":
+                    eye = route.pose(at: s + 6, lateral: 0.2).position + SIMD3(0, 2.4, 0)
+                    target = route.pose(at: s - 60).position + SIMD3(0, 3, 0)
+                case "sun":
+                    // Looking towards the sun: its disc in the baked sky must sit
+                    // where the light comes from (shadows run towards the camera).
+                    let ts = WorldSun.toSun
+                    eye = pose.position + SIMD3(0, 2.0, 0)
+                    target = eye + simd_normalize(SIMD3(ts.x, ts.y * 0.6, ts.z)) * 20
+                case "top":
+                    // Straight down from 110 m, north up: every footprint near
+                    // this distance should show as a roof.
+                    eye = pose.position + SIMD3(0, 110, 0)
+                    target = pose.position + SIMD3(0, 0, -0.01)
+                case "high":
+                    eye = pose.position - fwdH * 30 + SIMD3(0, 28, 0)
+                    target = route.pose(at: s + 40).position
+                case "plan", "plan30":
+                    // Straight down on the road, which runs up the frame: from 6 m
+                    // about 3.3 x 7.2 m (182 px/m: setts, joints, any tile repeat;
+                    // scripts/courses/debug/sett_repeat.py); from 30 m about
+                    // 17 x 36 m (the 10-100 m variation).
+                    let h: Float = spec.view == "plan" ? 6 : 30
+                    eye = route.pose(at: s, lateral: 0).position + SIMD3(0, h, 0)
+                    target = route.pose(at: s, lateral: 0).position
+                case "graze":
+                    // Low along the lane, 40 m of road ahead: where a repeat would
+                    // show as a rhythm, and where the setts fade to their mean.
+                    eye = pose.position - fwdH * 2 + SIMD3(0, 1.2, 0)
+                    target = route.pose(at: s + 40).position + SIMD3(0, 0.4, 0)
+                case "eye":
+                    // A photographer standing in the road, landscape and a
+                    // normal lens, looking 20 m up the road and 4 m above it:
+                    // to set beside a photo taken from the same spot.
+                    eye = pose.position + SIMD3(0, 1.6, 0)
+                    target = route.pose(at: s + 20).position + SIMD3(0, 4.0, 0)
+                case "follow":
+                    // As the ride's chase camera goes on a phone held
+                    // upright: on the road 6 m behind the rider, so through
+                    // a bend it swings as the ride's does (`-worldShotSeq`).
+                    eye = route.pose(at: s - 6.1, lateral: 0.34).position + SIMD3(0, 3.5, 0)
+                    target = route.pose(at: s + 14, lateral: 0.2).position + SIMD3(0, 1.3, 0)
+                default:
+                    eye = pose.position - fwdH * 5.2 + SIMD3(0, 2.3, 0)
+                    target = route.pose(at: s + 14).position + SIMD3(0, 1.1, 0)
+                }
+                // Keep the debug camera above the ground (the sunken lane); the
+                // graze view is meant to be low.
+                var eyeY = eye
+                let ground = Float(terrainHeight(eye.x, -eye.z))
+                if ground.isFinite, spec.view != "graze" { eyeY.y = max(eye.y, ground + 1.6) }
+                camNode.simdPosition = eyeY
+                let up: SIMD3<Float> = spec.view == "top" ? SIMD3(0, 0, -1) : spec.view.hasPrefix("plan") ? fwdH : SIMD3(0, 1, 0)
+                camNode.simdLook(at: target, up: up, localFront: SIMD3(0, 0, -1))
+                return eyeY
             }
-            // Keep the debug camera above the ground (the sunken lane); the
-            // graze view is meant to be low.
-            var eyeY = eye
-            let ground = Float(terrainHeight(eye.x, -eye.z))
-            if ground.isFinite, spec.view != "graze" { eyeY.y = max(eye.y, ground + 1.6) }
-            camNode.simdPosition = eyeY
-            let up: SIMD3<Float> = spec.view == "top" ? SIMD3(0, 0, -1) : spec.view.hasPrefix("plan") ? fwdH : SIMD3(0, 1, 0)
-            camNode.simdLook(at: target, up: up, localFront: SIMD3(0, 0, -1))
+            let eyeY = aim(at: spec.s)
             let ev = ["top", "high", "plan", "plan30"].contains(spec.view) ? 0 : LaneExposure.target(at: spec.s, profile: light)
             setExposure(ev)
             frame.update(camera: eyeY, time: t)
             let photo = spec.view == "eye"
-            camera.fieldOfView = photo ? 46 : 62
+            camera.fieldOfView = photo ? 46 : spec.view == "follow" ? 84 : 62
+            let shotSize = photo ? CGSize(width: 1140, height: 900) : size
+            let antialiasing: SCNAntialiasingMode = quality == .battery ? .none : .multisampling4X
             // Two frames so streamed grass and LOD settle.
             _ = renderer.snapshot(atTime: t, with: CGSize(width: 64, height: 128), antialiasingMode: .none)
             t += 0.5
-            let img = renderer.snapshot(atTime: t, with: photo ? CGSize(width: 1140, height: 900) : size,
-                                        antialiasingMode: quality == .battery ? .none : .multisampling4X)
-            t += 0.5
-            camera.fieldOfView = 62
+            let img = renderer.snapshot(atTime: t, with: shotSize, antialiasingMode: antialiasing)
             // Whole metres; a fraction kept (330.08:chase, a step of half a
             // course, to compare two frames for shimmer).
             let at = spec.s == spec.s.rounded() ? "\(Int(spec.s))" : "\(spec.s)"
@@ -265,6 +299,35 @@ enum WorldDebugShots {
             if let data = img.pngData() {
                 try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
             }
+            // The frames that follow in motion (`-worldShotSeq`).
+            if let seq = sequence {
+                // Each frame's camera: the vertical field of view (degrees)
+                // and its right, up and back axes in the world.
+                var cams = ""
+                for k in 0..<seq.frames {
+                    let eye = aim(at: spec.s + Double(k) * seq.ds)
+                    if seq.yawDeg != 0 {
+                        let turn = simd_quatf(angle: Float(Double(k) * seq.yawDeg * .pi / 180), axis: SIMD3(0, 1, 0))
+                        camNode.simdOrientation = turn * camNode.simdOrientation
+                    }
+                    let time = t + Double(k) * seq.dt
+                    frame.update(camera: eye, time: time)
+                    let f = renderer.snapshot(atTime: time, with: shotSize, antialiasingMode: antialiasing)
+                    let frameName = "w_\(at)_\(spec.view)_\(quality.rawValue)\(tag)_f\(String(format: "%02d", k)).png"
+                    if let data = f.pngData() {
+                        try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(frameName))
+                    }
+                    let m = camNode.simdWorldTransform
+                    let axes = [m.columns.0, m.columns.1, m.columns.2].flatMap { [$0.x, $0.y, $0.z] }
+                    cams += "\(camera.fieldOfView) " + axes.map { String(format: "%.7f", $0) }.joined(separator: " ") + "\n"
+                }
+                try? cams.write(to: URL(fileURLWithPath: dir)
+                    .appendingPathComponent("w_\(at)_\(spec.view)_\(quality.rawValue)\(tag)_cams.txt"), atomically: true, encoding: .utf8)
+                t += Double(seq.frames) * seq.dt
+                _ = aim(at: spec.s)
+            }
+            t += 0.5
+            camera.fieldOfView = 62
             let seen = visibleStats(scene: scene, renderer: renderer, camera: camNode)
             let roots = seen.byRoot.sorted { $0.key < $1.key }
                 .map { "\($0.key) \($0.value.triangles / 1000)k/\($0.value.draws)" }.joined(separator: ", ")

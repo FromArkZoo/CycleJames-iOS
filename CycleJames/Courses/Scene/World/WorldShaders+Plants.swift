@@ -21,17 +21,26 @@ extension WorldShaders {
 
     /// Wind: texcoord 1 = (sway weight, phase); texcoord 2 (`shadeDecode`)
     /// and the model-space normal are passed on to the fragment stage.
+    ///
+    /// `shadeV` (view space) is the vertex where its card stands turned to
+    /// the sun (`sunR`, `sunU`: the sun's right and up, `WorldSun`), in the
+    /// wind as the card is; off a card, the vertex itself. A leaf can take
+    /// its sun shadow there (`sunFacingShade`).
     static let windGeometry = """
     #pragma arguments
     float windStrength;
     float flutter;
+    float3 sunR;
+    float3 sunU;
     #pragma varyings
     float fao;
     float3 ftint;
     float3 nrmM;
+    float3 shadeV;
     #pragma body
     out.nrmM = _geometry.normal;
     float2 bo = _geometry.texcoords[3];
+    float3 sunP = _geometry.position.xyz + sunR * bo.x + sunU * bo.y;
     if (bo.x != 0.0 || bo.y != 0.0) {
         float3 camR = normalize(scn_frame.inverseViewTransform[0].xyz);
         float3 camU = normalize(scn_frame.inverseViewTransform[1].xyz);
@@ -55,7 +64,31 @@ extension WorldShaders {
     float3 off = float3(sin(t * 1.25 + sw.y), 0.0, cos(t * 1.05 + sw.y * 1.7)) * 0.06 * gust;
     off += float3(sin(t * 5.3 + wp.x * 2.1 + wp.y * 1.7), 0.35 * sin(t * 4.1 + wp.z * 1.9),
                   cos(t * 6.1 + wp.z * 2.3 + wp.y * 1.3)) * 0.02 * flutter;
-    _geometry.position.xyz += off * sw.x * windStrength;
+    off = off * sw.x * windStrength;
+    _geometry.position.xyz += off;
+    out.shadeV = (scn_frame.viewTransform * (scn_node.modelTransform * float4(sunP + off, 1.0))).xyz;
+    """
+
+    /// Appended to `foliageSurface` for billboard leaf cards
+    /// (`WorldMaterials.makeLeaves`): the leaf takes its sun shadow where
+    /// its card stands turned to the sun (`windGeometry`'s `shadeV`), as
+    /// the card that casts its shadow is turned, not where it is drawn.
+    ///
+    /// A card is drawn facing the camera, and SceneKit looks the shadow up
+    /// at the fragment it draws (`_surface.position`, read after this
+    /// stage). Drawn that way a card is a slice through the shade of
+    /// everything towards the sun, and the slice turns with the camera: in
+    /// a bend, or in the paused ride's orbit, the light and dark patches
+    /// slid across every bush and crown and straight shadow edges swept
+    /// over them (the Poggio's hairpin at route 650, the bushes on its
+    /// outside). Turned to the sun the card stays where it is whatever
+    /// the camera does, parallel to the casters and nearer the sun than
+    /// its own, so its shade keeps still and only the wind moves it. (The
+    /// Riviera's air, drawn after, reads the same position: half a card
+    /// out at most, nothing over the kilometres the air is measured in.)
+    static let sunFacingShade = """
+
+    _surface.position = in.shadeV;
     """
 
     /// Metres over which verge grass grows from flat to full height inside

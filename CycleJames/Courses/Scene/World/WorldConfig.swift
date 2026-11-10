@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// Per-tier knobs for the course environment. Every distance is metres; the
 /// "route" distances are measured from the centreline (the camera never
@@ -108,4 +109,9 @@ enum WorldSun {
         let east = sin(az) * cos(el), north = cos(az) * cos(el), up = sin(el)
         return SIMD3(Float(east), Float(up), Float(-north))
     }
+
+    /// The sun's own right and up, scene space: the axes of the plane that
+    /// faces it, as `SkyLighting.orient` turns the light.
+    static var right: SIMD3<Float> { simd_normalize(simd_cross(SIMD3(0, 1, 0), toSun)) }
+    static var up: SIMD3<Float> { simd_cross(toSun, right) }
 }

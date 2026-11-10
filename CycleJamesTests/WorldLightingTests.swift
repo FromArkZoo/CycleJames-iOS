@@ -1,6 +1,7 @@
 import XCTest
 import SceneKit
 import Metal
+import simd
 @testable import CycleJames
 
 /// The course's light raster (scripts/courses/textures/bake_light_maps.py,
@@ -307,5 +308,59 @@ final class WorldLightingTests: XCTestCase {
         XCTAssertGreaterThan(sky, 250, "sky \(px) \(tex.pixelFormat.rawValue)")
         XCTAssertGreaterThan(px[1], 250, "sun \(px)")
         XCTAssertGreaterThan(px[3], 250, "alpha \(px)")
+    }
+
+    /// A billboard leaf card is drawn facing the camera, and its sun shadow
+    /// looked up where it is drawn slid across it as the camera turned
+    /// (the Poggio's bushes and crowns in every bend and in the paused
+    /// ride's orbit). The Riviera's leaves take it where the card stands
+    /// turned to the sun (`WorldShaders.sunFacingShade`): that plane is the
+    /// light's own, every material that runs `windGeometry` has its axes
+    /// (an unset one reads 0: every card's shadow from its centre), and
+    /// the Flemish leaves, the grass and the far trees are as they were.
+    func test_rivieraLeafCardsTakeTheirSunShadowTurnedToTheSun() throws {
+        // The plane's axes are the sun's right and up as the light is turned.
+        let sun = SCNNode()
+        SkyLighting.orient(sun)
+        let t = sun.simdWorldTransform
+        func axis(_ c: SIMD4<Float>) -> SIMD3<Float> { SIMD3(c.x, c.y, c.z) }
+        XCTAssertEqual(simd_distance(axis(t.columns.0), WorldSun.right), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(axis(t.columns.1), WorldSun.up), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(axis(t.columns.2), WorldSun.toSun), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(simd_cross(WorldSun.right, WorldSun.up), WorldSun.toSun), 0, accuracy: 1e-5)
+        XCTAssertEqual(WorldSun.right.y, 0, accuracy: 1e-6, "the sun's right is level")
+
+        // The geometry stage hands the card on turned to the sun, in the
+        // wind the drawn card is in; the surface's last word is where the
+        // shadow is looked up.
+        let geometry = WorldShaders.windGeometry
+        XCTAssertTrue(geometry.contains("float3 sunP = _geometry.position.xyz + sunR * bo.x + sunU * bo.y;"))
+        XCTAssertTrue(geometry.contains("float4(sunP + off, 1.0)"))
+        let args = geometry.components(separatedBy: "#pragma arguments")[1].components(separatedBy: "#pragma")[0]
+        XCTAssertTrue(args.contains("float3 sunR;") && args.contains("float3 sunU;"))
+        XCTAssertTrue(WorldShaders.sunFacingShade.contains("_surface.position = in.shadeV;"))
+
+        let p = materials(try bundle("poggio"), .balanced), k = materials(try bundle("koppenberg"), .balanced)
+        for (m, name) in [(p.leaves, "riviera leaves"), (p.bark, "riviera bark"),
+                          (k.leaves, "flemish leaves"), (k.bark, "flemish bark")] {
+            XCTAssertEqual(m.shaderModifiers?[.geometry], WorldShaders.windGeometry, name)
+            for (key, want) in [("sunR", WorldSun.right), ("sunU", WorldSun.up)] {
+                let v = try XCTUnwrap((m.value(forKey: key) as? NSValue)?.scnVector3Value, "\(name): \(key)")
+                XCTAssertEqual(simd_distance(SIMD3(Float(v.x), Float(v.y), Float(v.z)), want), 0, accuracy: 1e-5,
+                               "\(name): \(key)")
+            }
+        }
+        XCTAssertEqual(p.leaves.shaderModifiers?[.surface], WorldShaders.foliageSurface + WorldShaders.sunFacingShade)
+        XCTAssertEqual(k.leaves.shaderModifiers?[.surface], WorldShaders.foliageSurface, "the Flemish leaves as they were")
+        // Whatever reads the card turned to the sun is handed it; the
+        // grass (no cards) and the far trees (past the shadow map) aren't.
+        for m in p.warmUp + k.warmUp where m.shaderModifiers?[.surface]?.contains("in.shadeV") ?? false {
+            XCTAssertTrue(m === p.leaves, String(m.shaderModifiers?[.surface]?.prefix(40) ?? ""))
+            XCTAssertTrue(m.shaderModifiers?[.geometry]?.contains("out.shadeV =") ?? false)
+        }
+        for m in [p.grass, p.impostor, k.grass, k.impostor] {
+            XCTAssertFalse(m.shaderModifiers?[.surface]?.contains("shadeV") ?? true)
+            XCTAssertFalse(m.shaderModifiers?[.geometry]?.contains("shadeV") ?? true)
+        }
     }
 }
