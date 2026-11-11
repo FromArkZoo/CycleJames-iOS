@@ -182,8 +182,8 @@ extension WorldConfig {
     /// casters where cascades took up to three, over more texels (2.25
     /// times battery's, a tenth to a third more on the others); the baked
     /// sun shade takes over at the map's edge (`lightShadeByBox`), 38 m
-    /// ahead at the least on battery where the cascade reached 45. Every
-    /// tier takes four samples of it (below).
+    /// ahead at the least on battery where the cascade reached 45. High
+    /// and battery take four samples of it, balanced two (below).
     func holdingShadows() -> WorldConfig {
         var c = self
         #if DEBUG
@@ -200,11 +200,15 @@ extension WorldConfig {
         c.shadowBoxHalf = half
         c.shadowCascades = 1
         c.shadowDistance = half
-        // Four samples on every tier (high had them). The map keeps still
-        // on the ground, so the rider's shadow rides across its texels:
-        // with battery's one hard sample, or balanced's two, its edge drew
-        // in 3 cm steps that crawled along it. Four draw it smooth.
-        c.shadowSamples = 4
+        // The map keeps still on the ground, so the rider's shadow rides
+        // across its texels: with one hard sample, or two, its edge draws
+        // in 3 cm steps that crawl along it; four draw it smooth. Battery
+        // takes four as high does: it is held to 30 frames a second and
+        // has them to spare. Balanced keeps its two, for the frame rate:
+        // an iPhone 14 that held 59-60 frames a second on the Poggio with
+        // two fell to 55-57 over its heaviest stretches with four
+        // (11 November, the first 50 s of a ride either way).
+        c.shadowSamples = quality == .balanced ? 2 : 4
         return c
     }
 

@@ -391,10 +391,13 @@ final class WorldLightingTests: XCTestCase {
             XCTAssertEqual(light.shadowMapSize.width, CGFloat(box.mapSize), "\(q)")
             XCTAssertGreaterThanOrEqual(Float(light.zFar), 2 * SkyLighting.ShadowBox.lift, "\(q)")
             // The rider's shadow rides across a map that keeps still: four
-            // samples and the region's penumbra on every tier, or its edge
-            // draws in 3 cm steps (battery took one hard sample, balanced two).
-            XCTAssertEqual(riviera.shadowSamples, 4, "\(q)")
-            XCTAssertEqual(light.shadowSampleCount, 4, "\(q)")
+            // samples draw its edge smooth, fewer in 3 cm steps. High and
+            // battery (held to 30 frames a second) take four; balanced
+            // keeps two, which is what held 60 frames a second on an
+            // iPhone 14. The region's penumbra on every tier.
+            let samples = q == .balanced ? 2 : 4
+            XCTAssertEqual(riviera.shadowSamples, samples, "\(q)")
+            XCTAssertEqual(light.shadowSampleCount, samples, "\(q)")
             XCTAssertEqual(light.shadowRadius, WorldLook.riviera.shadowRadius, accuracy: 1e-5, "\(q)")
             // And back to cascades for a tier that has them, sampled as it was.
             SkyLighting.applyShadows(light, config: flemish, look: .flanders)
