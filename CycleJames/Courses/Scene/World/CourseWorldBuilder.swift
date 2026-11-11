@@ -498,7 +498,8 @@ enum CourseWorldBuilder {
             light: light,
             setExposure: exposure,
             post: post,
-            look: look
+            look: look,
+            holdsShadowMap: config.shadowBoxHalf != nil
         )
     }
 }

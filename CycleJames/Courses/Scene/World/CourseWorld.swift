@@ -35,6 +35,9 @@ final class CourseWorld {
     let post: SCNTechnique?
     /// The region the world is drawn as.
     let look: WorldLook
+    /// Whether the sun's shadow is one map held still on the ground
+    /// (`SkyLighting.ShadowBox`), not cascades fitted to the view.
+    let holdsShadowMap: Bool
     let preferredFramesPerSecond: Int
 
     var route: CourseRoute { bundle.route }
@@ -52,7 +55,8 @@ final class CourseWorld {
         light: LightProfile = .open,
         setExposure: @escaping (Float) -> Void = { _ in },
         post: SCNTechnique? = nil,
-        look: WorldLook = .flanders
+        look: WorldLook = .flanders,
+        holdsShadowMap: Bool = false
     ) {
         self.scene = scene
         self.bundle = bundle
@@ -67,5 +71,6 @@ final class CourseWorld {
         self.setExposure = setExposure
         self.post = post
         self.look = look
+        self.holdsShadowMap = holdsShadowMap
     }
 }

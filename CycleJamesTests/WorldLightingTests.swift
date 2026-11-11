@@ -390,10 +390,18 @@ final class WorldLightingTests: XCTestCase {
             XCTAssertEqual(Float(light.orthographicScale), box.half, "\(q)")
             XCTAssertEqual(light.shadowMapSize.width, CGFloat(box.mapSize), "\(q)")
             XCTAssertGreaterThanOrEqual(Float(light.zFar), 2 * SkyLighting.ShadowBox.lift, "\(q)")
-            // And back to cascades for a tier that has them.
+            // The rider's shadow rides across a map that keeps still: four
+            // samples and the region's penumbra on every tier, or its edge
+            // draws in 3 cm steps (battery took one hard sample, balanced two).
+            XCTAssertEqual(riviera.shadowSamples, 4, "\(q)")
+            XCTAssertEqual(light.shadowSampleCount, 4, "\(q)")
+            XCTAssertEqual(light.shadowRadius, WorldLook.riviera.shadowRadius, accuracy: 1e-5, "\(q)")
+            // And back to cascades for a tier that has them, sampled as it was.
             SkyLighting.applyShadows(light, config: flemish, look: .flanders)
             XCTAssertTrue(light.automaticallyAdjustsShadowProjection, "\(q)")
             XCTAssertEqual(light.shadowCascadeCount, flemish.shadowCascades, "\(q)")
+            XCTAssertEqual(light.shadowSampleCount, [GraphicsQuality.high: 4, .balanced: 2, .battery: 1][q], "\(q)")
+            XCTAssertEqual(light.shadowRadius, q == .battery ? 1 : WorldLook.flanders.shadowRadius, accuracy: 1e-5, "\(q)")
         }
         // Wider and larger on the dearer tiers.
         let halves = [GraphicsQuality.high, .balanced, .battery].compactMap { WorldConfig.make($0).riviera().shadowBoxHalf }

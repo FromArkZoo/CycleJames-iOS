@@ -182,7 +182,8 @@ extension WorldConfig {
     /// casters where cascades took up to three, over more texels (2.25
     /// times battery's, a tenth to a third more on the others); the baked
     /// sun shade takes over at the map's edge (`lightShadeByBox`), 38 m
-    /// ahead at the least on battery where the cascade reached 45.
+    /// ahead at the least on battery where the cascade reached 45. Every
+    /// tier takes four samples of it (below).
     func holdingShadows() -> WorldConfig {
         var c = self
         #if DEBUG
@@ -199,6 +200,11 @@ extension WorldConfig {
         c.shadowBoxHalf = half
         c.shadowCascades = 1
         c.shadowDistance = half
+        // Four samples on every tier (high had them). The map keeps still
+        // on the ground, so the rider's shadow rides across its texels:
+        // with battery's one hard sample, or balanced's two, its edge drew
+        // in 3 cm steps that crawled along it. Four draw it smooth.
+        c.shadowSamples = 4
         return c
     }
 

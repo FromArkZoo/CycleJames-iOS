@@ -83,6 +83,8 @@ struct CourseSceneView: UIViewRepresentable {
                 try Task.checkCancellation()
                 let cameraRig = CameraRig(world: world)
                 let rider = await riderRig
+                // Too fine for a shadow map held still (`setSpokeShadows`).
+                rider.setSpokeShadows(!world.holdsShadowMap)
                 let built = CACurrentMediaTime()
                 try Task.checkCancellation()
                 // In the scene before it is prepared, so the rider's materials

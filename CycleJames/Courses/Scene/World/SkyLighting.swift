@@ -148,7 +148,9 @@ enum SkyLighting {
         if light.shadowCascadeCount != config.shadowCascades { light.shadowCascadeCount = config.shadowCascades }
         light.maximumShadowDistance = CGFloat(config.shadowDistance)
         light.shadowSampleCount = config.shadowSamples
-        light.shadowRadius = config.quality == .battery ? 1 : look.shadowRadius
+        // (A held map keeps the region's penumbra on battery too: it has
+        // the samples for it, `WorldConfig.holdingShadows`.)
+        light.shadowRadius = config.quality == .battery && config.shadowBoxHalf == nil ? 1 : look.shadowRadius
         if let box = ShadowBox(config: config) {
             // One map, drawn from where `FrameUpdater` stands the light.
             // (More than one cascade here and SceneKit draws the shadow
