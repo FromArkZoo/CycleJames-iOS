@@ -50,6 +50,43 @@ final class CourseCatalogTests: XCTestCase {
         XCTAssertEqual(CourseCatalog.all.map(\.id), CourseCatalog.courseIDs)
     }
 
+    /// Every credit a course shows names a licence, and each licence asks
+    /// for a link to its terms where the medium allows one: OSM's ODbL,
+    /// Flanders' Modellicentie and, on the Poggio, CC BY 4.0 (which the
+    /// course page listed without one until November 2026).
+    func test_everyCreditLinksToItsLicence() throws {
+        XCTAssertFalse(CourseCatalog.all.isEmpty)
+        for summary in CourseCatalog.all {
+            XCTAssertFalse(summary.attribution.isEmpty, summary.id)
+            for line in summary.attribution {
+                XCTAssertNotNil(CourseLicence.url(for: line), "\(summary.id): \(line)")
+            }
+        }
+        let poggio = try XCTUnwrap(CourseCatalog.summary(id: "poggio"))
+        let ccBy = poggio.attribution.filter { $0.contains("CC BY 4.0") }
+        XCTAssertEqual(ccBy.count, 5)
+        for line in ccBy {
+            XCTAssertEqual(CourseLicence.url(for: line)?.absoluteString, "https://creativecommons.org/licenses/by/4.0/", line)
+        }
+        // And the others keep their own.
+        XCTAssertEqual(CourseLicence.url(for: "© OpenStreetMap contributors (ODbL)"), CourseLicence.openStreetMap)
+    }
+
+    /// The Poggio is tarmac all the way, so nothing that speaks for every
+    /// climb calls them cobbled, and a trainer is promised cobbles only on
+    /// a climb that has them.
+    func test_copyCallsOnlyCobbledClimbsCobbled() throws {
+        XCTAssertFalse(CourseCopy.climbsTitle(count: 7).lowercased().contains("cobble"))
+        XCTAssertTrue(CourseCopy.climbsTitle(count: 7).hasPrefix("7 "))
+        let poggio = try XCTUnwrap(CourseCatalog.summary(id: "poggio"))
+        let koppenberg = try XCTUnwrap(CourseCatalog.summary(id: "koppenberg"))
+        XCTAssertEqual(poggio.lengthM(on: "cobbles"), 0)
+        XCTAssertGreaterThan(koppenberg.lengthM(on: "cobbles"), 0)
+        XCTAssertFalse(CourseCopy.trainerHint(hasCobbles: false).lowercased().contains("cobble"))
+        XCTAssertTrue(CourseCopy.trainerHint(hasCobbles: true).hasSuffix("cobbles included."))
+        XCTAssertTrue(CourseCopy.trainerHint(hasCobbles: false).hasSuffix("under your wheel."))
+    }
+
     func test_everyCourseLoadsWithConsistentData() throws {
         for id in CourseCatalog.courseIDs {
             let b = try bundle(id)
