@@ -1304,7 +1304,9 @@ enum VegetationBuilder {
     static func patchPhase(_ m: inout MeshBuffer, from first: Int, phase: Float, tint: Float) {
         guard m.uv2.count == m.vertexCount * 2, m.uv3.count == m.vertexCount * 2 else { return }
         for i in first..<m.vertexCount {
-            m.uv2[2 * i + 1] = phase
+            // A back card keeps its mark (`TreeArchetype.backLayerPhase`).
+            let back = m.uv2[2 * i + 1] >= TreeArchetype.backLayerPhase / 2
+            m.uv2[2 * i + 1] = phase + (back ? TreeArchetype.backLayerPhase : 0)
             m.uv3[2 * i + 1] = tint
         }
     }

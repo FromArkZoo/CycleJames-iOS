@@ -203,6 +203,23 @@ struct TreeArchetype {
         return t * t * (height / 14)
     }
 
+    /// Added to the wind phase (texture channel 1's y) of a billboard card
+    /// that stands behind another on the same centre (`card`'s `back`); a
+    /// phase itself is under 2 pi. `WorldShaders.windGeometry` takes it off
+    /// again and draws the card a little further from the viewer, and
+    /// `VegetationBuilder.patchPhase` keeps it.
+    static let backLayerPhase: Float = 100
+
+    /// Whether back cards are marked at all.
+    static let marksBackCards: Bool = {
+        #if DEBUG
+        // -leafBackLayer 0: the pairs as they were, to set beside it on one build.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-leafBackLayer"), i + 1 < args.count, args[i + 1] == "0" { return false }
+        #endif
+        return true
+    }()
+
     /// One leaf card (part 1). `normal` faces outward; normals are bent away
     /// from the crown centre so a crown shades like a volume. Billboard
     /// cards keep all their corners at the centre and carry their (rolled)
@@ -210,10 +227,19 @@ struct TreeArchetype {
     /// face the viewer, so a crown never shows a card edge-on. `mirror`
     /// flips the cell left to right (the same leaves, another outline);
     /// `hull` (see `broadHull`) trims the square to the cell's leaves.
+    ///
+    /// `back`: the second of two billboards on one centre. Turned to the
+    /// viewer both lie in one plane, and which is drawn over the other
+    /// came down to the wind moving their corners by millimetres: the two
+    /// swapped along a straight line through the plant, and with their
+    /// normals a quarter turn apart one side of the line was sunlit and
+    /// the other in shade. The line swept across the plant as the camera
+    /// moved, like a shadow sliding over it. A back card is drawn behind
+    /// the other, always (`backLayerPhase`).
     static func card(_ m: inout MeshBuffer, centre c: SIMD3<Float>, size: Float, normal: SIMD3<Float>,
                      roll: Float, uv: SIMD4<Float>, crownCentre: SIMD3<Float>, crownRadii: SIMD3<Float>,
                      height: Float, ao: Float, bend: Float = 0.75, aspect: Float = 1, baseY: Float = 0,
-                     billboard: Bool = true, mirror: Bool = false, hull: [SIMD2<Float>]? = nil) {
+                     billboard: Bool = true, mirror: Bool = false, hull: [SIMD2<Float>]? = nil, back: Bool = false) {
         let n = simd_normalize(normal)
         let ref: SIMD3<Float> = abs(n.y) < 0.9 ? SIMD3(0, 1, 0) : SIMD3(1, 0, 0)
         var right = simd_normalize(simd_cross(ref, n))
@@ -239,7 +265,8 @@ struct TreeArchetype {
             if simd_length(out) < 1e-3 { out = n }
             let bn = simd_normalize(n * (1 - bend) + simd_normalize(out) * bend)
             m.vertex(p.x, p.y, p.z, bn.x, bn.y, bn.z, u, v)
-            m.texcoord2(swayWeight(y: corner.y - baseY, height: height), 0)
+            m.texcoord2(swayWeight(y: corner.y - baseY, height: height),
+                        back && billboard && marksBackCards ? backLayerPhase : 0)
             let depth = simd_length((corner - crownCentre) / crownRadii)
             let shade = ao * (0.55 + 0.45 * min(depth, 1)) * (0.8 + 0.2 * min(max((corner.y - crownCentre.y) / crownRadii.y * 0.5 + 0.5, 0), 1))
             m.texcoord3(shade, 0)

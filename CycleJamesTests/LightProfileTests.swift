@@ -190,6 +190,34 @@ final class LightProfileTests: XCTestCase {
         XCTAssertEqual(applied, [0], "set once at the start, then left alone")
     }
 
+    /// A spoke is too fine for a shadow map held still on the ground (the
+    /// Poggio's): the wheels' shadows filled with dots that changed every
+    /// frame. There the spokes cast none, and the rims, tyres and the rest
+    /// of the bike and rider still do; elsewhere everything is as it was.
+    func test_spokesCastNoShadowOnAHeldShadowMap() throws {
+        let rig = RiderRig(quality: .balanced)
+        func casters() -> [String: Bool] {
+            var out: [String: Bool] = [:]
+            rig.node.enumerateHierarchy { n, _ in
+                // (The wheels' and the crank's nodes go by their geometry's name.)
+                if let name = n.geometry?.name ?? n.name, n.geometry != nil { out[name] = n.castsShadow }
+            }
+            return out
+        }
+        let before = casters()
+        XCTAssertEqual(before["bike.frontSpokes"], true)
+        XCTAssertEqual(before["bike.rearSpokes"], true)
+        rig.setSpokeShadows(false)
+        var expected = before
+        expected["bike.frontSpokes"] = false
+        expected["bike.rearSpokes"] = false
+        XCTAssertEqual(casters(), expected, "only the spokes change")
+        XCTAssertEqual(casters()["bike.frontWheel"], true)
+        XCTAssertEqual(casters()["bike.frame"], true)
+        rig.setSpokeShadows(true)
+        XCTAssertEqual(casters(), before)
+    }
+
     /// Every material on the rider and bike carries the sky light at 1,
     /// and all of them follow `setSkyVisibility`, never below the floor.
     func test_riderSkyLightReachesEveryMaterial() {

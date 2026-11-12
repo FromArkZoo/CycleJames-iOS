@@ -813,4 +813,61 @@ final class TreeArchetypeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(clearance.groundTop(east: near.e, north: near.n, near: s), near.top - 0.01,
                                     "the ride's clearance has the scrub")
     }
+
+    /// Two billboards on one centre lie in one plane once both face the
+    /// viewer, and swapped along a straight line that swept over the plant
+    /// as the camera moved (the Poggio's bushes and scrub: sunlit one side
+    /// of the line, shaded the other). The second of such a pair is marked
+    /// in its wind phase, the mark survives the phase being set, and the
+    /// wind shader takes it off and draws the card behind the first.
+    func test_twoBillboardsOnOneCentreAreLayered() {
+        let mark = TreeArchetype.backLayerPhase
+        XCTAssertGreaterThan(mark / 2, 2 * .pi, "a phase is never taken for the mark")
+        func phases(_ m: MeshBuffer) -> [Float] { stride(from: 1, to: m.uv2.count, by: 2).map { m.uv2[$0] } }
+        func card(_ m: inout MeshBuffer, billboard: Bool = true, back: Bool) {
+            TreeArchetype.card(&m, centre: SIMD3(1, 2, 3), size: 1.4, normal: SIMD3(1, 0.2, 0), roll: 0.3,
+                               uv: TreeArchetype.medEvergreenUV, crownCentre: SIMD3(1, 1.6, 3), crownRadii: SIMD3(repeating: 1),
+                               height: 6, ao: 0.85, billboard: billboard, back: back)
+        }
+        var m = MeshBuffer(parts: 2)
+        card(&m, back: false)
+        card(&m, back: true)
+        card(&m, billboard: false, back: true)
+        XCTAssertEqual(phases(m), [0, 0, 0, 0, mark, mark, mark, mark, 0, 0, 0, 0], "a fixed card stands where it is built")
+        VegetationBuilder.patchPhase(&m, from: 0, phase: 3.3, tint: 0)
+        VegetationBuilder.patchPhase(&m, from: 0, phase: 1.25, tint: 0)
+        XCTAssertEqual(phases(m), [1.25, 1.25, 1.25, 1.25, mark + 1.25, mark + 1.25, mark + 1.25, mark + 1.25, 1.25, 1.25, 1.25, 1.25])
+
+        // The scrub's clumps: two cards on the clump's centre, the second
+        // behind; one card or three (each on its own centre) unmarked.
+        for cards in 1...3 {
+            var rnd = WorldRandom(seed: 41)
+            let clump = VegetationBuilder.scrubClump(centre: SIMD3(0, 1, 0), radii: SIMD3(0.9, 0.8, 0.9), cards: cards,
+                                                     uv: TreeArchetype.medEvergreenUV, colour: SIMD3(1, 1, 1), sky: 1, baseY: 0,
+                                                     rnd: &rnd)
+            assertChannels(clump, "scrub clump of \(cards)")
+            let back = phases(clump).map { $0 >= mark / 2 }
+            if cards == 2 {
+                XCTAssertEqual(back, [false, false, false, false, true, true, true, true])
+                XCTAssertEqual(Array(clump.positions[0..<3]), Array(clump.positions[12..<15]), "on one centre")
+            } else {
+                XCTAssertFalse(back.contains(true), "\(cards) card(s)")
+            }
+            XCTAssertTrue(phases(clump).allSatisfy { $0.truncatingRemainder(dividingBy: mark) < 2 * .pi + 0.01 })
+        }
+
+        let wind = WorldShaders.windGeometry
+        XCTAssertTrue(wind.contains("float backLayer = step(50.0, sw.y);"))
+        XCTAssertTrue(wind.contains("sw.y -= 100.0 * backLayer;"))
+        XCTAssertTrue(wind.contains("_geometry.position.xyz -= camB * (backBy * backLayer);"))
+        // The mark comes off before the wind reads the phase.
+        let off = wind.range(of: "sw.y -= 100.0 * backLayer;")!.lowerBound
+        let gust = wind.range(of: "float gust")!.lowerBound
+        XCTAssertTrue(off < gust)
+        // No Flemish plant carries it: their meshes are as they were.
+        for a in all where !a.form.isRiviera {
+            XCTAssertFalse(phases(a.full).contains { $0 >= mark / 2 }, "\(a.form)")
+            XCTAssertFalse(phases(a.light).contains { $0 >= mark / 2 }, "\(a.form) light")
+        }
+    }
 }

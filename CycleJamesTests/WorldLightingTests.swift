@@ -1,6 +1,7 @@
 import XCTest
 import SceneKit
 import Metal
+import simd
 @testable import CycleJames
 
 /// The course's light raster (scripts/courses/textures/bake_light_maps.py,
@@ -307,5 +308,187 @@ final class WorldLightingTests: XCTestCase {
         XCTAssertGreaterThan(sky, 250, "sky \(px) \(tex.pixelFormat.rawValue)")
         XCTAssertGreaterThan(px[1], 250, "sun \(px)")
         XCTAssertGreaterThan(px[3], 250, "alpha \(px)")
+    }
+
+    /// A billboard leaf card is drawn facing the camera, and its sun shadow
+    /// looked up where it is drawn slid across it as the camera turned
+    /// (the Poggio's bushes and crowns in every bend and in the paused
+    /// ride's orbit). The Riviera's leaves take it where the card stands
+    /// turned to the sun (`WorldShaders.sunFacingShade`): that plane is the
+    /// light's own, every material that runs `windGeometry` has its axes
+    /// (an unset one reads 0: every card's shadow from its centre), and
+    /// the Flemish leaves, the grass and the far trees are as they were.
+    func test_rivieraLeafCardsTakeTheirSunShadowTurnedToTheSun() throws {
+        // The plane's axes are the sun's right and up as the light is turned.
+        let sun = SCNNode()
+        SkyLighting.orient(sun)
+        let t = sun.simdWorldTransform
+        func axis(_ c: SIMD4<Float>) -> SIMD3<Float> { SIMD3(c.x, c.y, c.z) }
+        XCTAssertEqual(simd_distance(axis(t.columns.0), WorldSun.right), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(axis(t.columns.1), WorldSun.up), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(axis(t.columns.2), WorldSun.toSun), 0, accuracy: 1e-5)
+        XCTAssertEqual(simd_distance(simd_cross(WorldSun.right, WorldSun.up), WorldSun.toSun), 0, accuracy: 1e-5)
+        XCTAssertEqual(WorldSun.right.y, 0, accuracy: 1e-6, "the sun's right is level")
+
+        // The geometry stage hands the card on turned to the sun, in the
+        // wind the drawn card is in; the surface's last word is where the
+        // shadow is looked up.
+        let geometry = WorldShaders.windGeometry
+        XCTAssertTrue(geometry.contains("float3 sunP = _geometry.position.xyz + sunR * bo.x + sunU * bo.y;"))
+        XCTAssertTrue(geometry.contains("float4(sunP + off, 1.0)"))
+        let args = geometry.components(separatedBy: "#pragma arguments")[1].components(separatedBy: "#pragma")[0]
+        XCTAssertTrue(args.contains("float3 sunR;") && args.contains("float3 sunU;"))
+        XCTAssertTrue(WorldShaders.sunFacingShade.contains("_surface.position = in.shadeV;"))
+
+        let p = materials(try bundle("poggio"), .balanced), k = materials(try bundle("koppenberg"), .balanced)
+        for (m, name) in [(p.leaves, "riviera leaves"), (p.bark, "riviera bark"),
+                          (k.leaves, "flemish leaves"), (k.bark, "flemish bark")] {
+            XCTAssertEqual(m.shaderModifiers?[.geometry], WorldShaders.windGeometry, name)
+            for (key, want) in [("sunR", WorldSun.right), ("sunU", WorldSun.up)] {
+                let v = try XCTUnwrap((m.value(forKey: key) as? NSValue)?.scnVector3Value, "\(name): \(key)")
+                XCTAssertEqual(simd_distance(SIMD3(Float(v.x), Float(v.y), Float(v.z)), want), 0, accuracy: 1e-5,
+                               "\(name): \(key)")
+            }
+        }
+        XCTAssertEqual(p.leaves.shaderModifiers?[.surface], WorldShaders.foliageSurface + WorldShaders.sunFacingShade)
+        XCTAssertEqual(k.leaves.shaderModifiers?[.surface], WorldShaders.foliageSurface, "the Flemish leaves as they were")
+        // Whatever reads the card turned to the sun is handed it; the
+        // grass (no cards) and the far trees (past the shadow map) aren't.
+        for m in p.warmUp + k.warmUp where m.shaderModifiers?[.surface]?.contains("in.shadeV") ?? false {
+            XCTAssertTrue(m === p.leaves, String(m.shaderModifiers?[.surface]?.prefix(40) ?? ""))
+            XCTAssertTrue(m.shaderModifiers?[.geometry]?.contains("out.shadeV =") ?? false)
+        }
+        for m in [p.grass, p.impostor, k.grass, k.impostor] {
+            XCTAssertFalse(m.shaderModifiers?[.surface]?.contains("shadeV") ?? true)
+            XCTAssertFalse(m.shaderModifiers?[.geometry]?.contains("shadeV") ?? true)
+        }
+    }
+
+    /// SceneKit refits its shadow cascades to the camera every frame and
+    /// snaps nothing, so shadow edges crawled by a texel as the camera
+    /// moved: 7 cm on the battery tier, where the rider's shadow drew as
+    /// blocks and blocks of shade slid over the Poggio's bushes. Each of
+    /// the Riviera's tiers draws one map instead, 1.6 cm a texel (2.3 cm
+    /// on battery), fine enough that the rider's shadow draws clean, and
+    /// the light is set up to draw it; the Flemish tiers keep their
+    /// cascades.
+    func test_theRivierasTiersHoldTheirShadowMapStill() {
+        for q in [GraphicsQuality.high, .balanced, .battery] {
+            let flemish = WorldConfig.make(q), riviera = flemish.riviera()
+            XCTAssertNil(flemish.shadowBoxHalf, "\(q)")
+            XCTAssertNil(SkyLighting.ShadowBox(config: flemish), "\(q)")
+            let box = try? XCTUnwrap(SkyLighting.ShadowBox(config: riviera), "\(q)")
+            guard let box else { continue }
+            XCTAssertEqual(riviera.shadowCascades, 1, "\(q)")
+            XCTAssertEqual(box.texel, q == .battery ? 0.0234375 : 0.015625, accuracy: 1e-6, "\(q): metres a texel")
+            XCTAssertEqual(Double(box.half), riviera.shadowDistance, "\(q)")
+
+            let light = SCNLight()
+            light.type = .directional
+            light.automaticallyAdjustsShadowProjection = true
+            SkyLighting.applyShadows(light, config: riviera, look: .riviera)
+            XCTAssertFalse(light.automaticallyAdjustsShadowProjection, "\(q)")
+            XCTAssertEqual(light.shadowCascadeCount, 1, "\(q): more cascades and the shadow draws faint")
+            XCTAssertEqual(Float(light.orthographicScale), box.half, "\(q)")
+            XCTAssertEqual(light.shadowMapSize.width, CGFloat(box.mapSize), "\(q)")
+            XCTAssertGreaterThanOrEqual(Float(light.zFar), 2 * SkyLighting.ShadowBox.lift, "\(q)")
+            // The rider's shadow rides across a map that keeps still: four
+            // samples draw its edge smooth, fewer in texel steps. High and
+            // battery (held to 30 frames a second) take four; balanced
+            // keeps two, which is what held 60 frames a second on an
+            // iPhone 14. The region's penumbra on every tier.
+            let samples = q == .balanced ? 2 : 4
+            XCTAssertEqual(riviera.shadowSamples, samples, "\(q)")
+            XCTAssertEqual(light.shadowSampleCount, samples, "\(q)")
+            XCTAssertEqual(light.shadowRadius, WorldLook.riviera.shadowRadius, accuracy: 1e-5, "\(q)")
+            // And back to cascades for a tier that has them, sampled as it was.
+            SkyLighting.applyShadows(light, config: flemish, look: .flanders)
+            XCTAssertTrue(light.automaticallyAdjustsShadowProjection, "\(q)")
+            XCTAssertEqual(light.shadowCascadeCount, flemish.shadowCascades, "\(q)")
+            XCTAssertEqual(light.shadowSampleCount, [GraphicsQuality.high: 4, .balanced: 2, .battery: 1][q], "\(q)")
+            XCTAssertEqual(light.shadowRadius, q == .battery ? 1 : WorldLook.flanders.shadowRadius, accuracy: 1e-5, "\(q)")
+        }
+        // No narrower and no smaller on a dearer tier, and at the least
+        // 38 m of it ahead of the camera.
+        let tiers = [GraphicsQuality.high, .balanced, .battery].map { WorldConfig.make($0).riviera() }
+        let halves = tiers.compactMap(\.shadowBoxHalf), sizes = tiers.map(\.shadowMapSize)
+        XCTAssertEqual(halves, [32, 24, 24])
+        XCTAssertEqual(sizes, sizes.sorted(by: >))
+        for half in halves {
+            let ahead = (Double(SkyLighting.ShadowBox.aheadShare) + Double(SkyLighting.ShadowBox.fadeShares.to)) * half
+            XCTAssertGreaterThanOrEqual(ahead, 37.9)
+        }
+    }
+
+    /// The map keeps still because the light only ever stands a whole
+    /// number of texels along its own right and up, wherever the camera is
+    /// and whichever way it looks; its centre is ahead of the camera along
+    /// the ground, and the light `lift` up the sunlight from it.
+    func test_theShadowMapMovesByWholeTexels() throws {
+        let box = try XCTUnwrap(SkyLighting.ShadowBox(config: WorldConfig.make(.battery).riviera()))
+        let r = WorldSun.right, u = WorldSun.up, s = WorldSun.toSun
+        var rnd = SystemRandomNumberGenerator()
+        var seen = Set<SIMD2<Int32>>()
+        for i in 0..<400 {
+            // A ride: a few centimetres a frame, turning.
+            let camera = SIMD3<Float>(350 + Float(i) * 0.093, 37 + Float(i) * 0.004, 355 - Float(i) * 0.031)
+            let a = Float(i) * 0.012 + Float.random(in: 0...0.001, using: &rnd)
+            let forward = simd_normalize(SIMD3<Float>(sin(a), -0.15, -cos(a)))
+            let sun = box.sunPosition(camera: camera, forward: forward)
+            let tx = simd_dot(sun, r) / box.texel, ty = simd_dot(sun, u) / box.texel
+            XCTAssertEqual(tx, tx.rounded(), accuracy: 0.02, "frame \(i): right")
+            XCTAssertEqual(ty, ty.rounded(), accuracy: 0.02, "frame \(i): up")
+            seen.insert(SIMD2(Int32(tx.rounded()), Int32(ty.rounded())))
+            let centre = box.centre(camera: camera, forward: forward)
+            XCTAssertEqual(simd_distance(centre, camera + SIMD3(forward.x, 0, forward.z) * (box.half * 0.6)), 0, accuracy: 1e-4)
+            XCTAssertEqual(simd_dot(sun - centre, s), SkyLighting.ShadowBox.lift, accuracy: 0.01, "frame \(i)")
+            // Within half a texel of the centre each way.
+            XCTAssertLessThanOrEqual(abs(simd_dot(sun - centre, r)), box.texel * 0.51, "frame \(i)")
+            XCTAssertLessThanOrEqual(abs(simd_dot(sun - centre, u)), box.texel * 0.51, "frame \(i)")
+        }
+        XCTAssertGreaterThan(seen.count, 100, "it does follow the camera")
+    }
+
+    /// The map's shadows are drawn wherever it reaches, at any depth, so on
+    /// those tiers the baked sun shade comes in at the map's edge and not
+    /// at a camera depth: laid over the map's shadows it would darken them
+    /// twice. Every lit material of the Riviera, and none of Flanders'.
+    func test_bakedShadeComesInAtTheShadowMapsEdge() throws {
+        XCTAssertEqual(WorldShaders.lightApply.components(separatedBy: WorldShaders.lightShadeByDepth).count, 2)
+        XCTAssertTrue(WorldShaders.lightShadeByBox.contains("float lgtG = "))
+        XCTAssertFalse(WorldShaders.lightShadeByBox.contains("lgtD"))
+
+        let poggio = try bundle("poggio")
+        let config = WorldConfig.make(.balanced).riviera()
+        let p = WorldMaterials(config: config, textures: WorldTextures(limit: config.textureLimit), bundle: poggio,
+                               art: CourseArt.make(bundle: poggio))
+        let box = try XCTUnwrap(SkyLighting.ShadowBox(config: config))
+        p.holdLightToShadowBox()
+        p.holdLightToShadowBox()
+        XCTAssertFalse(p.lit.isEmpty)
+        for m in p.lit {
+            let surface = m.shaderModifiers?[.surface] ?? ""
+            let label = String(surface.prefix(40))
+            XCTAssertEqual(surface.components(separatedBy: WorldShaders.lightShadeByBox).count, 2, label)
+            XCTAssertFalse(surface.contains(WorldShaders.lightShadeByDepth), label)
+            let k = try XCTUnwrap((m.value(forKey: "lightK") as? NSValue)?.scnVector4Value, label)
+            XCTAssertEqual(k.y, box.half * 0.86, accuracy: 1e-4, label)
+            XCTAssertEqual(k.z, box.half * 0.98, accuracy: 1e-4, label)
+        }
+        // A live step keeps to the map: the battery tier's.
+        let battery = WorldConfig.make(.battery).riviera()
+        p.applyLive(battery)
+        for m in p.lit {
+            let k = (m.value(forKey: "lightK") as? NSValue)?.scnVector4Value
+            XCTAssertEqual(k?.z ?? 0, Float(battery.shadowBoxHalf ?? 0) * 0.98, accuracy: 1e-4)
+        }
+
+        let k = materials(try bundle("koppenberg"), .balanced)
+        k.holdLightToShadowBox()
+        for m in k.lit {
+            let surface = m.shaderModifiers?[.surface] ?? ""
+            XCTAssertTrue(surface.contains(WorldShaders.lightShadeByDepth), String(surface.prefix(40)))
+            XCTAssertFalse(surface.contains("lgtBr"), String(surface.prefix(40)))
+        }
     }
 }

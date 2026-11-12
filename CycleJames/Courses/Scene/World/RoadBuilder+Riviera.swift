@@ -580,11 +580,19 @@ extension RoadBuilder {
 
     // MARK: Fans' writing
 
-    /// What the fans paint: encouragement and riders' names in capitals,
-    /// mostly white, now and then in colour (look.md: "VAI", rider names,
-    /// squiggles; repainted every year).
-    private static let fanWords = ["VAI", "DAI", "FORZA", "ALLEZ", "VAI VAI", "TADEJ", "POGI", "MATHIEU",
-                                   "PIPPO", "GANNA", "MILAN", "SLO", "W", "BRAVI", "GO"]
+    /// The name the fans paint where a real road has its riders' (look.md:
+    /// "VAI", rider names, squiggles): the app's own, so no real person's
+    /// name is on the road.
+    static let fanName = "CYCLEJAMES"
+
+    /// What the fans paint: encouragement and `fanName` in capitals,
+    /// mostly white, now and then in colour (repainted every year). The
+    /// name stands in the six places of the list that held riders' names
+    /// (TADEJ, POGI, MATHIEU, PIPPO, GANNA, MILAN), so it is painted as
+    /// often as they were: six of the Poggio's thirteen words. Ten letters
+    /// take the whole road, 35 cm a letter on its 4.7 m.
+    static let fanWords = ["VAI", "DAI", "FORZA", "ALLEZ", "VAI VAI", fanName, fanName, fanName,
+                           fanName, fanName, fanName, "SLO", "W", "BRAVI", "GO"]
 
     /// Where the fans write: look s 900, 1430 and 3300 (POV 2023 and 2024)
     /// and just past each hairpin. Each site's words and squiggles run

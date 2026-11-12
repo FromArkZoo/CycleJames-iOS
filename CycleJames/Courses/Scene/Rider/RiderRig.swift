@@ -141,6 +141,19 @@ final class RiderRig {
         standHipHeight = Self.solveStandingHipHeight(layout: L)
     }
 
+    /// Whether the spokes cast shadows (they do unless told otherwise). A
+    /// spoke is 2 mm across. Where the sun's shadow map is held still on
+    /// the ground at 1.6 cm a texel or more (`SkyLighting.ShadowBox`) a spoke falls
+    /// on a texel here and there, and as the bike rode over the map the
+    /// wheels' shadows filled with dots that changed every frame. Without
+    /// them the rims, tyres and hubs still cast: a ring, as a turning
+    /// wheel's shadow is. Before the rider is in a scene, or on the render
+    /// thread.
+    func setSpokeShadows(_ cast: Bool) {
+        frontSpokes.castsShadow = cast
+        rearSpokes.castsShadow = cast
+    }
+
     /// Hides the head, helmet and glasses (for a camera inside the head).
     func setHeadVisible(_ visible: Bool) {
         head.isHidden = !visible

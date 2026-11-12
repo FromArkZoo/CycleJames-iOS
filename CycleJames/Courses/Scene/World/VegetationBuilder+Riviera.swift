@@ -692,12 +692,13 @@ extension VegetationBuilder {
             let centre = base + SIMD3(0, h * 0.5, 0)
             let radii = SIMD3<Float>(r, h * 0.5, r)
             // (Square, two triangles each, as the Flemish shrubs' light
-            // cards: 26 000 of them.)
+            // cards: 26 000 of them. On one centre: the second behind the
+            // first, `TreeArchetype.card`'s `back`.)
             for k in 0..<2 {
                 let az = rnd.range(0, 3.14) + Float(k) * 1.57
                 TreeArchetype.card(&light, centre: centre, size: max(2 * r, h) * 1.1, normal: SIMD3(cos(az), 0.2, sin(az)),
                                    roll: rnd.range(-0.3, 0.3), uv: uv, crownCentre: centre - SIMD3(0, h * 0.3, 0), crownRadii: radii,
-                                   height: max(h, 2) * 3, ao: 0.85, bend: 0.6, baseY: y, mirror: k == 1)
+                                   height: max(h, 2) * 3, ao: 0.85, bend: 0.6, baseY: y, mirror: k == 1, back: k == 1)
             }
             patchPhase(&light, from: 0, phase: rnd.range(0, 6.28), tint: TreeArchetype.packColour(colour))
             skyShade(&light, from: 0, sky: skyHere, baseY: y, height: h)
@@ -1047,7 +1048,8 @@ extension VegetationBuilder {
                 TreeArchetype.card(&m, centre: centre, size: max(2 * r, h) * (cards == 1 ? 1.2 : 1.1),
                                    normal: SIMD3(cos(az), 0.2, sin(az)), roll: rnd.range(-0.4, 0.4), uv: uv,
                                    crownCentre: centre - SIMD3(0, h * 0.3, 0), crownRadii: crownRadii, height: max(h, 2) * 3,
-                                   ao: 0.82, bend: 0.6, aspect: wide, baseY: baseY, mirror: k == 1 || rnd.unit() < 0.3)
+                                   ao: 0.82, bend: 0.6, aspect: wide, baseY: baseY, mirror: k == 1 || rnd.unit() < 0.3,
+                                   back: k == 1)
             }
         }
         patchPhase(&m, from: 0, phase: rnd.range(0, 6.28), tint: TreeArchetype.packColour(colour))
