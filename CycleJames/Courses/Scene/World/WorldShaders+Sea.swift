@@ -57,7 +57,7 @@ extension WorldShaders {
     /// `seaK.x` (radiance of a white board facing the sun: `lightK.x` times
     /// the calibrated ambient, 4.8 x 0.454, times pi). Its path runs from
     /// under the sun to the horizon when the road points at it; rolled off
-    /// above 0.6, its core still blooms.
+    /// above `seaGlint.x`, its core still blooms.
     ///
     /// The water: deep Ligurian blue offshore, turquoise over the shallows
     /// within about 80 m of the rocks (look.md section 2: #4f8ea0 at Capo
@@ -72,6 +72,7 @@ extension WorldShaders {
     texture2d<float> seaPhoto;
     float4 seaPhotoUV;
     float4 seaK;
+    float4 seaGlint;
     float3 lightSun;
     float exposureGain;
     float seaDebug;
@@ -146,10 +147,11 @@ extension WorldShaders {
     float Gv = av < 1.6 ? (3.535 * av + 2.181 * av * av) / (1.0 + 2.276 * av + 2.577 * av * av) : 1.0;
     float Gl = al < 1.6 ? (3.535 * al + 2.181 * al * al) / (1.0 + 2.276 * al + 2.577 * al * al) : 1.0;
     float glint = D * Fh * Gv * Gl / (4.0 * max(V.y, 0.02)) * seaK.x;
-    // Rolled off above 0.6 towards 1.15, as the sky bake rolls off the
-    // glare round the sun: the path's core still blooms, its flanks keep
-    // a gradient instead of clipping to a flat white sheet.
-    glint = glint < 0.6 ? glint : 0.6 + (glint - 0.6) / (1.0 + (glint - 0.6) / 0.55);
+    // Rolled off above `seaGlint.x` towards x + y: 0.6 towards 1.15 for a
+    // display that clips at white (the path's core blooms, its flanks keep
+    // a gradient instead of a flat white sheet); 1.5 towards 7.5 through
+    // the Riviera's camera, which keeps the sparkle's real brightness.
+    glint = glint < seaGlint.x ? glint : seaGlint.x + (glint - seaGlint.x) / (1.0 + (glint - seaGlint.x) / seaGlint.y);
     float3 c = water * (1.0 - F) + sky * F + glint * float3(1.0, 0.94, 0.86);
     c = mix(c, float3(0.95, 0.97, 0.98) * seaK.y, foam * 0.75);
     if (seaDebug > 0.5) { c = seaDebug > 1.5 ? float3(fp * 0.01, lost, F) : deep * 4.0; }

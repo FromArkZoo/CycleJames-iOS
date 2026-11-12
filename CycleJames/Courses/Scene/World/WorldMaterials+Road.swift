@@ -106,8 +106,8 @@ extension WorldMaterials {
                                  .surface: WorldShaders.rivieraSideAsphaltSurface]
             // The lanes and driveways are older and dustier than the SP55,
             // resurfaced for the race (a pale lane read as a slab on the verge).
-            m.diffuse.intensity = 5.2
-            setAsphaltK(m, intensity: 5.2)
+            m.diffuse.intensity = CGFloat(Self.rivieraAsphaltGain * 0.88)
+            setAsphaltK(m, intensity: Self.rivieraAsphaltGain * 0.88)
         }
         return m
     }
@@ -125,26 +125,30 @@ extension WorldMaterials {
         m.setValue(NSValue(scnVector4: k), forKey: "asphaltK")
     }
 
+    /// The fine tarmac texture's gain on the SP55: 0.058 linear times 3.4
+    /// is an albedo of 0.2, old sun-bleached asphalt (fresh asphalt is
+    /// 0.05-0.1, forty-year-old 0.15-0.2; concrete is 0.3). Through the
+    /// Riviera's camera (`CoursePost`) the sunlit lane then photographs at
+    /// the mid grey of the phone and GoPro frames (look.md section 3:
+    /// #a4a6a1 and #807c7e). Before that camera the road was laid at 5.9
+    /// times, 0.34, to read as bright as the walls on a display that
+    /// clipped at white.
+    static let rivieraAsphaltGain = 3.4
+
     /// The SP55's tarmac (`WorldShaders.rivieraAsphaltCore`) and the paint
     /// on it, which shows the same tarmac where it has worn through. Fine
     /// limestone-chip tarmac (`cj_asphalt_fine_*`, bake_materials.py, 1.6 m
-    /// tile, 0.058 linear) at 5.9 times: about 0.32 linear, sun-bleached.
-    /// Lit by the course's sun it renders sunlit lanes at #a4a4a2-#b0b0ae
-    /// (look bible: #a4a6a1 sunlit, phone; the summit photo #9fa09d-
-    /// #b4b5b0), nearly as bright as the sandstone walls beside it, as in
-    /// the 2024 frames (wall to road about 1.0; the GoPro's #807c7e is
-    /// about 1 EV under). At 2.55 times (0.15, the bible's paint base) it
-    /// read as a dark brownish band 1.4-1.6 times darker than the walls.
+    /// tile, 0.058 linear) at `rivieraAsphaltGain`.
     func rivieraRoad(surface: String) -> SCNMaterial {
         let m = pbr(UIColor(white: 0.42, alpha: 1), roughness: 0.75)
         guard let img = textures.image("cj_asphalt_fine_albedo") else { return m }
         m.diffuse.tiled(img)
         m.diffuse.contentsTransform = Self.scale(1 / 1.6, 1 / 1.6)
-        m.diffuse.intensity = 5.9
+        m.diffuse.intensity = CGFloat(Self.rivieraAsphaltGain)
         bind(m, "detailTex", textures.metal("cj_asphalt_fine_detail", srgb: false)
              ?? textures.metal(image: WorldTextures.solid(UIColor(red: 0.5, green: 0.5, blue: 0.7, alpha: 1)), srgb: false))
-        m.setValue(NSNumber(value: 0.55), forKey: "normalStrength")
-        setAsphaltK(m, intensity: 5.9)
+        m.setValue(NSNumber(value: 0.75), forKey: "normalStrength")
+        setAsphaltK(m, intensity: Self.rivieraAsphaltGain)
         bindLight(m)
         m.shaderModifiers = [.geometry: WorldShaders.rivieraGeometry, .surface: surface]
         return m

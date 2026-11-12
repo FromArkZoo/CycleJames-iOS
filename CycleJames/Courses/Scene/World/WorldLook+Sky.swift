@@ -8,18 +8,22 @@ import simd
 /// CET in late March at Sanremo) in clearer, drier air.
 extension WorldLook {
     /// Base names of the baked background cube faces and of the lighting
-    /// environment's (scripts/courses/textures/bake_materials.py
-    /// `bake_sky`, style FLANDERS or RIVIERA).
+    /// environment's: Flanders from scripts/courses/textures/
+    /// bake_materials.py `bake_sky`, the Riviera from bake_sky_hdr.py,
+    /// which also writes the HDR cube of the same name
+    /// (`WorldTextures.hdrCube`) that `SkyLighting.install` prefers when
+    /// the camera pass is there (`CoursePost.isAvailable`).
     var skyPrefix: String { isRiviera ? "cj_sky_lig" : "cj_sky" }
     var skyEnvPrefix: String { isRiviera ? "cj_skyenv_lig" : "cj_skyenv" }
 
     /// The colour below the horizon, linear, as the bake wrote it to
     /// scripts/courses/textures/cj_sky_horizon*.json: what the fog fades
     /// everything to. On the Riviera it is the far coast's and the sea
-    /// horizon's blue-grey (#9fb5cb), a little darker than the haze band
-    /// above it (look.md section 2). SkyBakeTests checks both.
+    /// horizon's blue-grey, a little darker than the haze band above it
+    /// (look.md section 2), averaged all round: its air's light varies with
+    /// the direction (`airBase`, `airGlow`). SkyBakeTests checks both.
     var horizonLinear: SIMD3<Double> {
-        isRiviera ? SIMD3(0.3485, 0.4624, 0.5954) : SkyLighting.horizonLinear
+        isRiviera ? SIMD3(0.3681, 0.4877, 0.6273) : SkyLighting.horizonLinear
     }
 
     /// Aerial perspective. Flanders: linear to the haze at 5.6 km, a hazy
@@ -32,6 +36,20 @@ extension WorldLook {
     /// 1 - exp(-d / 12 km) of 30 km visibility.
     var fogEndDistance: CGFloat { isRiviera ? 22_000 : 5600 }
     var fogExponent: CGFloat { isRiviera ? 0.75 : 1 }
+
+    /// The Riviera's air (`WorldShaders.aerialFragment`): the horizon's
+    /// haze below the sky by direction, `airBase + airGlow * ((1 + cos a) /
+    /// 2)^airPower`, a the azimuth from the sun's, linear, as the sky bake
+    /// fitted it to the clear sky a degree up and wrote it to
+    /// scripts/courses/textures/cj_sky_horizon_lig.json (bake_sky_hdr.py;
+    /// SkyBakeTests checks the faces against it); the distance over which
+    /// the air at sea level takes all but 1 / e of what is seen (about 40 km
+    /// visibility); and the height over which it thins by e.
+    var airBase: SIMD3<Double> { SIMD3(0.2773, 0.374, 0.4874) }
+    var airGlow: SIMD3<Double> { SIMD3(0.3778, 0.4729, 0.582) }
+    var airPower: Double { 5.25 }
+    var airLengthM: Double { 10_000 }
+    var airScaleHeightM: Double { 1500 }
 
     /// The camera's far clip: past the far terrain (Flanders), or past the
     /// sea horizon (the Riviera's sea reaches 62 km; from 160 m the earth's

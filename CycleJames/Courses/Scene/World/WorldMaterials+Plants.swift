@@ -28,12 +28,36 @@ extension WorldMaterials {
         m.setValue(NSNumber(value: 1.0), forKey: "throughCrown")
         m.setValue(NSNumber(value: 1.0), forKey: "exposureGain")
         m.setValue(NSNumber(value: 0.0), forKey: "mipCoverage")
+        // The Riviera's camera keeps its shadows deep: its leaves pass a
+        // little light on among themselves (`foliageSurface`).
+        m.setValue(NSNumber(value: art.look.isRiviera ? 0.12 : 0.0), forKey: "canopyFill")
+        bindSunPlane(m)
         m.shaderModifiers = [
             .geometry: WorldShaders.windGeometry,
             .surface: WorldShaders.foliageSurface,
             .fragment: WorldShaders.opaqueFragment,
         ]
         return m
+    }
+
+    /// The sun's right and up for `WorldShaders.windGeometry`, which every
+    /// leaf and bark material runs.
+    func bindSunPlane(_ m: SCNMaterial) {
+        let r = WorldSun.right, u = WorldSun.up
+        m.setValue(NSValue(scnVector3: SCNVector3(r.x, r.y, r.z)), forKey: "sunR")
+        m.setValue(NSValue(scnVector3: SCNVector3(u.x, u.y, u.z)), forKey: "sunU")
+    }
+
+    /// Whether the region's leaf cards take their sun shadow where they
+    /// stand turned to the sun (`WorldShaders.sunFacingShade`): the
+    /// Riviera's. The Flemish climbs' leaves are shaded as they were.
+    static func sunFacingShade(_ look: WorldLook) -> Bool {
+        #if DEBUG
+        // -leafSunShade 0 / 1: either way on one build, any course.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-leafSunShade"), i + 1 < args.count { return args[i + 1] != "0" }
+        #endif
+        return look.isRiviera
     }
 
     /// The alpha cut follows the level the anisotropic filter samples
@@ -46,6 +70,9 @@ extension WorldMaterials {
                       alphaCut: 0.42, fallback: UIColor(red: 0.2, green: 0.32, blue: 0.1, alpha: 1))
         m.setValue(NSNumber(value: Double(m.diffuse.maxAnisotropy)), forKey: "anisotropy")
         if art.look.isRiviera { m.setValue(NSNumber(value: Self.mipCoverageMed.leaves), forKey: "mipCoverage") }
+        if Self.sunFacingShade(art.look) {
+            m.shaderModifiers?[.surface] = WorldShaders.foliageSurface + WorldShaders.sunFacingShade
+        }
         leafSheen(m)
         return m
     }
@@ -110,6 +137,7 @@ extension WorldMaterials {
             m.setValue(NSNumber(value: 1.0), forKey: "normalStrength")
             m.setValue(NSNumber(value: 1.0), forKey: "windStrength")
             m.setValue(NSNumber(value: 0.0), forKey: "flutter")
+            bindSunPlane(m)
             m.shaderModifiers = [.geometry: WorldShaders.windGeometry, .surface: WorldShaders.barkSurface]
         }
         return m
@@ -130,6 +158,7 @@ extension WorldMaterials {
         m.setValue(NSNumber(value: 1.0), forKey: "normalStrength")
         m.setValue(NSNumber(value: 1.0), forKey: "windStrength")
         m.setValue(NSNumber(value: 0.0), forKey: "flutter")
+        bindSunPlane(m)
         m.shaderModifiers = [.geometry: WorldShaders.windGeometry, .surface: WorldShaders.barkAtlasSurface]
         return m
     }

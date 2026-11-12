@@ -49,21 +49,48 @@ final class SkyBakeTests: XCTestCase {
         XCTAssertEqual(WorldLook.flanders.horizonLinear, SkyLighting.horizonLinear)
     }
 
-    /// The Riviera's sky (cj_sky_lig_*, from cj_sky_horizon_lig.json):
-    /// below the horizon, the far coast's and the sea horizon's blue-grey
-    /// that the clearer air fades to.
+    /// The Riviera's sky (the 8-bit faces cj_sky_lig_*, kept for a device
+    /// that can't take the HDR cube; scripts/courses/textures/
+    /// bake_sky_hdr.py): below the horizon, the light of its air in each
+    /// direction (`WorldLook.airBase`, `airGlow`: brighter under the sun),
+    /// which the far sea and land fade to. CoursePostTests checks the HDR
+    /// cube the same way.
     func test_rivieraFacesBelowTheHorizonMatchItsFogColour() throws {
         try checkBelowHorizon(look: .riviera)
     }
 
+    /// Compass azimuths (radians) along a face's bottom row, as
+    /// bake_materials.py `cube_dirs` lays the faces out, z mirrored as the
+    /// Riviera's bake has it.
+    private func bottomRowAzimuths(_ face: String, count: Int) -> [Double] {
+        (0..<count).map { i in
+            let u = (Double(i) + 0.5) / Double(count) * 2 - 1
+            switch face {
+            case "px": return atan2(1, -u)
+            case "nx": return atan2(-1, u)
+            case "pz": return atan2(u, 1)
+            case "nz": return atan2(-u, -1)
+            default: return atan2(u, -1)
+            }
+        }
+    }
+
     private func checkBelowHorizon(look: WorldLook) throws {
-        let want = look.horizonLinear
         for face in ["px", "nx", "pz", "nz", "ny"] {
             let name = "\(look.skyPrefix)_\(face)"
             let got = try bottomRow(name)
+            var want = look.horizonLinear
+            if look.isRiviera {
+                // The row's mean of the air's light by direction.
+                let sun = WorldSun.azimuthDeg * .pi / 180
+                let az = bottomRowAzimuths(face, count: 256)
+                want = az.reduce(SIMD3<Double>(0, 0, 0)) { sum, a in
+                    sum + look.airBase + look.airGlow * pow(0.5 + 0.5 * cos(a - sun), look.airPower)
+                } / Double(az.count)
+            }
             for c in 0..<3 {
-                XCTAssertEqual(got[c], want[c], accuracy: want[c] * 0.02,
-                               "\(name) channel \(c): \(got) against horizonLinear \(want)")
+                XCTAssertEqual(got[c], want[c], accuracy: want[c] * (look.isRiviera ? 0.03 : 0.02),
+                               "\(name) channel \(c): \(got) against the horizon's \(want)")
             }
         }
     }

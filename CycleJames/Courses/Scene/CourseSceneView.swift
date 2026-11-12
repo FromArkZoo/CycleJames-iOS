@@ -83,6 +83,8 @@ struct CourseSceneView: UIViewRepresentable {
                 try Task.checkCancellation()
                 let cameraRig = CameraRig(world: world)
                 let rider = await riderRig
+                // Too fine for a shadow map held still (`setSpokeShadows`).
+                rider.setSpokeShadows(!world.holdsShadowMap)
                 let built = CACurrentMediaTime()
                 try Task.checkCancellation()
                 // In the scene before it is prepared, so the rider's materials
@@ -301,6 +303,7 @@ struct CourseSceneView: UIViewRepresentable {
                 view.preferredFramesPerSecond = world.preferredFramesPerSecond
             }
             view.scene = world.scene
+            view.technique = world.post
             view.pointOfView = cameraRig.node
             (view as? CourseRenderView)?.sceneReady = true
             onView?(view)
@@ -343,7 +346,9 @@ struct CourseSceneView: UIViewRepresentable {
                 let config = WorldConfig.make(q)
                 world.applyLiveConfig(config)
                 skyFloor = WorldMaterials.skyFloor(config)
-                if let camera = renderer.pointOfView?.camera { SkyLighting.applyEffects(camera, config: config) }
+                if let camera = renderer.pointOfView?.camera {
+                    SkyLighting.applyEffects(camera, config: config, look: world.look)
+                }
                 DispatchQueue.main.async { [weak self] in
                     MainActor.assumeIsolated {
                         guard let view = self?.view as? CourseRenderView else { return }
@@ -397,7 +402,7 @@ struct CourseSceneView: UIViewRepresentable {
                 headHidden = cameraRig.hidesRiderHead
                 rider.setHeadVisible(!headHidden)
             }
-            world.onFrame(cameraRig.node.simdWorldPosition, time)
+            world.onFrame(cameraRig.node.simdWorldPosition, cameraRig.node.simdWorldFront, time)
         }
     }
 }

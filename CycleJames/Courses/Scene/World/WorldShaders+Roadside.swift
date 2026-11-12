@@ -116,10 +116,15 @@ extension WorldShaders {
         joint = mix(cover, min(2.0 * hw / L + 2.0 * hw / rowH, 0.45), far);
         float fade = 1.0 - smoothstep(0.004, 0.03, pxs);
         // Rounded arrises: the face turns down into the joint.
-        float edge = (1.0 - smoothstep(0.0, regular ? 0.015 : 0.025, dmin - jw * 0.5)) * fade;
+        float edge = (1.0 - smoothstep(0.0, regular ? 0.015 : 0.035, dmin - jw * 0.5)) * fade;
         float2 toEdge = min(dxl, dxr) < min(dyt, dyb) ? float2(dxl < dxr ? -1.0 : 1.0, 0.0)
                                                       : float2(0.0, dyt < dyb ? -1.0 : 1.0);
-        tilt = toEdge * edge * (regular ? 0.35 : 0.3) + (d.rg * 2.0 - 1.0) * (regular ? 0.5 : 1.05);
+        // Each stone's face is set a few degrees its own way (a rubble wall
+        // is not one plane: in the sun its stones are each a little lighter
+        // or darker), its arrises turn down into the joints, and its
+        // surface has the tile's relief.
+        float2 face = (float2(fract(hs * 91.3), fract(hs2 * 47.9)) - 0.5) * (regular ? 0.07 : 0.24) * fade;
+        tilt = toEdge * edge * (regular ? 0.4 : 0.55) + face + (d.rg * 2.0 - 1.0) * (regular ? 0.6 : 1.0);
         cav = mix(0.8, 1.0, d.b);
         float3 c;
         float3 jc;
@@ -132,9 +137,12 @@ extension WorldShaders {
             // the paints: the 2024 frames' sunlit wall (#7e6e57 a stop
             // under) is greyer than they render.
             c = mix(float3(0.497, 0.397, 0.235), float3(0.392, 0.292, 0.150), fract(hs * 3.7));
-            c = hs < 0.86 ? c : (hs < 0.975 ? float3(0.254, 0.205, 0.138) : float3(0.352, 0.195, 0.091));
-            c = mix(float3(dot(c, float3(0.2126, 0.7152, 0.0722))), c, 0.75);
-            cm = float3(0.39, 0.322, 0.215);
+            // (More of the weathered grey-brown, and a dark, crusted stone
+            // here and there: the 2024 frames' wall is no even honey.)
+            c = hs < 0.72 ? c : (hs < 0.93 ? float3(0.254, 0.205, 0.138)
+                : (hs < 0.975 ? float3(0.15, 0.125, 0.092) : float3(0.352, 0.195, 0.091)));
+            c = mix(float3(dot(c, float3(0.2126, 0.7152, 0.0722))), c, 0.64);
+            cm = float3(0.361, 0.305, 0.223);
             jc = float3(0.078, 0.059, 0.036);
         } else if (kind == 1) {
             // Grey squared stone #b4ab9b, pointed in a pale mortar a little
@@ -170,7 +178,7 @@ extension WorldShaders {
         // Stone by stone a little lighter or darker; the honey sandstone
         // more so, weathered unevenly.
         float vary = kind == 0 ? 0.36 : (kind == 7 ? 0.12 : 0.2);
-        c = mix(c * (1.0 - vary * 0.5 + vary * hs2), cm, far * 0.75) * (0.74 + 0.52 * d.a);
+        c = mix(c * (1.0 - vary * 0.5 + vary * hs2), cm, far * 0.75) * (0.66 + 0.68 * d.a);
         if (kind == 0) cav = mix(0.72, 1.0, d.b);
         cav *= mix(1.0, 0.86, edge);
         alb = mix(c, jc, joint * (kind == 12 ? 1.0 : 0.92));
@@ -285,7 +293,7 @@ extension WorldShaders {
     }
     // Weathering: mottle, rain streaks down the faces, damp and splash at
     // the foot.
-    alb *= 1.0 + (gA.a - 0.5) * 0.16;
+    alb *= 1.0 + (gA.a - 0.5) * 0.3;
     // (On the render, which has its own runs, they read as boarding.)
     // (Nor on the reed screen, where a metre-wide streak read as a board.)
     float streak = flatTop || kind == 9 ? 0.0 : smoothstep(0.5, 0.88, gS.r) * (kind == 6 ? 0.12 : 0.6);

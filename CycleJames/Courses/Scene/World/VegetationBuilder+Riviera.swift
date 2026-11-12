@@ -93,6 +93,10 @@ struct RivieraPlants: Sendable {
         var points: [SIMD2<Double>]
         var front: SIMD2<Double>
         var rise: Double
+        /// Set where the row stands on something built that the terrain
+        /// doesn't have (a planted strip on a wall's top): its height over
+        /// the ground `front` from it.
+        var standsOver: Double? = nil
     }
 
     struct Course: Sendable {
@@ -323,6 +327,11 @@ struct RivieraPlants: Sendable {
             // summit's own clearing ends at 4034), houses and asphalt in the
             // summit photos; the LiDAR's 2008-2010 canopy still had shrubs.
             Bare(span: 3744...3768, side: 1, maxDistance: 14),
+            // The approach's gravel strip, right, where three cars stand
+            // (`BuildingBuilder.buildPoggioSummit`, look s 3611-3630): the
+            // 2008-2010 canopy still has scrub there, and it grew through
+            // the estate.
+            Bare(span: 3604...3637, side: 1, maxDistance: 5),
         ],
         keepOff: [
             // The summit's west car park, between its new wall's face (x =
@@ -331,11 +340,15 @@ struct RivieraPlants: Sendable {
             [SIMD2(-433, 531), SIMD2(-442.6, 531), SIMD2(-445.5, 571), SIMD2(-433, 571)],
         ],
         rows: [
-            // The bank over that wall, to the foot of the CTR's upper wall
-            // 332: oleander and pittosporum 1-2.5 m in the 2023 POV, bare
-            // DTM in the world (fix2-summit, 31 October); 1.5 m behind the
-            // face, at least 2 m over the bays 1.5 m in front of it.
-            Row(points: [SIMD2(-443.1, 531), SIMD2(-444.55, 551), SIMD2(-446.0, 571)], front: SIMD2(3, 0), rise: 2),
+            // The planted strip on that wall's top, to the foot of the
+            // CTR's upper wall 332: oleander and pittosporum 1-2.5 m in the
+            // 2023 POV, two staggered rows 1.0 and 1.9 m behind the face,
+            // standing on the strip (`BuildingBuilder.westCarParkWall`), the
+            // wall's height over the bays in front of it.
+            Row(points: [SIMD2(-442.6, 531.5), SIMD2(-444.05, 551), SIMD2(-445.5, 570.5)], front: SIMD2(2.5, 0), rise: 2,
+                standsOver: BuildingBuilder.poggioWestWallHeight),
+            Row(points: [SIMD2(-443.5, 532), SIMD2(-444.95, 551.5), SIMD2(-446.4, 570)], front: SIMD2(3.4, 0), rise: 2,
+                standsOver: BuildingBuilder.poggioWestWallHeight),
         ],
         // The course.json landmarks against route.md's (pipeline note of
         // 29 October 2026): the fork, hairpins 1-3, the sharp left onto the
@@ -679,12 +692,13 @@ extension VegetationBuilder {
             let centre = base + SIMD3(0, h * 0.5, 0)
             let radii = SIMD3<Float>(r, h * 0.5, r)
             // (Square, two triangles each, as the Flemish shrubs' light
-            // cards: 26 000 of them.)
+            // cards: 26 000 of them. On one centre: the second behind the
+            // first, `TreeArchetype.card`'s `back`.)
             for k in 0..<2 {
                 let az = rnd.range(0, 3.14) + Float(k) * 1.57
                 TreeArchetype.card(&light, centre: centre, size: max(2 * r, h) * 1.1, normal: SIMD3(cos(az), 0.2, sin(az)),
                                    roll: rnd.range(-0.3, 0.3), uv: uv, crownCentre: centre - SIMD3(0, h * 0.3, 0), crownRadii: radii,
-                                   height: max(h, 2) * 3, ao: 0.85, bend: 0.6, baseY: y, mirror: k == 1)
+                                   height: max(h, 2) * 3, ao: 0.85, bend: 0.6, baseY: y, mirror: k == 1, back: k == 1)
             }
             patchPhase(&light, from: 0, phase: rnd.range(0, 6.28), tint: TreeArchetype.packColour(colour))
             skyShade(&light, from: 0, sky: skyHere, baseY: y, height: h)
@@ -974,8 +988,9 @@ extension VegetationBuilder {
                 for i in 0..<count {
                     let p = a + (b - a) * ((Double(i) + 0.5) / Double(count))
                     var rnd = WorldRandom(p.x, p.y, salt: 47)
-                    let y = Float(terrain.height(east: p.x, north: p.y))
+                    var y = Float(terrain.height(east: p.x, north: p.y))
                     let below = Float(terrain.height(east: p.x + row.front.x, north: p.y + row.front.y))
+                    if let over = row.standsOver { y = below + Float(over) }
                     guard y.isFinite, below.isFinite, Double(y - below) >= row.rise else { continue }
                     let oleander = rnd.unit() < 0.35
                     let h = rnd.range(1.2, 2.4), r = rnd.range(0.6, 0.9)
@@ -1033,7 +1048,8 @@ extension VegetationBuilder {
                 TreeArchetype.card(&m, centre: centre, size: max(2 * r, h) * (cards == 1 ? 1.2 : 1.1),
                                    normal: SIMD3(cos(az), 0.2, sin(az)), roll: rnd.range(-0.4, 0.4), uv: uv,
                                    crownCentre: centre - SIMD3(0, h * 0.3, 0), crownRadii: crownRadii, height: max(h, 2) * 3,
-                                   ao: 0.82, bend: 0.6, aspect: wide, baseY: baseY, mirror: k == 1 || rnd.unit() < 0.3)
+                                   ao: 0.82, bend: 0.6, aspect: wide, baseY: baseY, mirror: k == 1 || rnd.unit() < 0.3,
+                                   back: k == 1)
             }
         }
         patchPhase(&m, from: 0, phase: rnd.range(0, 6.28), tint: TreeArchetype.packColour(colour))

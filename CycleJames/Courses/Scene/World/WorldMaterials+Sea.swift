@@ -42,6 +42,9 @@ extension WorldMaterials {
         // radiance (the aerial camera saw the sea at about this level).
         let sun = 4.8 * WorldMaterials.envIrradiance * Double.pi
         m.setValue(NSValue(scnVector4: SCNVector4(Float(sun), 1.2, photo == nil ? 0 : 1, 0.55)), forKey: "seaK")
+        // The glitter's roll-off (`seaSurface`): from where, and over how much.
+        let glint = art.look.isRiviera && CoursePost.isAvailable ? SCNVector4(1.5, 6.0, 0, 0) : SCNVector4(0.6, 0.55, 0, 0)
+        m.setValue(NSValue(scnVector4: glint), forKey: "seaGlint")
         let s = WorldSun.toSun
         m.setValue(NSValue(scnVector3: SCNVector3(s.x, s.y, s.z)), forKey: "lightSun")
         m.setValue(NSNumber(value: 1.0), forKey: "exposureGain")

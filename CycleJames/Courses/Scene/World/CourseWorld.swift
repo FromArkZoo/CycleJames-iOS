@@ -15,9 +15,10 @@ final class CourseWorld {
     /// Applies the world's look (HDR, exposure, bloom, SSAO, colour grading,
     /// clipping planes) to whichever camera is rendering it.
     let configureCamera: (SCNCamera) -> Void
-    /// Called every frame on the render thread with the camera position, for
-    /// streaming detail (grass, LOD swaps, shadow re-centring).
-    let onFrame: (_ cameraPosition: SIMD3<Float>, _ time: TimeInterval) -> Void
+    /// Called every frame on the render thread with the camera's position
+    /// and the way it looks, for streaming detail (grass, LOD swaps) and
+    /// placing the sun's shadow map.
+    let onFrame: (_ cameraPosition: SIMD3<Float>, _ cameraForward: SIMD3<Float>, _ time: TimeInterval) -> Void
     /// Applies a cheaper tier's live scene knobs (sun shadows, grass reach)
     /// without rebuilding anything. Render thread.
     let applyLiveConfig: (WorldConfig) -> Void
@@ -28,6 +29,15 @@ final class CourseWorld {
     /// the camera opening up in a sunken lane (`LaneExposure`). Render
     /// thread, or before the world is shown.
     let setExposure: (Float) -> Void
+    /// The region's camera response (`CoursePost`), for whatever draws the
+    /// scene: the ride's view, a snapshot renderer. Nil where SceneKit's
+    /// own camera is the look (the Flemish climbs).
+    let post: SCNTechnique?
+    /// The region the world is drawn as.
+    let look: WorldLook
+    /// Whether the sun's shadow is one map held still on the ground
+    /// (`SkyLighting.ShadowBox`), not cascades fitted to the view.
+    let holdsShadowMap: Bool
     let preferredFramesPerSecond: Int
 
     var route: CourseRoute { bundle.route }
@@ -40,10 +50,13 @@ final class CourseWorld {
         sun: SCNNode?,
         preferredFramesPerSecond: Int,
         configureCamera: @escaping (SCNCamera) -> Void,
-        onFrame: @escaping (SIMD3<Float>, TimeInterval) -> Void = { _, _ in },
+        onFrame: @escaping (SIMD3<Float>, SIMD3<Float>, TimeInterval) -> Void = { _, _, _ in },
         applyLiveConfig: @escaping (WorldConfig) -> Void = { _ in },
         light: LightProfile = .open,
-        setExposure: @escaping (Float) -> Void = { _ in }
+        setExposure: @escaping (Float) -> Void = { _ in },
+        post: SCNTechnique? = nil,
+        look: WorldLook = .flanders,
+        holdsShadowMap: Bool = false
     ) {
         self.scene = scene
         self.bundle = bundle
@@ -56,5 +69,8 @@ final class CourseWorld {
         self.applyLiveConfig = applyLiveConfig
         self.light = light
         self.setExposure = setExposure
+        self.post = post
+        self.look = look
+        self.holdsShadowMap = holdsShadowMap
     }
 }

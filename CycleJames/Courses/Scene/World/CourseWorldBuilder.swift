@@ -102,6 +102,9 @@ enum CourseWorldBuilder {
             materials = WorldMaterials(config: config, textures: textures, bundle: bundle, art: corridor.art)
             for m in materials.warmUp { _ = m }
             seaMaterial = seaLevel == nil ? nil : materials.makeSea()
+            materials.airEverything()
+            if let seaMaterial { materials.air(seaMaterial) }
+            materials.holdLightToShadowBox()
             attempts += 1
             #if DEBUG
             if textures.uploadFailed { print("world textures: GPU upload failed (attempt \(attempts)), retrying") }
@@ -117,7 +120,7 @@ enum CourseWorldBuilder {
         var far = await farChunks.take()
         try Task.checkCancellation()
         log.mark("terrain meshes (wait)")
-        progress(0.45, "Laying the cobbles")
+        progress(0.45, look.isRiviera ? "Laying the road" : "Laying the cobbles")
         var road = await roadMeshes.take()
         try Task.checkCancellation()
         var town = await houses.take()
@@ -449,13 +452,15 @@ enum CourseWorldBuilder {
         log.write()
 
         let frame = FrameUpdater(sun: sun, corridor: corridor, grass: grassCells, grassMaterial: materials.grass,
-                                 grassRadius: config.grassRadius)
+                                 grassRadius: config.grassRadius, shadowBox: SkyLighting.ShadowBox(config: config))
         // The lane exposure, metered from `light`: the lights (and the
         // leaves' light through them) that it scales.
         let glow = [materials.leaves, materials.grass, materials.impostor] + [seaMaterial].compactMap { $0 }
         let exposure: (Float) -> Void = sun.light.map {
             SkyLighting.exposure(scene: scene, sun: $0, glow: glow, look: look)
         } ?? { _ in }
+        // The Riviera's camera response; the Flemish climbs keep SceneKit's.
+        let post = look.isRiviera ? CoursePost.technique() : nil
         #if DEBUG
         if let dir = WorldDebugShots.directory {
             progress(1, "Taking world shots")
@@ -466,7 +471,8 @@ enum CourseWorldBuilder {
                                 light: light, setExposure: exposure,
                                 partNames: Dictionary(zip(materials.props.map(ObjectIdentifier.init),
                                                           BuildingBuilder.PropPart.allCases.map { "\($0)" }),
-                                                      uniquingKeysWith: { a, _ in a }))
+                                                      uniquingKeysWith: { a, _ in a }),
+                                post: post)
         }
         #endif
         progress(1, "Ready")
@@ -478,22 +484,30 @@ enum CourseWorldBuilder {
             sun: sun,
             preferredFramesPerSecond: config.fps,
             configureCamera: { camera in SkyLighting.configure(camera, config: config, look: look) },
-            onFrame: { position, time in frame.update(camera: position, time: time) },
+            onFrame: { position, forward, time in frame.update(camera: position, forward: forward, time: time) },
             // Keeps the materials for the ride; their textures' caches are
-            // already let go of (`releaseCaches` above).
-            applyLiveConfig: { [materials] live in
+            // already let go of (`releaseCaches` above). A live step names
+            // the plain tier: the Riviera's has its own knobs.
+            applyLiveConfig: { [materials] tier in
+                let live = look.isRiviera ? tier.riviera() : tier
                 if let light = sun.light { SkyLighting.applyShadows(light, config: live, look: look) }
+                frame.setShadowBox(SkyLighting.ShadowBox(config: live))
                 frame.setGrassRadius(min(live.grassRadius, config.grassRadius))
                 materials.applyLive(live)
             },
             light: light,
-            setExposure: exposure
+            setExposure: exposure,
+            post: post,
+            look: look,
+            holdsShadowMap: config.shadowBoxHalf != nil
         )
     }
 }
 
 /// Per-frame work on the render thread: keeps the sun (and so the shadow
-/// cascades) centred on the camera, and shows only the grass near it.
+/// cascades) centred on the camera, or stands it where its one shadow map
+/// keeps still on the ground (`SkyLighting.ShadowBox`), and shows only the
+/// grass near the camera.
 ///
 /// Grass streams in short route cells. The grass shader shrinks tufts to
 /// the ground over the last `WorldShaders.grassFadeLength` metres before
@@ -507,17 +521,21 @@ final class FrameUpdater: @unchecked Sendable {
     private let grassMaterial: SCNMaterial?
     /// Render thread only (live fallback steps also arrive there).
     private var grassRadius: Double
+    /// The sun's one shadow map, on the tiers that hold it still. Render
+    /// thread (and the debug shots, before the world is shown).
+    private var shadowBox: SkyLighting.ShadowBox?
     private var lastS = -1e9
     /// How often (camera travel, metres) the cells are re-checked.
     private static let recheckM = 1.0
 
     init(sun: SCNNode, corridor: RoadCorridor, grass: [(s: Double, node: SCNNode)], grassMaterial: SCNMaterial?,
-         grassRadius: Double) {
+         grassRadius: Double, shadowBox: SkyLighting.ShadowBox? = nil) {
         self.sun = sun
         self.corridor = corridor
         self.grass = grass
         self.grassMaterial = grassMaterial
         self.grassRadius = grassRadius
+        self.shadowBox = shadowBox
         grassMaterial?.setValue(NSNumber(value: grassRadius), forKey: "grassFadeEnd")
     }
 
@@ -535,12 +553,18 @@ final class FrameUpdater: @unchecked Sendable {
         lastS = -1e9
     }
 
+    /// The tier's shadow map after a live fallback step. Render thread.
+    func setShadowBox(_ box: SkyLighting.ShadowBox?) {
+        shadowBox = box
+    }
+
     #if DEBUG
     private var frames = 0
     #endif
 
-    func update(camera: SIMD3<Float>, time: TimeInterval) {
-        sun.simdPosition = camera
+    /// `forward`: the way the camera looks (its unit -z in the world).
+    func update(camera: SIMD3<Float>, forward: SIMD3<Float>, time: TimeInterval) {
+        sun.simdPosition = shadowBox?.sunPosition(camera: camera, forward: forward) ?? camera
         #if DEBUG
         frames += 1
         if frames % 60 == 0, frames <= 3000 {

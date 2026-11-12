@@ -1370,11 +1370,14 @@ def bake_sky(n: int = 1024, env_n: int = 96, style: SkyStyle = FLANDERS) -> None
 
 
 def bake_sky_riviera() -> None:
-    """The Riviera's sky (`RIVIERA`): cj_sky_lig_*, cj_skyenv_lig_*, the
-    sea's reflection of it (`bake_sea_sky`) and its waves (`bake_sea_detail`)."""
-    bake_sky(style=RIVIERA)
-    bake_sea_sky()
+    """The Riviera's sea waves (`bake_sea_detail`). Its sky (cj_sky_lig.hdrc,
+    cj_sky_lig_*, cj_skyenv_lig_*, cj_sea_sky.jpg and cj_sky_horizon_lig.json)
+    is baked in high dynamic range, with volumetric clouds, by
+    bake_sky_hdr.py, from this module's `RIVIERA` style and clear-sky
+    model: `bake_sky(style=RIVIERA)` and `bake_sea_sky` here would write
+    the earlier, 8-bit sky over it."""
     bake_sea_detail()
+    print("The Riviera's sky: uv run --script scripts/courses/textures/bake_sky_hdr.py")
 
 
 def bake_sea_sky(w: int = 1024, h: int = 256) -> None:
@@ -1470,6 +1473,7 @@ BAKERS = {
     "foliage": bake_foliage, "grass": bake_grass, "bark": bake_bark,
     "brick": bake_brick, "facades": bake_facades,
     "impostors": bake_impostors, "farfields": bake_far_fields, "sky": bake_sky,
+    # (The Riviera's sea waves; its sky is bake_sky_hdr.py's.)
     "sky_lig": bake_sky_riviera,
 }
 

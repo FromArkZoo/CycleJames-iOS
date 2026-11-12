@@ -532,7 +532,12 @@ extension WorldShaders {
             // Gutters and ridge bars along the span lines.
             float dl = min(min(fx, abs(fx - 0.5)), 1.0 - fx) * sw;
             pitch = float2(0.73, 1e4);
-            spanLine = 1.0 - smoothstep(0.05, 0.05 + max(fw.y, 0.01), dl);
+            // The share of the pixel the 12 cm line covers, so it thins
+            // with distance and still parts span from span across the
+            // valley; its mean share once a pixel spans half a span.
+            float sf = max(fw.y, 0.01);
+            float cov = saturate((min(dl + sf * 0.5, 0.06) - max(dl - sf * 0.5, -0.06)) / sf);
+            spanLine = mix(cov, 0.24 / sw, smoothstep(0.25 * sw, 0.5 * sw, sf));
         }
         float2 q = uv / pitch;
         float2 cell = floor(q);
@@ -551,10 +556,12 @@ extension WorldShaders {
             post = max(1.0 - smoothstep(0.045, 0.045 + max(fw.x, 0.006), dpst),
                        1.0 - smoothstep(0.06, 0.06 + max(fw.y, 0.006), uv.y));
         }
-        float bar = max(max(max(barU, barV), spanLine), post);
-        float barMean = saturate(2.0 * bw / pitch.x + 1.4 * bw / min(pitch.y, 10.0)) + (id > 3.5 ? 0.06 : 0.0)
+        float bar = max(max(barU, barV), post);
+        float barMean = saturate(2.0 * bw / pitch.x + 1.4 * bw / min(pitch.y, 10.0))
                       + (roofGlass ? 0.0 : 0.09 / (4.0 * pitch.x));
-        bar = mix(bar, barMean, far);
+        // (A far roof's gutters and ridges keep their own lines past where
+        // the glazing bars have gone to their mean.)
+        bar = max(mix(bar, barMean, far), spanLine);
         float h = fract(sin(dot(cell, float2(12.9898, 78.233)) + seed * 43.1) * 43758.5453);
         float h2 = fract(h * 91.7 + seed * 3.3);
         float broken = mix(h < brokenShare ? 1.0 : 0.0, brokenShare * 0.7, far);
@@ -632,8 +639,12 @@ extension WorldShaders {
         float3 earth = float3(0.16, 0.15, 0.12) * lightIn;
         sky = mix(earth, sky, smoothstep(-0.06, 0.02, R.y));
         float F = 0.04 + 0.96 * pow(1.0 - saturate(dot(N, V)), 5.0);
-        float3 washC = roofGlass ? float3(0.36, 0.42, 0.39) : float3(0.50, 0.55, 0.53);
-        float3 dirt = roofGlass ? float3(0.16, 0.20, 0.18) : float3(0.03, 0.035, 0.03);
+        // The roofs' whitewash and grime from above: grey-green, a stop
+        // under the walls' milky glass (the aerials' #7b8d85 to #8d9e97,
+        // look.md section 3). At 0.36-0.42 a house across the valley stood
+        // as a chalk-white box, the brightest thing in the frame.
+        float3 washC = roofGlass ? float3(0.20, 0.25, 0.225) : float3(0.50, 0.55, 0.53);
+        float3 dirt = roofGlass ? float3(0.085, 0.105, 0.095) : float3(0.03, 0.035, 0.03);
         if (roofGlass) {
             // From above (the aerials' grey-green) the glass keeps its old
             // albedo, the crop under it lit through it.
@@ -650,7 +661,8 @@ extension WorldShaders {
         // The sun through the paint from behind.
         glassEmit += washC * paneWash * glassK.x * 0.25 * saturate(-dot(N0, L));
         float3 hole = roofGlass ? float3(0.03, 0.04, 0.025) : float3(0.0);
-        alb = mix(mix(alb, hole, broken), frameC, bar);
+        // (Gutters lie in their own shade and dirt: darker than the bars.)
+        alb = mix(mix(alb, hole, broken), frameC * mix(1.0, 0.55, saturate(spanLine / max(bar, 1e-3))), bar);
         emit = mix(mix(glassEmit, inside, broken), float3(0.0), bar);
         // Whitewash is matt; clear glass keeps its gloss.
         rough = mix(mix(mix(0.3, 0.6, paneWash), 0.95, broken), 0.5, bar);

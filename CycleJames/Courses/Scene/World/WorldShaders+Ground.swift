@@ -364,34 +364,6 @@ extension WorldShaders {
     alb = mix(alb, float3(0.10, 0.083, 0.06) * (0.75 + 0.5 * rvN1), rvRiser * rvTer * 0.65);
     """
 
-    /// The Riviera's land seen through its own air, on the lit colour (a
-    /// fragment body; `WorldMaterials.groundMaterial`). SceneKit's fog
-    /// (`WorldLook.fogEndDistance`) is kept light for the sea's sake, whose
-    /// graded blues and soft horizon the reviewers counted as right; over
-    /// land it left the hills 1-5 km away bright summer green and the Alpi
-    /// Liguri at 10 km #7e8f99 (reviews2) against #85a3bb-#969daa (look.md
-    /// section 2: Commons P1010130, P1010170) and the blue-grey in f104 and
-    /// the 3410 m photo. Here the land alone takes a bluer haze, up to a
-    /// fifth of it by 5-10 km, giving way to the fog where that takes over
-    /// (the far coast stays the fog's #9fb3c8), and its colour greys by
-    /// up to two fifths: the real airlight over 30 km visibility,
-    /// 1 - exp(-d / 7.7 km), is 0.32 at 3 km and 0.73 at 10 km, where the
-    /// fog alone gives 0.22 and 0.55. Distance is the camera's, so the
-    /// shadows and sunlit slopes of a far hill flatten together.
-    static let rivieraLandHaze: String = {
-        let look = WorldLook.riviera
-        let h = look.horizonLinear * SIMD3(0.62, 0.78, 0.95)
-        func f(_ v: Double) -> String { String(format: "%.4f", v) }
-        return """
-        float rvHd = length(_surface.position);
-        float rvHf = pow(saturate(rvHd / \(f(Double(look.fogEndDistance)))), \(f(Double(look.fogExponent))));
-        float rvHa = (1.0 - exp(-rvHd / 6000.0)) * (1.0 - rvHf) * 0.5;
-        float3 rvHc = _output.color.rgb;
-        rvHc = mix(rvHc, float3(dot(rvHc, float3(0.2126, 0.7152, 0.0722))), smoothstep(500.0, 6000.0, rvHd) * 0.4);
-        _output.color.rgb = mix(rvHc, float3(\(f(h.x)), \(f(h.y)), \(f(h.z))) * _output.color.a, rvHa);
-        """
-    }()
-
     /// `farc` for the Riviera (see `terrainSurfaceRiviera`). Declares its
     /// own names (`rv…`): the host's normal and distance come later.
     /// The far photo is sampled anisotropically: seen from the road at 1

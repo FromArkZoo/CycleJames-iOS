@@ -21,20 +21,43 @@ extension WorldShaders {
 
     /// Wind: texcoord 1 = (sway weight, phase); texcoord 2 (`shadeDecode`)
     /// and the model-space normal are passed on to the fragment stage.
+    ///
+    /// `shadeV` (view space) is the vertex where its card stands turned to
+    /// the sun (`sunR`, `sunU`: the sun's right and up, `WorldSun`), in the
+    /// wind as the card is; off a card, the vertex itself. A leaf can take
+    /// its sun shadow there (`sunFacingShade`).
     static let windGeometry = """
     #pragma arguments
     float windStrength;
     float flutter;
+    float3 sunR;
+    float3 sunU;
     #pragma varyings
     float fao;
     float3 ftint;
     float3 nrmM;
+    float3 shadeV;
     #pragma body
     out.nrmM = _geometry.normal;
     float2 bo = _geometry.texcoords[3];
+    float2 sw = _geometry.texcoords[1];
+    float backLayer = step(\(TreeArchetype.backLayerPhase / 2), sw.y);
+    sw.y -= \(TreeArchetype.backLayerPhase) * backLayer;
+    float3 sunP = _geometry.position.xyz + sunR * bo.x + sunU * bo.y;
     if (bo.x != 0.0 || bo.y != 0.0) {
         float3 camR = normalize(scn_frame.inverseViewTransform[0].xyz);
         float3 camU = normalize(scn_frame.inverseViewTransform[1].xyz);
+        float3 camB = normalize(scn_frame.inverseViewTransform[2].xyz);
+        // A back card (`TreeArchetype.card`) behind the one it shares its
+        // centre with: 4 cm, and further with the distance, by more than
+        // the depth buffer can tell apart out there (on screen it moves
+        // by nothing).
+        float backBy = 0.04;
+        if (scn_frame.projectionTransform[3][3] < 0.5) {
+            float3 eyeP = (scn_frame.viewTransform * (scn_node.modelTransform * float4(_geometry.position.xyz, 1.0))).xyz;
+            backBy = max(backBy, 0.0015 * length(eyeP));
+        }
+        _geometry.position.xyz -= camB * (backBy * backLayer);
         _geometry.position.xyz += camR * bo.x + camU * bo.y;
         // In the (orthographic) shadow pass the card faces the sun, not
         // the camera, so it would shade half of its own camera-facing
@@ -44,10 +67,9 @@ extension WorldShaders {
         // sunlit patch across it; deeper, the cut falls on the crown's far
         // side, which faces away from the sun.)
         if (scn_frame.projectionTransform[3][3] > 0.5) {
-            _geometry.position.xyz -= normalize(scn_frame.inverseViewTransform[2].xyz) * (1.6 * length(bo));
+            _geometry.position.xyz -= camB * (1.6 * length(bo));
         }
     }
-    float2 sw = _geometry.texcoords[1];
     \(shadeDecode)
     float t = scn_frame.time;
     float3 wp = _geometry.position.xyz;
@@ -55,7 +77,31 @@ extension WorldShaders {
     float3 off = float3(sin(t * 1.25 + sw.y), 0.0, cos(t * 1.05 + sw.y * 1.7)) * 0.06 * gust;
     off += float3(sin(t * 5.3 + wp.x * 2.1 + wp.y * 1.7), 0.35 * sin(t * 4.1 + wp.z * 1.9),
                   cos(t * 6.1 + wp.z * 2.3 + wp.y * 1.3)) * 0.02 * flutter;
-    _geometry.position.xyz += off * sw.x * windStrength;
+    off = off * sw.x * windStrength;
+    _geometry.position.xyz += off;
+    out.shadeV = (scn_frame.viewTransform * (scn_node.modelTransform * float4(sunP + off, 1.0))).xyz;
+    """
+
+    /// Appended to `foliageSurface` for billboard leaf cards
+    /// (`WorldMaterials.makeLeaves`): the leaf takes its sun shadow where
+    /// its card stands turned to the sun (`windGeometry`'s `shadeV`), as
+    /// the card that casts its shadow is turned, not where it is drawn.
+    ///
+    /// A card is drawn facing the camera, and SceneKit looks the shadow up
+    /// at the fragment it draws (`_surface.position`, read after this
+    /// stage). Drawn that way a card is a slice through the shade of
+    /// everything towards the sun, and the slice turns with the camera: in
+    /// a bend, or in the paused ride's orbit, the light and dark patches
+    /// slid across every bush and crown and straight shadow edges swept
+    /// over them (the Poggio's hairpin at route 650, the bushes on its
+    /// outside). Turned to the sun the card stays where it is whatever
+    /// the camera does, parallel to the casters and nearer the sun than
+    /// its own, so its shade keeps still and only the wind moves it. (The
+    /// Riviera's air, drawn after, reads the same position: half a card
+    /// out at most, nothing over the kilometres the air is measured in.)
+    static let sunFacingShade = """
+
+    _surface.position = in.shadeV;
     """
 
     /// Metres over which verge grass grows from flat to full height inside
@@ -103,7 +149,9 @@ extension WorldShaders {
     /// through to the side of a crown facing away from the sun (cards with
     /// crown-bent normals), 0 lets every card take it (grass blades, whose
     /// normals point up); `exposureGain` scales that light with the
-    /// exposure, as the lights are scaled (1 = none). Per-leaf normals wait
+    /// exposure, as the lights are scaled (1 = none); `canopyFill` is the
+    /// light passed on among the leaves (0: none, as on the Flemish
+    /// climbs). Per-leaf normals wait
     /// for a leaf atlas with a normal map (leaf atlas v2). `mipCoverage`
     /// (0: unset) keeps the cut where it is and scales the alpha up by that
     /// much per mip level instead (`mipCoverageMed`).
@@ -117,6 +165,7 @@ extension WorldShaders {
     float throughCrown;
     float exposureGain;
     float mipCoverage;
+    float canopyFill;
     #pragma body
     // Lower mip levels average leaf coverage into the gaps, which would
     // turn distant cards into solid squares; raise the cut-off with the
@@ -156,7 +205,11 @@ extension WorldShaders {
     // Light through leaves is yellower than light off them.
     float3 tcol = c * float3(1.3, 1.45, 0.55);
     float k = translucency * through * (0.15 + 0.85 * back * back) * exposureGain;
-    _surface.emission = float4(tcol * k, 1.0);
+    // `canopyFill` (0: none): the light the leaves round a leaf pass on to
+    // it, which no shadow takes away. Through a camera that keeps its
+    // shadows deep (`CoursePost`) a crown's shaded side, lit by the sky
+    // alone, went to black.
+    _surface.emission = float4(tcol * k + c * (canopyFill * exposureGain), 1.0);
     """
 
     /// Leaf cards and impostors: opaque (as `opaqueFragment`), keeping a
@@ -214,6 +267,7 @@ extension WorldShaders {
     float exposureGain;
     float impostorNormals;
     float mipCoverage;
+    float canopyFill;
     texture2d<float> impDetail;
     #pragma body
     float2 tc = _surface.diffuseTexcoord * atlasPx;
@@ -243,7 +297,7 @@ extension WorldShaders {
     float back = saturate(dot(-V, L));
     float through = saturate(0.3 - dot(N, L) * 0.7);
     float k = translucency * through * (0.15 + 0.85 * back * back) * exposureGain;
-    _surface.emission = float4(c * float3(1.3, 1.45, 0.55) * k, 1.0);
+    _surface.emission = float4(c * float3(1.3, 1.45, 0.55) * k + c * (canopyFill * exposureGain), 1.0);
     """
 
     /// Bark sways with the crown; detail normals from its packed texture.

@@ -413,7 +413,7 @@ extension TreeArchetype {
                 card(&light, centre: SIMD3(0, yc, 0) + SIMD3(cos(az), 0, sin(az)) * 0.1, size: size,
                      normal: SIMD3(cos(az), 0.1, sin(az)), roll: r.range(-0.1, 0.1), uv: medCypressUV,
                      crownCentre: SIMD3(0, yc, 0), crownRadii: SIMD3(R, R, R), height: H, ao: 0.8,
-                     aspect: (pair ? 0.6 * w : w) / size, mirror: j == 1, hull: hull)
+                     aspect: (pair ? 0.6 * w : w) / size, mirror: j == 1, hull: hull, back: j == 1)
                 if pair {
                     for i in first..<light.vertexCount { light.uv4[2 * i] += (Float(j) - 0.5) * 0.4 * w }
                 }

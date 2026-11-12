@@ -53,9 +53,15 @@ enum SkyLighting {
 
     static func install(in scene: SCNScene, config: WorldConfig, textures: WorldTextures,
                         look: WorldLook = .flanders) -> SCNNode {
-        let sky = skyFaces(textures: textures, prefix: look.skyPrefix, look: look)
-        scene.background.contents = sky.faces
-        scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
+        if look.isRiviera, CoursePost.isAvailable, let cube = textures.hdrCube(look.skyPrefix) {
+            // The Riviera's sky at its real radiance, for `CoursePost`.
+            scene.background.contents = cube
+            scene.background.intensity = CGFloat(pow(2, -exposureOffset))
+        } else {
+            let sky = skyFaces(textures: textures, prefix: look.skyPrefix, look: look)
+            scene.background.contents = sky.faces
+            scene.background.intensity = CGFloat(pow(2, -exposureOffset) / sky.scale)
+        }
         // Image-based light from the sky (the rider's metals, clear coat
         // and lenses rely on it too), at its stored radiance: the
         // calibrated ambient (WorldDebugShots `litchart`).
@@ -68,7 +74,9 @@ enum SkyLighting {
         // summer afternoon; on the Riviera clearer (`WorldLook+Sky`).
         scene.fogColor = horizon(scale: 1, look: look)
         scene.fogStartDistance = 0
-        scene.fogEndDistance = look.fogEndDistance
+        // (On the Riviera the materials draw the air themselves, by
+        // direction and height: `WorldShaders.aerialFragment`. No fog.)
+        scene.fogEndDistance = look.isRiviera ? 0 : look.fogEndDistance
         scene.fogDensityExponent = look.fogExponent
 
         let light = SCNLight()
@@ -140,7 +148,69 @@ enum SkyLighting {
         if light.shadowCascadeCount != config.shadowCascades { light.shadowCascadeCount = config.shadowCascades }
         light.maximumShadowDistance = CGFloat(config.shadowDistance)
         light.shadowSampleCount = config.shadowSamples
-        light.shadowRadius = config.quality == .battery ? 1 : look.shadowRadius
+        // (A held map keeps the region's penumbra on battery too: it has
+        // the samples for it, `WorldConfig.holdingShadows`.)
+        light.shadowRadius = config.quality == .battery && config.shadowBoxHalf == nil ? 1 : look.shadowRadius
+        if let box = ShadowBox(config: config) {
+            // One map, drawn from where `FrameUpdater` stands the light.
+            // (More than one cascade here and SceneKit draws the shadow
+            // at a fraction of its strength.)
+            light.automaticallyAdjustsShadowProjection = false
+            light.orthographicScale = CGFloat(box.half)
+            light.zNear = 1
+            light.zFar = CGFloat(2 * ShadowBox.lift)
+        } else if !light.automaticallyAdjustsShadowProjection {
+            light.automaticallyAdjustsShadowProjection = true
+        }
+    }
+
+    /// The sun's shadow in one map held still on the ground
+    /// (`WorldConfig.shadowBoxHalf`): a square `2 * half` metres across in
+    /// the plane that faces the sun, `mapSize` texels a side, its centre a
+    /// whole number of texels from the world's origin whatever the camera
+    /// does. A shadow's edge then falls on the same texels from one frame
+    /// to the next and keeps still; fitted to the view, as SceneKit fits
+    /// its cascades, the texels slide under it with every move of the
+    /// camera and the edge crawls.
+    struct ShadowBox: Equatable {
+        var half: Float
+        var mapSize: Float
+
+        /// How far ahead of the camera the centre sits, as a share of
+        /// `half`: more of the map where the camera looks than behind it.
+        static let aheadShare: Float = 0.6
+        /// The light stands this far up the sunlight from the centre, and
+        /// its map reaches as far again beyond.
+        static let lift: Float = 300
+        /// The baked sun shade takes over from the map between these
+        /// shares of `half` from its centre (`WorldShaders.lightShadeByBox`).
+        static let fadeShares: (from: Float, to: Float) = (0.86, 0.98)
+
+        init?(config: WorldConfig) {
+            guard let half = config.shadowBoxHalf else { return nil }
+            self.half = Float(half)
+            mapSize = Float(config.shadowMapSize)
+        }
+
+        var texel: Float { 2 * half / mapSize }
+
+        /// The map's centre for a camera here, looking this way: ahead of
+        /// it along the ground. The shaders work the same point out from
+        /// the camera (`lightShadeByBox`), to within the half texel the
+        /// light's own is rounded by.
+        func centre(camera: SIMD3<Float>, forward: SIMD3<Float>) -> SIMD3<Float> {
+            camera + SIMD3(forward.x, 0, forward.z) * (half * Self.aheadShare)
+        }
+
+        /// Where the light stands for that camera: up the sunlight from
+        /// the centre, a whole number of texels along its own right and up.
+        func sunPosition(camera: SIMD3<Float>, forward: SIMD3<Float>) -> SIMD3<Float> {
+            let c = centre(camera: camera, forward: forward)
+            let r = WorldSun.right, u = WorldSun.up, s = WorldSun.toSun
+            let x = (simd_dot(c, r) / texel).rounded() * texel
+            let y = (simd_dot(c, u) / texel).rounded() * texel
+            return r * x + u * y + s * (simd_dot(c, s) + Self.lift)
+        }
     }
 
     /// Points the light's −z along the sunlight.
@@ -165,18 +235,38 @@ enum SkyLighting {
         camera.vignettingPower = 0.55
         camera.saturation = 1.06
         camera.contrast = 0.05
-        applyEffects(camera, config: config)
+        applyEffects(camera, config: config, look: look)
         // No lookup-table grade: SceneKit applies colorGrading in a space
         // that lifts black to navy and crushes the darks (measured with the
         // calibration chart in WorldDebugShots), so the grade is just the
         // gentle contrast and saturation above.
         camera.colorGrading.contents = nil
+        if look.isRiviera, CoursePost.isAvailable {
+            // The Riviera's look is `CoursePost`'s: here only the white
+            // point its pass decodes, and nothing after SceneKit's curve
+            // that the pass couldn't undo.
+            camera.whitePoint = CGFloat(CoursePost.whitePoint)
+            camera.vignettingIntensity = 0
+            camera.saturation = 1
+            camera.contrast = 0
+        }
     }
 
     /// The tier's costly post-process passes (bloom, SSAO). Also used live
     /// when an automatic tier steps down mid-ride.
-    static func applyEffects(_ camera: SCNCamera, config: WorldConfig) {
-        if config.bloom {
+    ///
+    /// On the Riviera the image is not clipped at white (`CoursePost`), so
+    /// only what outshines a sunlit white wall blooms: the sun and the sky
+    /// hard by it, its glints on glass and on the sea. With the Flemish
+    /// threshold of 1 the sky within twenty degrees of the sun, as bright
+    /// as sunlit paper, spread into a white sheet over half the frame.
+    static func applyEffects(_ camera: SCNCamera, config: WorldConfig, look: WorldLook = .flanders) {
+        if config.bloom, look.isRiviera, CoursePost.isAvailable {
+            camera.bloomIntensity = 0.22
+            camera.bloomThreshold = 2.4
+            camera.bloomBlurRadius = 9
+            camera.bloomIterationCount = 3
+        } else if config.bloom {
             camera.bloomIntensity = 0.18
             camera.bloomThreshold = 1.0
             camera.bloomBlurRadius = 7

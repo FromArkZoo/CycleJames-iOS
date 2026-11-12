@@ -236,10 +236,16 @@ final class RoadHairpinTests: XCTestCase {
         XCTAssertGreaterThan(meeting, 100, "the lanes no longer meet the road")
     }
 
-    /// Every letter the fans write is in the font, on its 4 x 6 grid.
+    /// Every letter the fans write is in the font, on its 4 x 6 grid. What
+    /// they write is encouragement and the app's own name, which stands
+    /// where the riders' names were: no real person's name is painted.
     func test_strokeFontCoversTheWriting() {
-        for word in ["VAI", "DAI", "FORZA", "ALLEZ", "TADEJ", "POGI", "MATHIEU", "PIPPO", "GANNA", "MILAN", "SLO",
-                     "BRAVI", "GO", "BUS", "W"] {
+        XCTAssertEqual(RoadBuilder.fanName, "CYCLEJAMES")
+        XCTAssertEqual(RoadBuilder.fanWords.filter { $0 == RoadBuilder.fanName }.count, 6)
+        for name in ["TADEJ", "POGI", "MATHIEU", "PIPPO", "GANNA", "MILAN"] {
+            XCTAssertFalse(RoadBuilder.fanWords.contains(name), name)
+        }
+        for word in RoadBuilder.fanWords + ["BUS"] {
             for ch in word where ch != " " {
                 XCTAssertNotNil(RoadBuilder.strokeFont[ch], "no glyph for \(ch)")
             }

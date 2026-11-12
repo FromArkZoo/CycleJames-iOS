@@ -26,6 +26,7 @@
 		0E439C70DFC25431653C58BA /* cj_skyenv_lig_ny.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9E1AAA10D3FE488BFED553FD /* cj_skyenv_lig_ny.jpg */; };
 		0F1C512659A0D2EEC94F4D3C /* CourseArt+Riviera.swift in Sources */ = {isa = PBXBuildFile; fileRef = E584C486F1EE35050A7B3586 /* CourseArt+Riviera.swift */; };
 		101F4D6CB7330E0D26ABE370 /* TrainerOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1458F63CCB62F3FBD17704D /* TrainerOwnership.swift */; };
+		1088F1D679DCC9D2A2BDB3C2 /* WorldShaders+Air.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDAAE5BE4DE22988F9BAF984 /* WorldShaders+Air.swift */; };
 		10B5231DA3D5D6356C778F52 /* cj_sett_grain.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 8476AE58B3F1BFC4773FF514 /* cj_sett_grain.rgbz */; };
 		12102288A61C64051A527722 /* cj_facade_lig_mask.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = A05444151D7B123E89345D49 /* cj_facade_lig_mask.rgbz */; };
 		145A85093BFB15F6721C5871 /* GearTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9518F6384BF3C09BD1DE3CE9 /* GearTrackerTests.swift */; };
@@ -48,6 +49,7 @@
 		221E7BA8D0672818D6E0C746 /* GroundColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 305180187B96D40006981F76 /* GroundColor.swift */; };
 		24B7A5ADCED6F0748A23AAC4 /* WorldShaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = C680FC6CFFAFF03D9D9DE94E /* WorldShaders.swift */; };
 		24F704302B1D9E83B497999D /* koppenberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 2319389A874329620F99A4BD /* koppenberg_ortho_ground.jpg */; };
+		25F15D74B0C4B3616E9A3CE0 /* cj_sky_lig.hdrc in Resources */ = {isa = PBXBuildFile; fileRef = E09B518822F3631753171B60 /* cj_sky_lig.hdrc */; };
 		26B0D287E0F0B2B0481FDA92 /* cj_sea_detail.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 9A5090B1232880C8F968C40B /* cj_sea_detail.rgbz */; };
 		278B20583ECE6A589FC31B31 /* CameraSpring.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDD72B488C19083A0EE46263 /* CameraSpring.swift */; };
 		28FCD7A9F3F06B95AF584359 /* GearTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE76ACCF85FA8CA2C6DB6DE9 /* GearTracker.swift */; };
@@ -56,6 +58,7 @@
 		2AA56382AECE6DC49CEC5D2A /* molenberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 07DB707CB9BF12ACD65D2E4D /* molenberg_splat.rgbz */; };
 		2AF811CE50814EFB71DE9E1F /* poggio_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 740458331426897FFD573289 /* poggio_ortho_ground.jpg */; };
 		2B15EC960D6441C0C5A465BA /* WattbikeLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A78E31EFC945EBA21DDA8AC0 /* WattbikeLog.swift */; };
+		2B3019987CF959A11D4800B3 /* CoursePost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 616B5CB90577FAC01F2CF2A1 /* CoursePost.swift */; };
 		2B612340B7C42A04A292EB1B /* FTMSManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 968D2E2E0F76370A84721343 /* FTMSManager.swift */; };
 		2C8450E8DF7DEC759EB894D8 /* taaienberg_splat.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 58F03BDB38BC8284E488A444 /* taaienberg_splat.rgbz */; };
 		2E16AA5A2DD422DBD7FFCE05 /* RoadCorridor+Riviera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423DAA82944B30BCDBB82417 /* RoadCorridor+Riviera.swift */; };
@@ -156,6 +159,7 @@
 		83F1C334B418962288F31FCF /* RoadsideBuilder+PoggioSummit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958DC4B2414F1E6589AD9B0A /* RoadsideBuilder+PoggioSummit.swift */; };
 		84EF4D950CA9CA51C1026995 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27045B67616F657CBEBCC974 /* Colors.swift */; };
 		85601EF1A085A2BF3C2DA2CF /* MetricCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0D71EF650D915BB866A150 /* MetricCard.swift */; };
+		872A4A37BF6AC3E0631FC10F /* WorldTextures+HDR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0F4B9673EF21D942061DA8 /* WorldTextures+HDR.swift */; };
 		879D0653BA90C370E7F38D43 /* SettStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5FB03D6E6A513ACA3E5B98 /* SettStyleTests.swift */; };
 		8843A8E7EC833AFD5DD6BE5F /* cj_skyenv_pz.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A8F4E28492F55C2BA16C5677 /* cj_skyenv_pz.jpg */; };
 		8988BE4AEF26E440BDB9DC2C /* CourseRideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88280AAB1541B91F62DA9CD0 /* CourseRideController.swift */; };
@@ -179,6 +183,7 @@
 		9A94EDB001769331519D36FC /* paterberg_ortho_ground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = ACE8A7EEC8A6F6BE106E989F /* paterberg_ortho_ground.jpg */; };
 		9BCADA6017C62069B13ACF86 /* cj_sky_lig_px.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1C52BF21EA1041D2A14B74F6 /* cj_sky_lig_px.jpg */; };
 		9CBE5F6CCF0C4658E91522D9 /* GearBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAC40FFADE283784AD6ACD2C /* GearBadge.swift */; };
+		9CD08DCC3998EA91E88E4202 /* WorldMaterials+Air.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C336D1C43BADF24E170C71D /* WorldMaterials+Air.swift */; };
 		A138F93FA302BCB1E06B149E /* SkyBakeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA5B5BC0E7ED73F444328C07 /* SkyBakeTests.swift */; };
 		A18BFED43D57977E35427BF4 /* CourseRideControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94C8E0FC03E08093D233590D /* CourseRideControllerTests.swift */; };
 		A1F0FC500145EDE7E4D5D0D9 /* paterberg_light.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 4B6F6DA7C83704E0210C6481 /* paterberg_light.rgbz */; };
@@ -234,6 +239,7 @@
 		D797EFF4286F7467270337E4 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A39ADEABF307D2BA4AAD11 /* RootView.swift */; };
 		D7C90F698B51F9362E856AA2 /* cj_asphalt_fine_detail.rgbz in Resources */ = {isa = PBXBuildFile; fileRef = 640C4D79B952BF15D62192B9 /* cj_asphalt_fine_detail.rgbz */; };
 		D85D3A12C92939525EB4E35C /* poggio_ortho_far.jpg in Resources */ = {isa = PBXBuildFile; fileRef = CA35C30C91A471BBDD3447C8 /* poggio_ortho_far.jpg */; };
+		D9F84699BD3899327A8EF8ED /* CoursePostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97D9AD2586E6EA22E32A02D /* CoursePostTests.swift */; };
 		DB497A7D0A115D6EDD63726A /* CameraRig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90D4B4A873658965A1BD1C41 /* CameraRig.swift */; };
 		DD7B5958EF145C5E93BB6FBC /* SeaBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A7BADFCC7A9FE261B7A812 /* SeaBuilder.swift */; };
 		DDAA0773833A142E8B24EF76 /* CustomWorkoutModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D5E89461389BBE63D5B7131 /* CustomWorkoutModel.swift */; };
@@ -373,12 +379,14 @@
 		5976FCA4CCC06FA73310400F /* WorldShaders+Light.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Light.swift"; sourceTree = "<group>"; };
 		5A1ED7B98646F24E15977FAF /* cj_grime.rgbz */ = {isa = PBXFileReference; path = cj_grime.rgbz; sourceTree = "<group>"; };
 		5BA92A2BC40DFFA96A4FCA49 /* LightProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightProfileTests.swift; sourceTree = "<group>"; };
+		5C336D1C43BADF24E170C71D /* WorldMaterials+Air.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldMaterials+Air.swift"; sourceTree = "<group>"; };
 		5C7DE072CB535DEE12DD5C4D /* poggio_splat.rgbz */ = {isa = PBXFileReference; path = poggio_splat.rgbz; sourceTree = "<group>"; };
 		5C935D777760679CEAA81065 /* cj_facade_lig.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_facade_lig.jpg; sourceTree = "<group>"; };
 		5DAC50A72A2C144879F1FFB6 /* RideRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RideRecorder.swift; sourceTree = "<group>"; };
 		5DB6EB0BDF693E909EE32202 /* WorldShaders+Road.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Road.swift"; sourceTree = "<group>"; };
 		5EDA26E3F345CE9F7621D57E /* LightProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightProfile.swift; sourceTree = "<group>"; };
 		61620D0C20710F312C206586 /* TrainerSimBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerSimBridge.swift; sourceTree = "<group>"; };
+		616B5CB90577FAC01F2CF2A1 /* CoursePost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursePost.swift; sourceTree = "<group>"; };
 		627CD9861693A059F6BBEF05 /* cj_impostor_detail.rgbz */ = {isa = PBXFileReference; path = cj_impostor_detail.rgbz; sourceTree = "<group>"; };
 		62ADCB1C9A0612562F0EA65A /* IntensityReadoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntensityReadoutTests.swift; sourceTree = "<group>"; };
 		632744E01C6648C30E450740 /* WorkoutBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutBuilderView.swift; sourceTree = "<group>"; };
@@ -426,6 +434,7 @@
 		8BA1306720900D91440E5295 /* RiderBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiderBody.swift; sourceTree = "<group>"; };
 		8BB9DED64FF3E9335790EE5F /* RoadBuilder+Riviera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RoadBuilder+Riviera.swift"; sourceTree = "<group>"; };
 		8C585194655EA230F7E61095 /* WorldMaterials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMaterials.swift; sourceTree = "<group>"; };
+		8D0F4B9673EF21D942061DA8 /* WorldTextures+HDR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldTextures+HDR.swift"; sourceTree = "<group>"; };
 		8D904449EBF6DFC834EBBE28 /* cj_sky_pz.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_sky_pz.jpg; sourceTree = "<group>"; };
 		8FDE61A337378085218E7966 /* CourseRideSettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRideSettingsControls.swift; sourceTree = "<group>"; };
 		90D4B4A873658965A1BD1C41 /* CameraRig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraRig.swift; sourceTree = "<group>"; };
@@ -467,6 +476,7 @@
 		B5E8EF33E06BDED6BC643ED9 /* FavouritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavouritesView.swift; sourceTree = "<group>"; };
 		B7A282C4C06B730487A252CE /* cj_impostor.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = cj_impostor.png; sourceTree = "<group>"; };
 		B7F1B390A281483D899F797F /* cj_farfields.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = cj_farfields.jpg; sourceTree = "<group>"; };
+		B97D9AD2586E6EA22E32A02D /* CoursePostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursePostTests.swift; sourceTree = "<group>"; };
 		B9A595B7AD8B255E8206E7BA /* WorkoutFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutFilterBar.swift; sourceTree = "<group>"; };
 		BA5B5BC0E7ED73F444328C07 /* SkyBakeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyBakeTests.swift; sourceTree = "<group>"; };
 		BB29625AF30B7031270D3C15 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
@@ -509,6 +519,7 @@
 		DE76ACCF85FA8CA2C6DB6DE9 /* GearTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearTracker.swift; sourceTree = "<group>"; };
 		DFE0F6145FD2AEFC83387C10 /* muur_splat.rgbz */ = {isa = PBXFileReference; path = muur_splat.rgbz; sourceTree = "<group>"; };
 		E013CE6A3276A89C81289B5A /* ReviewPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPromptTests.swift; sourceTree = "<group>"; };
+		E09B518822F3631753171B60 /* cj_sky_lig.hdrc */ = {isa = PBXFileReference; path = cj_sky_lig.hdrc; sourceTree = "<group>"; };
 		E29D65BFD4F93876953F7C95 /* UpcomingIntervalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingIntervalsSheet.swift; sourceTree = "<group>"; };
 		E2C8F15CAC76885CE56D9F86 /* ScheduledRideModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledRideModel.swift; sourceTree = "<group>"; };
 		E3F25F84525C9DCFC0ECE7BC /* TreeArchetypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreeArchetypes.swift; sourceTree = "<group>"; };
@@ -525,6 +536,7 @@
 		EB6EADEB664BB310D1893E85 /* WorkoutPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutPickerSheet.swift; sourceTree = "<group>"; };
 		EC09DD6ACEAB55FD13AA09F0 /* CameraClearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraClearance.swift; sourceTree = "<group>"; };
 		EC7FB9D5FB194EA542682FCC /* TrainerData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainerData.swift; sourceTree = "<group>"; };
+		EDAAE5BE4DE22988F9BAF984 /* WorldShaders+Air.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Air.swift"; sourceTree = "<group>"; };
 		EDE3677E08A9C7AFCAFB9DC5 /* BuildingBuilder+Riviera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BuildingBuilder+Riviera.swift"; sourceTree = "<group>"; };
 		EE3380567DD786D3F31AE47C /* WorkoutGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutGraphView.swift; sourceTree = "<group>"; };
 		EE8BC6F5708BA1592FFEEAA4 /* WorldShaders+Setts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorldShaders+Setts.swift"; sourceTree = "<group>"; };
@@ -624,6 +636,7 @@
 				1C52BF21EA1041D2A14B74F6 /* cj_sky_lig_px.jpg */,
 				4F53F8C5134CED962ED00543 /* cj_sky_lig_py.jpg */,
 				DA73EE9276C22D1B32FB675B /* cj_sky_lig_pz.jpg */,
+				E09B518822F3631753171B60 /* cj_sky_lig.hdrc */,
 				D9419540338AA9977D6FBE5D /* cj_sky_nx.jpg */,
 				B2F9078574943CB741CFBBAF /* cj_sky_ny.jpg */,
 				204153A39B832366551342BB /* cj_sky_nz.jpg */,
@@ -694,6 +707,14 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
+		23063DBA85D64F4BB32E92DE /* Post */ = {
+			isa = PBXGroup;
+			children = (
+				616B5CB90577FAC01F2CF2A1 /* CoursePost.swift */,
+			);
+			path = Post;
+			sourceTree = "<group>";
+		};
 		2CC8775F754E6952EE6AA432 /* Audio */ = {
 			isa = PBXGroup;
 			children = (
@@ -733,6 +754,7 @@
 				A92ACDD374C3324A8038AFB0 /* GraphicsQuality.swift */,
 				687D9B54200900D67517534E /* LiveQualityGovernor.swift */,
 				6D53D2ADBB9D63034E969195 /* Camera */,
+				23063DBA85D64F4BB32E92DE /* Post */,
 				A26B4317D03140BA64A8D791 /* Rider */,
 				FDADE03F0B3C1C2855FCC257 /* World */,
 			);
@@ -890,6 +912,7 @@
 				24A16C4D8AB7A444DC693A24 /* CourseClimbTimingTests.swift */,
 				E50E10EAC8580D5C377C8EEE /* CoursePersonalBestTests.swift */,
 				D174F2B543B80F6D064A2C5F /* CoursePhysicsTests.swift */,
+				B97D9AD2586E6EA22E32A02D /* CoursePostTests.swift */,
 				94C8E0FC03E08093D233590D /* CourseRideControllerTests.swift */,
 				87FCF7874FB04FD2882CA10C /* CourseRideSamplesTests.swift */,
 				174F3D6695D7B49470AF66BE /* CourseSeriesTests.swift */,
@@ -1023,6 +1046,7 @@
 				5333FFEB29BF9ABCD734F97C /* WorldLook.swift */,
 				F7D46AE3E87E83FA3E94C04A /* WorldLook+Sky.swift */,
 				8C585194655EA230F7E61095 /* WorldMaterials.swift */,
+				5C336D1C43BADF24E170C71D /* WorldMaterials+Air.swift */,
 				3296CC0597F16AEAC3B27DE7 /* WorldMaterials+Buildings.swift */,
 				BE413DD639A80B626951EDA6 /* WorldMaterials+Ground.swift */,
 				3CC2818092CBB742E52D3D4B /* WorldMaterials+Light.swift */,
@@ -1033,6 +1057,7 @@
 				77E2D871BB35C81A317BA82E /* WorldMaterials+Sea.swift */,
 				9EED68A2167CB465EB282F38 /* WorldMesh.swift */,
 				C680FC6CFFAFF03D9D9DE94E /* WorldShaders.swift */,
+				EDAAE5BE4DE22988F9BAF984 /* WorldShaders+Air.swift */,
 				6C30E71515652FD322536A3A /* WorldShaders+Buildings.swift */,
 				21695A492E4BC9F2690002FC /* WorldShaders+Ground.swift */,
 				5976FCA4CCC06FA73310400F /* WorldShaders+Light.swift */,
@@ -1042,6 +1067,7 @@
 				516786CCBE417549E0D3916A /* WorldShaders+Sea.swift */,
 				EE8BC6F5708BA1592FFEEAA4 /* WorldShaders+Setts.swift */,
 				6C0FE83567FA5506A6F299E7 /* WorldTextures.swift */,
+				8D0F4B9673EF21D942061DA8 /* WorldTextures+HDR.swift */,
 			);
 			path = World;
 			sourceTree = "<group>";
@@ -1172,6 +1198,7 @@
 				56738CC33E1DD1B494D46096 /* cj_signs_it.png in Resources */,
 				B0E69ED14310E9F9418460AC /* cj_signs_it_map.json in Resources */,
 				FF93FD2A4A7885FA92D1B21C /* cj_signs_map.json in Resources */,
+				25F15D74B0C4B3616E9A3CE0 /* cj_sky_lig.hdrc in Resources */,
 				F399F3EA758BE82C4C99896D /* cj_sky_lig_nx.jpg in Resources */,
 				685E5E283F069828D5200594 /* cj_sky_lig_ny.jpg in Resources */,
 				1C3DA6E1DBAB0B786979E3AE /* cj_sky_lig_nz.jpg in Resources */,
@@ -1234,6 +1261,7 @@
 				3D81756FFEE6007FB8DD101C /* CourseClimbTimingTests.swift in Sources */,
 				B58CA93CA078FA138CF1C3D1 /* CoursePersonalBestTests.swift in Sources */,
 				0DEBB855DAA3FD5DF69023F1 /* CoursePhysicsTests.swift in Sources */,
+				D9F84699BD3899327A8EF8ED /* CoursePostTests.swift in Sources */,
 				A18BFED43D57977E35427BF4 /* CourseRideControllerTests.swift in Sources */,
 				7762E7528F97E2634CDA0FDB /* CourseRideSamplesTests.swift in Sources */,
 				021FB3C9332E6AC6CFA48DBC /* CourseSeriesTests.swift in Sources */,
@@ -1291,6 +1319,7 @@
 				0215DAB2DCA2203E7BD3A74D /* CourseDetailView.swift in Sources */,
 				C752E561ECCCA40EFA41463A /* CourseListView.swift in Sources */,
 				4A79BFBA075852DF33280EF3 /* CourseLogDump.swift in Sources */,
+				2B3019987CF959A11D4800B3 /* CoursePost.swift in Sources */,
 				B46DCF3FA665029F068A895A /* CourseProfileViews.swift in Sources */,
 				8988BE4AEF26E440BDB9DC2C /* CourseRideController.swift in Sources */,
 				7E352F936634668533E899B8 /* CourseRideHUD.swift in Sources */,
@@ -1392,6 +1421,7 @@
 				90DA56E6C17FDF876B838F14 /* WorldDebugShots.swift in Sources */,
 				FCDCA630038DF0BE817E490C /* WorldLook+Sky.swift in Sources */,
 				35A3A7EAEB5ED9E7BD2C2F80 /* WorldLook.swift in Sources */,
+				9CD08DCC3998EA91E88E4202 /* WorldMaterials+Air.swift in Sources */,
 				B922FF89D0D9846783394BB2 /* WorldMaterials+Buildings.swift in Sources */,
 				C9712F2FB234F7D8B26B0D27 /* WorldMaterials+Ground.swift in Sources */,
 				624BD0EF91E631EE72AF2DD9 /* WorldMaterials+Light.swift in Sources */,
@@ -1402,6 +1432,7 @@
 				8314D0F18EBE6453D50CA0BE /* WorldMaterials+Sea.swift in Sources */,
 				2049DD64FC48C73EE2032521 /* WorldMaterials.swift in Sources */,
 				32129BE5C820A18BD07611EE /* WorldMesh.swift in Sources */,
+				1088F1D679DCC9D2A2BDB3C2 /* WorldShaders+Air.swift in Sources */,
 				F534CE93A32AF8BCB282BB6F /* WorldShaders+Buildings.swift in Sources */,
 				99EF41D7186AC6FB9735D8D5 /* WorldShaders+Ground.swift in Sources */,
 				2F5C69DBF371093B29D02875 /* WorldShaders+Light.swift in Sources */,
@@ -1411,6 +1442,7 @@
 				7E458AA159B00A6E3324CD60 /* WorldShaders+Sea.swift in Sources */,
 				AD1B0E77DE6351B5400D5AC5 /* WorldShaders+Setts.swift in Sources */,
 				24B7A5ADCED6F0748A23AAC4 /* WorldShaders.swift in Sources */,
+				872A4A37BF6AC3E0631FC10F /* WorldTextures+HDR.swift in Sources */,
 				F235BF3D06ACEBDEEC0AD7C8 /* WorldTextures.swift in Sources */,
 				9963BB5D8A68BB0EC0E1E26D /* Zone.swift in Sources */,
 			);
@@ -1461,7 +1493,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1475,7 +1507,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1543,7 +1575,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1563,7 +1595,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.3.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

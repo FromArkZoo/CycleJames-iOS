@@ -50,9 +50,34 @@ extension WorldShaders {
     float lgtAO = max(lgtV, ((lgtV * (2.0404 * lgtA - 0.3324) + (0.6417 - 4.7951 * lgtA)) * lgtV + (2.7552 * lgtA + 0.6903)) * lgtV);
     _surface.ambientOcclusion *= lgtAO;
     float lgtK = lightK.x * saturate(dot(lgtN, lightSun));
-    float lgtG = mix(1.0, lgtQ.g, smoothstep(lightK.y, lightK.z, lgtD));
+    \(lightShadeByDepth)
     alb *= (lgtAO + lgtK * lgtG) / (lgtAO + lgtK);
     float lgtSky = lgtAO / (lgtAO + lgtK * lgtG + 1e-4);
     alb *= mix(float3(1.0), float3(0.90, 1.0, 0.84), lgtSky * smoothstep(0.06, 0.12, lgtQ.b) * 0.5);
     """
+
+    /// `lightApply`'s share of the baked sun shade, `lgtG`, where the
+    /// shadow map is cascades fitted to the view: it ends at a camera
+    /// depth (`lightK.y`, `.z`).
+    static let lightShadeByDepth = "float lgtG = mix(1.0, lgtQ.g, smoothstep(lightK.y, lightK.z, lgtD));"
+
+    /// The same where the shadow map is one square held still on the
+    /// ground (`SkyLighting.ShadowBox`; `WorldMaterials.holdLightToShadowBox`
+    /// puts it in `lightShadeByDepth`'s place). SceneKit draws that map's
+    /// shadows wherever it reaches, at any depth, and the baked shade laid
+    /// over them would darken a shadow twice (four to six times too dark
+    /// on level ground): here the baked shade comes in towards the
+    /// square's edge (`lightK.y`, `.z`: metres from its centre along the
+    /// sun's right and up), where the map ends. The centre is the
+    /// camera's, moved ahead along the ground as `ShadowBox.centre` moves it.
+    static let lightShadeByBox: String = {
+        func v3(_ v: SIMD3<Float>) -> String { "float3(\(v.x), \(v.y), \(v.z))" }
+        let ahead = SkyLighting.ShadowBox.aheadShare / SkyLighting.ShadowBox.fadeShares.to
+        return """
+        float3 lgtBk = scn_frame.inverseViewTransform[2].xyz;
+        float3 lgtBd = lgtP - scn_frame.inverseViewTransform[3].xyz + float3(lgtBk.x, 0.0, lgtBk.z) * (lightK.z * \(ahead));
+        float lgtBr = max(abs(dot(lgtBd, \(v3(WorldSun.right)))), abs(dot(lgtBd, \(v3(WorldSun.up)))));
+        float lgtG = mix(1.0, lgtQ.g, smoothstep(lightK.y, lightK.z, lgtBr));
+        """
+    }()
 }
