@@ -6,7 +6,7 @@ struct ClimbsEntryCard: View {
 
     private var title: String {
         if courses.count == 1, let only = courses.first { return "Ride the \(only.name)" }
-        return "\(courses.count) cobbled climbs"
+        return CourseCopy.climbsTitle(count: courses.count)
     }
 
     private var subtitle: String {

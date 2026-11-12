@@ -66,7 +66,7 @@ struct CourseDetailView: View {
                     landmarks(summary)
                     personalBestCard.id("pb")
                     setupCard.id("setup")
-                    trainerCard.id("trainer")
+                    trainerCard(summary).id("trainer")
                     attribution(summary).id("licences")
                 }
                 .padding(.horizontal, CJSpacing.l)
@@ -288,7 +288,7 @@ struct CourseDetailView: View {
         }
     }
 
-    private var trainerCard: some View {
+    private func trainerCard(_ s: CourseSummary) -> some View {
         VStack(alignment: .leading, spacing: CJSpacing.s) {
             Text("TRAINER")
                 .font(CJFont.labelUpper)
@@ -301,7 +301,7 @@ struct CourseDetailView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(trainer.connectionState == .connected ? CJColors.success : CJColors.accent)
                 Text(trainer.connectionState == .connected
-                     ? "Your trainer will set the resistance from the gradient under your wheel, cobbles included."
+                     ? CourseCopy.trainerHint(hasCobbles: s.lengthM(on: "cobbles") > 0)
                      : "No trainer? You can still ride: set your power with the on-screen slider and the bike climbs at that wattage.")
                     .font(CJFont.caption)
                     .foregroundStyle(CJColors.textSecondary)
@@ -366,6 +366,19 @@ struct CourseDetailView: View {
     }
 }
 
+/// Wording that depends on what the climbs are: the Flemish bergs are
+/// cobbled, the Poggio is tarmac all the way.
+enum CourseCopy {
+    /// The climbs card's title for more than one course.
+    static func climbsTitle(count: Int) -> String { "\(count) real climbs" }
+
+    /// What a connected trainer will do on a course's page.
+    static func trainerHint(hasCobbles: Bool) -> String {
+        "Your trainer will set the resistance from the gradient under your wheel"
+            + (hasCobbles ? ", cobbles included." : ".")
+    }
+}
+
 /// Where the licences named in a course's attribution lines are published,
 /// so each credit can link to its terms (OSM asks for a link to its
 /// copyright page wherever the medium allows one).
@@ -374,9 +387,15 @@ enum CourseLicence {
     static let modellicentieGratisHergebruik = URL(string:
         "https://www.vlaanderen.be/digitaal-vlaanderen/onze-diensten-en-platformen/open-data/voorwaarden-voor-het-hergebruik-van-overheidsinformatie/modellicentie-gratis-hergebruik")!
 
+    /// CC BY 4.0 asks that a credit names the licence and links to it
+    /// (section 3(a)(1)(C)): the Ligurian, INGV and AGEA data of the
+    /// Poggio.
+    static let creativeCommonsBy4 = URL(string: "https://creativecommons.org/licenses/by/4.0/")!
+
     static func url(for line: String) -> URL? {
         if line.contains("OpenStreetMap") { return openStreetMap }
         if line.contains("Modellicentie Gratis Hergebruik") { return modellicentieGratisHergebruik }
+        if line.contains("CC BY 4.0") { return creativeCommonsBy4 }
         return nil
     }
 }
