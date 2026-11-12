@@ -176,14 +176,25 @@ extension WorldConfig {
     /// crawled. Balanced and high were as coarse in their far cascades,
     /// from about 22 m out, and finer than this (1.5-2 cm) nearer.
     ///
-    /// Here every tier draws 3.1 cm a texel, still: 128 m across at 4096 px
-    /// on high, 96 m at 3072 on balanced, 48 m at 1536 on battery, the
-    /// square's centre ahead of the camera. That is one pass over the
-    /// casters where cascades took up to three, over more texels (2.25
-    /// times battery's, a tenth to a third more on the others); the baked
-    /// sun shade takes over at the map's edge (`lightShadeByBox`), 38 m
-    /// ahead at the least on battery where the cascade reached 45. High
-    /// and battery take four samples of it, balanced two (below).
+    /// Here the map keeps still: 64 m across at 4096 px on high and 48 m
+    /// at 3072 on balanced, 1.6 cm a texel, and 48 m at 2048 on battery,
+    /// 2.3 cm, the square's centre ahead of the camera. That is one pass
+    /// over the casters where cascades took up to three, over more texels
+    /// (four times battery's, a tenth to a third more on the others); the
+    /// baked sun shade takes over at the map's edge (`lightShadeByBox`),
+    /// 51 m ahead of the camera on high and 38 m on the others, where
+    /// battery's cascade reached 45. High and battery take four samples of
+    /// it, balanced two (below).
+    ///
+    /// High and balanced first drew maps twice as wide (128 m and 96 m, and
+    /// battery 1536 px): 3.1 cm a texel on every tier. At that the rider's
+    /// shadow, the one shadow always in the middle of the screen, drew
+    /// lumpy: the frame's tubes ran together and its edge showed the
+    /// texels. At half the texel it draws clean. The price is reach. Past
+    /// the map's edge the ground keeps its baked shade, but a house front,
+    /// a balcony or a pine's trunk takes no cast shadow until the map
+    /// comes to it (seen at 1500 m and 2600 m, 11 November); the turning
+    /// camera shows no more movement in the shadows than before.
     func holdingShadows() -> WorldConfig {
         var c = self
         #if DEBUG
@@ -193,21 +204,22 @@ extension WorldConfig {
         #endif
         let half: Double
         switch quality {
-        case .high: half = 64; c.shadowMapSize = 4096
-        case .balanced: half = 48; c.shadowMapSize = 3072
-        case .battery: half = 24; c.shadowMapSize = 1536
+        case .high: half = 32; c.shadowMapSize = 4096
+        case .balanced: half = 24; c.shadowMapSize = 3072
+        case .battery: half = 24; c.shadowMapSize = 2048
         }
         c.shadowBoxHalf = half
         c.shadowCascades = 1
         c.shadowDistance = half
         // The map keeps still on the ground, so the rider's shadow rides
         // across its texels: with one hard sample, or two, its edge draws
-        // in 3 cm steps that crawl along it; four draw it smooth. Battery
+        // in texel steps that crawl along it; four draw it smooth. Battery
         // takes four as high does: it is held to 30 frames a second and
         // has them to spare. Balanced keeps its two, for the frame rate:
         // an iPhone 14 that held 59-60 frames a second on the Poggio with
         // two fell to 55-57 over its heaviest stretches with four
-        // (11 November, the first 50 s of a ride either way).
+        // (11 November, the first 50 s of a ride either way, on the 96 m
+        // map; at 1.6 cm a texel two samples' steps are half that size).
         c.shadowSamples = quality == .balanced ? 2 : 4
         return c
     }

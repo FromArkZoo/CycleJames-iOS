@@ -368,8 +368,10 @@ final class WorldLightingTests: XCTestCase {
     /// snaps nothing, so shadow edges crawled by a texel as the camera
     /// moved: 7 cm on the battery tier, where the rider's shadow drew as
     /// blocks and blocks of shade slid over the Poggio's bushes. Each of
-    /// the Riviera's tiers draws one map instead, 3.1 cm a texel, and the
-    /// light is set up to draw it; the Flemish tiers keep their cascades.
+    /// the Riviera's tiers draws one map instead, 1.6 cm a texel (2.3 cm
+    /// on battery), fine enough that the rider's shadow draws clean, and
+    /// the light is set up to draw it; the Flemish tiers keep their
+    /// cascades.
     func test_theRivierasTiersHoldTheirShadowMapStill() {
         for q in [GraphicsQuality.high, .balanced, .battery] {
             let flemish = WorldConfig.make(q), riviera = flemish.riviera()
@@ -378,7 +380,7 @@ final class WorldLightingTests: XCTestCase {
             let box = try? XCTUnwrap(SkyLighting.ShadowBox(config: riviera), "\(q)")
             guard let box else { continue }
             XCTAssertEqual(riviera.shadowCascades, 1, "\(q)")
-            XCTAssertEqual(box.texel, 0.03125, accuracy: 1e-6, "\(q): metres a texel")
+            XCTAssertEqual(box.texel, q == .battery ? 0.0234375 : 0.015625, accuracy: 1e-6, "\(q): metres a texel")
             XCTAssertEqual(Double(box.half), riviera.shadowDistance, "\(q)")
 
             let light = SCNLight()
@@ -391,7 +393,7 @@ final class WorldLightingTests: XCTestCase {
             XCTAssertEqual(light.shadowMapSize.width, CGFloat(box.mapSize), "\(q)")
             XCTAssertGreaterThanOrEqual(Float(light.zFar), 2 * SkyLighting.ShadowBox.lift, "\(q)")
             // The rider's shadow rides across a map that keeps still: four
-            // samples draw its edge smooth, fewer in 3 cm steps. High and
+            // samples draw its edge smooth, fewer in texel steps. High and
             // battery (held to 30 frames a second) take four; balanced
             // keeps two, which is what held 60 frames a second on an
             // iPhone 14. The region's penumbra on every tier.
@@ -406,9 +408,16 @@ final class WorldLightingTests: XCTestCase {
             XCTAssertEqual(light.shadowSampleCount, [GraphicsQuality.high: 4, .balanced: 2, .battery: 1][q], "\(q)")
             XCTAssertEqual(light.shadowRadius, q == .battery ? 1 : WorldLook.flanders.shadowRadius, accuracy: 1e-5, "\(q)")
         }
-        // Wider and larger on the dearer tiers.
-        let halves = [GraphicsQuality.high, .balanced, .battery].compactMap { WorldConfig.make($0).riviera().shadowBoxHalf }
-        XCTAssertEqual(halves, halves.sorted(by: >))
+        // No narrower and no smaller on a dearer tier, and at the least
+        // 38 m of it ahead of the camera.
+        let tiers = [GraphicsQuality.high, .balanced, .battery].map { WorldConfig.make($0).riviera() }
+        let halves = tiers.compactMap(\.shadowBoxHalf), sizes = tiers.map(\.shadowMapSize)
+        XCTAssertEqual(halves, [32, 24, 24])
+        XCTAssertEqual(sizes, sizes.sorted(by: >))
+        for half in halves {
+            let ahead = (Double(SkyLighting.ShadowBox.aheadShare) + Double(SkyLighting.ShadowBox.fadeShares.to)) * half
+            XCTAssertGreaterThanOrEqual(ahead, 37.9)
+        }
     }
 
     /// The map keeps still because the light only ever stands a whole
